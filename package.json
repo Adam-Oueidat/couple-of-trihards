@@ -1,0 +1,21 @@
+{
+  "name": "couple-of-trihards",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.12.1",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "db:generate": "pnpm --filter @trihards/db generate",
+    "db:migrate": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db migrate",
+    "db:import": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db run import-json",
+    "db:bootstrap": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db bootstrap",
+    "db:studio": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.10"
+  }
+}

@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* ---------- Palette ----------
+   Light: warm paper + terracotta — like a vintage running journal
+   Dark : midnight slate + coral + cream — distinctive but readable
+   Disciplines stay semantic: swim=teal, ride=indigo, run=moss/lime
+*/
+:root {
+  --page: #f5eddb;
+  --card: #fffaef;
+  --inset: #ece2cc;
+  --border-soft: #ddd0b3;
+
+  --text-primary: #1a1410;
+  --text-secondary: #3a3128;
+  --text-muted: #6b6253;
+  --text-faint: #948774;
+
+  --accent: #c54f25;
+  --accent-hover: #a8401a;
+  --accent-soft: #c54f2526;
+  --accent-fg: #ffffff;
+
+  --run: #4d7c0f;
+  --ride: #4338ca;
+  --swim: #0e7a72;
+
+  --err: #b91c1c;
+  --warn: #b45309;
+  --ok: #15803d;
+
+  --chart-grid: #d4c6a8;
+}
+
+.dark {
+  /* Espresso night: warm dark earth tones with amber-gold accent and
+     vivid earth disciplines — lime / coral / emerald, no blue hues. */
+  --page: #14100b;
+  --card: #1e1812;
+  --inset: #29211a;
+  --border-soft: #382d22;
+
+  --text-primary: #f4ead6;
+  --text-secondary: #ccbf9c;
+  --text-muted: #877a5e;
+  --text-faint: #524634;
+
+  --accent: #f4a261;
+  --accent-hover: #fab578;
+  --accent-soft: #f4a26126;
+  --accent-fg: #14100b;
+
+  --run: #bef264;
+  --ride: #fb7185;
+  --swim: #2dd4bf;
+
+  --err: #f87171;
+  --warn: #facc15;
+  --ok: #4ade80;
+
+  --chart-grid: #382d22;
+}
+
+/* ---------- Tailwind token overrides ----------
+   We remap the gray scale + a handful of named colors so existing
+   classes like `bg-gray-900`, `text-orange-500`, `bg-green-500/15`
+   resolve to our palette in both modes — no component refactor needed.
+
+   The gray scale conceptually inverts in light mode: `bg-gray-950`
+   stays "page background", `bg-gray-900` stays "card surface", etc.
+*/
+@theme inline {
+  --color-gray-950: var(--page);
+  --color-gray-900: var(--card);
+  --color-gray-800: var(--inset);
+  --color-gray-750: var(--inset);
+  --color-gray-700: var(--border-soft);
+  --color-gray-600: var(--text-faint);
+  --color-gray-500: var(--text-muted);
+  --color-gray-400: var(--text-secondary);
+  --color-gray-300: var(--text-secondary);
+  --color-gray-200: var(--text-primary);
+  --color-gray-100: var(--text-primary);
+
+  /* "white" in this codebase is used for primary text, not literal white */
+  --color-white: var(--text-primary);
+
+  /* Accent (was orange) */
+  --color-orange-500: var(--accent);
+  --color-orange-400: var(--accent-hover);
+  --color-orange-300: var(--accent-hover);
+
+  /* Discipline semantics */
+  --color-green-400: var(--run);
+  --color-green-500: var(--run);
+  --color-blue-400: var(--ride);
+  --color-blue-500: var(--ride);
+  --color-cyan-400: var(--swim);
+  --color-cyan-500: var(--swim);
+
+  /* Status */
+  --color-red-400: var(--err);
+  --color-red-500: var(--err);
+  --color-yellow-400: var(--warn);
+  --color-yellow-500: var(--warn);
+}
+
+body {
+  background: var(--page);
+  color: var(--text-primary);
+  font-family: var(--font-sans, Arial, Helvetica, sans-serif);
+}
+
+/* Recharts elements become focused when clicked; suppress the default
+   focus ring on anything inside a chart wrapper. */
+.recharts-wrapper :focus,
+.recharts-wrapper :focus-visible {
+  outline: none;
+}
+
+/* Recharts CartesianGrid hardcodes a stroke; force it to follow the theme. */
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid) !important;
+}
+.recharts-cartesian-axis-tick text {
+  fill: var(--text-muted) !important;
+}

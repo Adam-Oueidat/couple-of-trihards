@@ -1,0 +1,94 @@
+{
+  "name": "Copenhagen Half Marathon Plan",
+  "source": "Runna",
+  "discipline": "run",
+  "startDate": "2026-06-08",
+  "raceDate": "2026-09-20",
+  "raceName": "Copenhagen Half Marathon",
+  "sessions": [
+    { "date": "2026-06-08", "name": "13km Easy Run", "type": "easy", "km": 13 },
+    { "date": "2026-06-09", "name": "9km Easy Run", "type": "easy", "km": 9 },
+    { "date": "2026-06-10", "name": "400m Repeats", "type": "intervals", "km": 11.8 },
+    { "date": "2026-06-12", "name": "Progressive Run", "type": "tempo", "km": 11 },
+    { "date": "2026-06-13", "name": "17km Long Run", "type": "long", "km": 17 },
+
+    { "date": "2026-06-15", "name": "11km Easy Run", "type": "easy", "km": 11 },
+    { "date": "2026-06-16", "name": "Rolling 300s", "type": "intervals", "km": 13 },
+    { "date": "2026-06-17", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-06-19", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-06-20", "name": "17km Progressive Long Run", "type": "long", "km": 17 },
+
+    { "date": "2026-06-22", "name": "Tempo 4-3-2-1", "type": "tempo", "km": 13 },
+    { "date": "2026-06-23", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-06-24", "name": "Drop Set", "type": "intervals", "km": 13 },
+    { "date": "2026-06-26", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-06-27", "name": "18km Long Run", "type": "long", "km": 18 },
+
+    { "date": "2026-06-29", "name": "13km Easy Run", "type": "easy", "km": 13 },
+    { "date": "2026-06-30", "name": "Progressive Run", "type": "tempo", "km": 13 },
+    { "date": "2026-07-01", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-07-03", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-07-04", "name": "19km Long Run", "type": "long", "km": 19 },
+
+    { "date": "2026-07-06", "name": "1km Repeats", "type": "intervals", "km": 8 },
+    { "date": "2026-07-08", "name": "Over and Unders 1km", "type": "intervals", "km": 10 },
+    { "date": "2026-07-09", "name": "10km Easy Run", "type": "easy", "km": 10 },
+    { "date": "2026-07-11", "name": "11km Long Run", "type": "long", "km": 11 },
+
+    { "date": "2026-07-13", "name": "13km Easy Run", "type": "easy", "km": 13 },
+    { "date": "2026-07-14", "name": "Rolling 300s", "type": "intervals", "km": 13 },
+    { "date": "2026-07-15", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-07-17", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-07-18", "name": "20km Block Long Run", "type": "long", "km": 20 },
+
+    { "date": "2026-07-20", "name": "800m into 400m Intervals", "type": "intervals", "km": 10 },
+    { "date": "2026-07-21", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-07-22", "name": "On Off Ks", "type": "intervals", "km": 13 },
+    { "date": "2026-07-24", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-07-25", "name": "Half Marathon Long Run", "type": "long", "km": 21.1 },
+
+    { "date": "2026-07-27", "name": "13km Easy Run", "type": "easy", "km": 13 },
+    { "date": "2026-07-28", "name": "Tempo 4-3-2-1", "type": "tempo", "km": 13 },
+    { "date": "2026-07-29", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-07-31", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-08-01", "name": "22km Race Practice Long Run", "type": "long", "km": 22 },
+
+    { "date": "2026-08-03", "name": "Fast 8-4-2s", "type": "intervals", "km": 13 },
+    { "date": "2026-08-04", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-08-05", "name": "Tempo 4km Repeats", "type": "tempo", "km": 13 },
+    { "date": "2026-08-07", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-08-08", "name": "23km Long Run", "type": "long", "km": 23 },
+
+    { "date": "2026-08-10", "name": "12km Easy Run", "type": "easy", "km": 12 },
+    { "date": "2026-08-12", "name": "5 Mile Time Trial", "type": "time_trial", "km": 9.1 },
+    { "date": "2026-08-13", "name": "12km Easy Run", "type": "easy", "km": 12 },
+    { "date": "2026-08-15", "name": "13km Long Run", "type": "long", "km": 13 },
+
+    { "date": "2026-08-17", "name": "Tempo 5km", "type": "tempo", "km": 13 },
+    { "date": "2026-08-18", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-08-19", "name": "Drop Set", "type": "intervals", "km": 13 },
+    { "date": "2026-08-21", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-08-22", "name": "24km Long Run", "type": "long", "km": 24 },
+
+    { "date": "2026-08-24", "name": "14km Easy Run", "type": "easy", "km": 14 },
+    { "date": "2026-08-25", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-08-26", "name": "Rolling 400s", "type": "intervals", "km": 12.9 },
+    { "date": "2026-08-28", "name": "13km Easy Run", "type": "easy", "km": 13 },
+    { "date": "2026-08-29", "name": "22km Progressive Long Run", "type": "long", "km": 22 },
+
+    { "date": "2026-08-31", "name": "Tempo 2km Repeats", "type": "tempo", "km": 8 },
+    { "date": "2026-09-01", "name": "12km Easy Run", "type": "easy", "km": 12 },
+    { "date": "2026-09-02", "name": "K200s", "type": "intervals", "km": 12.8 },
+    { "date": "2026-09-04", "name": "15km Easy Run", "type": "easy", "km": 15 },
+    { "date": "2026-09-05", "name": "18km Long Run", "type": "long", "km": 18 },
+
+    { "date": "2026-09-07", "name": "12km Easy Run", "type": "easy", "km": 12 },
+    { "date": "2026-09-09", "name": "Half Easy, Half Tempo", "type": "tempo", "km": 9 },
+    { "date": "2026-09-10", "name": "12km Easy Run", "type": "easy", "km": 12 },
+    { "date": "2026-09-12", "name": "13km Race Practice Long Run", "type": "long", "km": 13 },
+
+    { "date": "2026-09-15", "name": "Race Pace Practice K's", "type": "intervals", "km": 8 },
+    { "date": "2026-09-17", "name": "8km Easy Run", "type": "easy", "km": 8 },
+    { "date": "2026-09-20", "name": "Copenhagen Half Marathon", "type": "race", "km": 21.1 }
+  ]
+}
