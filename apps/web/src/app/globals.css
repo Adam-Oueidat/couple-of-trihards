@@ -3,7 +3,8 @@
 /* ---------- Palette ----------
    Light: warm paper + terracotta — like a vintage running journal
    Dark : midnight slate + coral + cream — distinctive but readable
-   Disciplines stay semantic: swim=teal, ride=indigo, run=moss/lime
+   Disciplines stay semantic and consistent across themes:
+   run=green, ride=blue, swim=cyan/teal — kept distinct from the heart-rate red.
 */
 :root {
   --page: #f5eddb;
@@ -22,8 +23,16 @@
   --accent-fg: #ffffff;
 
   --run: #4d7c0f;
-  --ride: #4338ca;
+  --ride: #1d4ed8;
   --swim: #0e7a72;
+
+  /* Heart-rate zones: a cool→hot intensity ramp, independent of the discipline
+     colors above so the scale reads as its own sequence (Z1 easy → Z5 max). */
+  --zone-1: #64748b; /* recovery — slate */
+  --zone-2: #2563eb; /* endurance — blue */
+  --zone-3: #059669; /* tempo — emerald */
+  --zone-4: #d97706; /* threshold — amber */
+  --zone-5: #dc2626; /* VO2 / max — red */
 
   --err: #b91c1c;
   --warn: #b45309;
@@ -33,8 +42,9 @@
 }
 
 .dark {
-  /* Espresso night: warm dark earth tones with amber-gold accent and
-     vivid earth disciplines — lime / coral / emerald, no blue hues. */
+  /* Espresso night: warm dark earth tones with amber-gold accent. Disciplines
+     follow the canonical scheme — run=lime-green, ride=blue, swim=teal — kept
+     clearly distinct from the heart-rate red (--err). */
   --page: #14100b;
   --card: #1e1812;
   --inset: #29211a;
@@ -51,8 +61,17 @@
   --accent-fg: #14100b;
 
   --run: #bef264;
-  --ride: #fb7185;
+  --ride: #60a5fa;
   --swim: #2dd4bf;
+
+  /* Heart-rate zones: cool→hot ramp, independent of the discipline colors
+     above so Z2 can't drift into Z5's red. Z2 uses a deeper electric blue
+     than --ride (#60a5fa) so the zone scale owns its identity. */
+  --zone-1: #94a3b8; /* recovery — slate */
+  --zone-2: #3b82f6; /* endurance — blue */
+  --zone-3: #34d399; /* tempo — emerald */
+  --zone-4: #fbbf24; /* threshold — amber */
+  --zone-5: #f87171; /* VO2 / max — red */
 
   --err: #f87171;
   --warn: #facc15;

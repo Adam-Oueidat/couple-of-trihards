@@ -18,12 +18,15 @@ interface FitnessData {
   personalBests: PersonalBest[];
 }
 
+// Dedicated heart-rate zone ramp (see --zone-* in globals.css). Kept separate
+// from the discipline colors so the Z1→Z5 scale reads as its own sequence and
+// Z2 stays blue regardless of how ride/run/swim are themed.
 const ZONE_COLORS = [
-  "bg-gray-500/15 text-gray-300 border-gray-500/30",
-  "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  "bg-green-500/15 text-green-400 border-green-500/30",
-  "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
-  "bg-red-500/15 text-red-400 border-red-500/30",
+  "bg-[var(--zone-1)]/15 text-[var(--zone-1)] border-[var(--zone-1)]/35",
+  "bg-[var(--zone-2)]/15 text-[var(--zone-2)] border-[var(--zone-2)]/35",
+  "bg-[var(--zone-3)]/15 text-[var(--zone-3)] border-[var(--zone-3)]/35",
+  "bg-[var(--zone-4)]/15 text-[var(--zone-4)] border-[var(--zone-4)]/35",
+  "bg-[var(--zone-5)]/15 text-[var(--zone-5)] border-[var(--zone-5)]/35",
 ];
 
 const ZONE_NAMES = ["Z1", "Z2", "Z3", "Z4", "Z5"];
