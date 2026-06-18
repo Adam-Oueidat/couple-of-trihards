@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. new pushes to a PR).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # reads packageManager (pnpm@10.12.1) from package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    runs-on: ubuntu-latest
+    # Non-secret placeholders: `next build` does no DB/API calls and only reads
+    # these inside functions that aren't invoked at build time. They keep the
+    # build deterministic without wiring up real secrets.
+    env:
+      SESSION_SECRET: ci-placeholder-session-secret-0123456789
+      STRAVA_CLIENT_ID: ci
+      STRAVA_CLIENT_SECRET: ci
+      STRAVA_REDIRECT_URI: http://localhost:3000/api/auth/callback
+      TURSO_DATABASE_URL: file:./ci.db
+      ANTHROPIC_API_KEY: ci
+      ADMIN_ATHLETE_IDS: ""
+      MOBILE_DEEP_LINK_SCHEME: trilog
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
