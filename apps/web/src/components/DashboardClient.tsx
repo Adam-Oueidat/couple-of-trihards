@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import { TrainingLoadPoint } from "@trihards/core";
 import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
@@ -27,9 +28,52 @@ interface Props {
 
 type Tab = "overview" | "plan" | "calendar" | "activities";
 
+// "Updated …" label from a load timestamp. Only ever called from async
+// callbacks (never during render), so Date.now() stays out of the render path.
+function formatAgo(loadedAt: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - loadedAt) / 1000));
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  return `${hours}h ago`;
+}
+
 export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoad, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pending, startTransition] = useTransition();
+
+  // Client-only "Updated …" clock. Keyed on refreshKey so it resets to "just
+  // now" after each refresh. Renders empty on the server / first paint (no
+  // hydration mismatch); setState is only called from timer callbacks, never
+  // synchronously in the effect body.
+  const [agoLabel, setAgoLabel] = useState("");
+  useEffect(() => {
+    const loadedAt = Date.now();
+    const update = () => setAgoLabel(formatAgo(loadedAt));
+    const soon = setTimeout(update, 0);
+    const tick = setInterval(update, 60_000);
+    return () => {
+      clearTimeout(soon);
+      clearInterval(tick);
+    };
+  }, [refreshKey]);
+
+  function refresh() {
+    startTransition(async () => {
+      try {
+        await refreshDashboard();
+        // Server Component data updates via revalidatePath; bump the key so the
+        // client-fetched cards (Goals, Fitness) refetch too.
+        setRefreshKey((k) => k + 1);
+      } catch {
+        // Refresh failed (e.g. expired session); keep the current data rather
+        // than throwing an unhandled rejection out of the transition.
+      }
+    });
+  }
 
   const recentWeeks = weeklyVolume.slice(-8);
   const currentWeek = weeklyVolume[weeklyVolume.length - 1];
@@ -96,6 +140,44 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* Sync-status strip: keeps data freshness next to the data it governs,
+            instead of crowding the global header. */}
+        <div className="mb-5 flex items-center justify-end gap-3 text-xs">
+          {agoLabel && (
+            <span className="inline-flex items-center gap-2 uppercase tracking-wider text-gray-500">
+              <span
+                className={`h-1.5 w-1.5 rounded-full bg-orange-500 ${pending ? "animate-pulse" : ""}`}
+                aria-hidden="true"
+              />
+              Synced {agoLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={pending}
+            aria-label="Sync data from Strava"
+            className="group inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-3 py-1.5 font-medium uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3.5 w-3.5 transition-transform duration-500 motion-reduce:transition-none ${
+                pending ? "animate-spin motion-reduce:animate-none" : "group-hover:-rotate-180"
+              }`}
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <path d="M21 3v6h-6" />
+            </svg>
+            {pending ? "Syncing…" : "Sync"}
+          </button>
+        </div>
+
         {tab === "overview" ? (
           <div className="space-y-6">
             <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
@@ -112,14 +194,14 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
               </div>
             </div>
 
-            <GoalsCard />
+            <GoalsCard refreshKey={refreshKey} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <SectionLabel>Recent Activities</SectionLabel>
                 <ActivityList activities={activities.slice(0, 5)} />
               </div>
-              <FitnessProfile />
+              <FitnessProfile refreshKey={refreshKey} />
             </div>
           </div>
         ) : tab === "plan" ? (

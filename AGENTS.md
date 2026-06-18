@@ -4,33 +4,57 @@ This file serves the purpose of guiding the AI agents working on this repository
 
 ## Repository Overview
 
-This is TriLog - a personal trainer and coach for athletes wanting guidance in their triathlon training.
+TriLog is a personal trainer and coach for athletes wanting guidance in their triathlon training.
+
+It is a **pnpm + Turbo monorepo**. Packages are published under the `@trihards/*` scope.
+
+```
+apps/
+  web/        # Next.js 16 app (the only app today; a mobile app is planned)
+packages/
+  core/       # @trihards/core — shared business logic
+  db/         # @trihards/db — Turso / libSQL database layer
+```
+
+### Running it
+
+```bash
+pnpm install
+pnpm db:bootstrap   # creates the local SQLite db at apps/web/.data/local.db
+pnpm dev            # turbo run dev — starts the web app on http://localhost:3000
+```
+
+Other useful scripts (run from the repo root): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and the `pnpm db:*` family (`generate`, `migrate`, `import`, `studio`). The local database uses **Turso / libSQL** (SQLite-based) — there is no separate "push the data" step.
+
+### Next.js docs
+
+`next` is a dependency of `apps/web`, so the version-pinned docs referenced below live at **`apps/web/node_modules/next/dist/docs/`**.
 
 ## Skills structure
 
-Skills are located in the `skills/` directory. Each skill is a self-contained module with:
+Skills live in the `.claude/skills/` directory. Each skill is a self-contained module named after the skill:
 
 ```
-skills/{category}-{name}/
-├── SKILL.md           # Main skill definition
+.claude/skills/{skill-name}/
+├── SKILL.md           # Main skill definition (REQUIRED — must not be empty)
 └── references/        # Optional additional context
-    ├── topic-a.md
-    └── topic-b.md
+    └── topic.md
 ```
+
+Current skills: `code-commit`, `frontend-design`.
 
 ### Skill File Format
 
-Skills use YAML frontmatter for metadata:
+`SKILL.md` must start with YAML frontmatter, followed by the instruction body:
 
 ```yaml
 ---
 name: skill-name
 description: When to use this skill (AI reads this to auto-load)
-user-invocable: false # or true if user can call directly
 ---
 ```
 
-Skills are auto-invoked based on description match to current context.
+Skills are auto-invoked based on a match between their `description` and the current context. An empty `SKILL.md` will register the skill by name but it will not load or do anything.
 
 ## Session Completion
 
@@ -44,7 +68,6 @@ Skills are auto-invoked based on description match to current context.
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
    git pull --rebase
-   bd dolt push
    git push
    git status  # MUST show "up to date with origin"
    ```

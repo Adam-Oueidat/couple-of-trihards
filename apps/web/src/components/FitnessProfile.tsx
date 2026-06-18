@@ -47,7 +47,7 @@ function formatPbTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export function FitnessProfile() {
+export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
   const [data, setData] = useState<FitnessData | null>(null);
   const [error, setError] = useState(false);
 
@@ -56,7 +56,10 @@ export function FitnessProfile() {
     fetch("/api/fitness")
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setError(false);
+          setData(d);
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -64,7 +67,7 @@ export function FitnessProfile() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshKey]);
 
   if (error) {
     return (
