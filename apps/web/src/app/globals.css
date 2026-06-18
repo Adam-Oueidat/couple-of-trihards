@@ -65,9 +65,10 @@
   --swim: #2dd4bf;
 
   /* Heart-rate zones: cool→hot ramp, independent of the discipline colors
-     above so Z2 can't drift into Z5's red. */
+     above so Z2 can't drift into Z5's red. Z2 uses a deeper electric blue
+     than --ride (#60a5fa) so the zone scale owns its identity. */
   --zone-1: #94a3b8; /* recovery — slate */
-  --zone-2: #60a5fa; /* endurance — blue */
+  --zone-2: #3b82f6; /* endurance — blue */
   --zone-3: #34d399; /* tempo — emerald */
   --zone-4: #fbbf24; /* threshold — amber */
   --zone-5: #f87171; /* VO2 / max — red */
