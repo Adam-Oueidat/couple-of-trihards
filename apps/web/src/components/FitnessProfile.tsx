@@ -50,6 +50,35 @@ function formatPbTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Render an ISO `YYYY-MM-DD` PB date as a compact, readable label like
+// "12 Mar 2026". Parsed as a local date (no time component) so the day
+// doesn't shift across timezones.
+function formatPbDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// Build a caption describing the date range the PBs are drawn from. Returns a
+// single date when all PBs share one day, otherwise an "earliest – latest"
+// range. PB dates are ISO `YYYY-MM-DD` so lexical comparison matches chronology.
+function formatPbRange(bests: PersonalBest[]): string | null {
+  const dates = bests.map((pb) => pb.activityDate).filter(Boolean);
+  if (dates.length === 0) return null;
+  let earliest = dates[0];
+  let latest = dates[0];
+  for (const d of dates) {
+    if (d < earliest) earliest = d;
+    if (d > latest) latest = d;
+  }
+  if (earliest === latest) return `Based on an activity from ${formatPbDate(earliest)}`;
+  return `Based on activities from ${formatPbDate(earliest)} – ${formatPbDate(latest)}`;
+}
+
 export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
   const [data, setData] = useState<FitnessData | null>(null);
   const [error, setError] = useState(false);
@@ -172,21 +201,30 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
         </h3>
         {personalBests.length === 0 ? (
           <p className="text-gray-600 text-[11px] leading-snug">
-            PBs are tracked as you open or analyze runs.
+            PBs are tracked from activities you open or analyze — not all-time.
           </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {personalBests.map((pb) => (
-              <div
-                key={pb.name}
-                title={`${pb.activityName} · ${pb.activityDate}`}
-                className="px-2 py-0.5 rounded-full border border-gray-700 bg-gray-950/60 text-[11px]"
-              >
-                <span className="text-gray-400">{pb.name}</span>{" "}
-                <span className="text-white font-semibold">{formatPbTime(pb.moving_time)}</span>
-              </div>
-            ))}
-          </div>
+          <>
+            <p className="text-gray-500 text-[11px] leading-snug mb-1.5">
+              From activities you&apos;ve opened or analyzed, not all-time.
+              {(() => {
+                const range = formatPbRange(personalBests);
+                return range ? <span className="block">{range}</span> : null;
+              })()}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {personalBests.map((pb) => (
+                <div
+                  key={pb.name}
+                  title={`${pb.activityName} · ${pb.activityDate}`}
+                  className="px-2 py-0.5 rounded-full border border-gray-700 bg-gray-950/60 text-[11px]"
+                >
+                  <span className="text-gray-400">{pb.name}</span>{" "}
+                  <span className="text-white font-semibold">{formatPbTime(pb.moving_time)}</span>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
