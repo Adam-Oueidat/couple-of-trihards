@@ -89,7 +89,17 @@ export async function POST(request: NextRequest) {
   });
 
   const activities = await getRecentActivities(12);
-  const trainingContext = await buildTrainingContext(userId, activities);
+  // The browser sends its local date so the coach reasons in the athlete's
+  // timezone rather than the server's UTC clock.
+  const clientToday =
+    typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.today)
+      ? body.today
+      : undefined;
+  const trainingContext = await buildTrainingContext(
+    userId,
+    activities,
+    clientToday,
+  );
 
   const system: Anthropic.TextBlockParam[] = [
     { type: "text", text: COACH_SYSTEM_PROMPT },

@@ -1,5 +1,68 @@
+# AGENTS.md
+
+This file serves the purpose of guiding the AI agents working on this repository.
+
+## Repository Overview
+
+This is TriLog - a personal trainer and coach for athletes wanting guidance in their triathlon training.
+
+## Skills structure
+
+Skills are located in the `skills/` directory. Each skill is a self-contained module with:
+
+```
+skills/{category}-{name}/
+├── SKILL.md           # Main skill definition
+└── references/        # Optional additional context
+    ├── topic-a.md
+    └── topic-b.md
+```
+
+### Skill File Format
+
+Skills use YAML frontmatter for metadata:
+
+```yaml
+---
+name: skill-name
+description: When to use this skill (AI reads this to auto-load)
+user-invocable: false # or true if user can call directly
+---
+```
+
+Skills are auto-invoked based on description match to current context.
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
 <!-- END:nextjs-agent-rules -->

@@ -9,6 +9,7 @@ import {
 import type { PersonalBest } from "@/lib/personal-bests";
 import { DisciplineGlyph } from "./DisciplineGlyph";
 import type { Discipline } from "@trihards/core";
+import { SectionLabel } from "./SectionLabel";
 
 interface FitnessData {
   athlete: AthleteDetail | null;
@@ -67,7 +68,7 @@ export function FitnessProfile() {
 
   if (error) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
         <p className="text-gray-500 text-sm">Could not load fitness profile.</p>
       </div>
     );
@@ -75,7 +76,7 @@ export function FitnessProfile() {
 
   if (!data) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
         <p className="text-gray-500 text-sm animate-pulse">Loading fitness profile...</p>
       </div>
     );
@@ -91,10 +92,8 @@ export function FitnessProfile() {
   if (wkg) profileStats.push({ label: "W/kg", value: wkg.toFixed(2) });
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-4">
-      <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-        Fitness Profile
-      </h2>
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+      <SectionLabel className="mb-0">Fitness Profile</SectionLabel>
 
       {profileStats.length > 0 && (
         <div className="flex flex-wrap gap-1.5">

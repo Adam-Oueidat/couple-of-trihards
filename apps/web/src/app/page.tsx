@@ -17,8 +17,8 @@ export default async function Home({
     <main className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="max-w-md w-full mx-4">
         <div className="text-center mb-10">
-          <h1 className="text-5xl font-black text-white tracking-tight mb-2">
-            Couple of <span className="text-orange-500">Trihards</span>
+          <h1 className="font-display text-6xl font-bold text-white uppercase tracking-wide mb-2">
+            Tri<span className="text-orange-500">Log</span>
           </h1>
           <p className="text-gray-400 text-lg">Triathlon training dashboard</p>
         </div>

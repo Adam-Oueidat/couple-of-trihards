@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Saira_Condensed } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,8 +12,17 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Condensed, technical display face — used for the wordmark, the form
+// verdict, big numerics, and section eyebrows. Reads like an
+// instrument-panel readout, which suits a training cockpit.
+const sairaCondensed = Saira_Condensed({
+  variable: "--font-display",
+  weight: ["500", "600", "700"],
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
-  title: "Couple of Trihards",
+  title: "TriLog",
   description: "Triathlon training dashboard powered by Strava",
 };
 
@@ -30,7 +39,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${sairaCondensed.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />

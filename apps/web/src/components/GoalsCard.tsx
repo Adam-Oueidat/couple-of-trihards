@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Goal } from "@/lib/goals";
+import { SectionLabel } from "./SectionLabel";
 
 export function GoalsCard() {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -46,11 +47,9 @@ export function GoalsCard() {
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-1">
-        Goals
-      </h2>
-      <p className="text-gray-600 text-xs mb-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <SectionLabel className="mb-1">Goals</SectionLabel>
+      <p className="text-gray-600 text-xs mb-4 pl-[14px]">
         Your AI coach reads these and aligns all advice and analysis with them.
       </p>
 

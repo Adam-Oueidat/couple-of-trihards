@@ -22,7 +22,7 @@ import { getPersonalBests, type PersonalBest } from "./personal-bests";
 
 const log = createLogger("coach");
 
-export const COACH_SYSTEM_PROMPT = `You are a triathlon coach embedded in a training dashboard app called "Couple of Trihards". You advise the athlete based on their real Strava training data, which is provided below.
+export const COACH_SYSTEM_PROMPT = `You are a triathlon coach embedded in a training dashboard app called "TriLog". You advise the athlete based on their real Strava training data, which is provided below.
 
 Guidelines:
 - Be concise and practical. Athletes want actionable advice, not essays.
@@ -38,6 +38,7 @@ Guidelines:
 - Flag injury-risk patterns: sudden volume spikes (>30% week over week), no rest days, high fatigue.
 - If asked about topics requiring medical expertise, recommend seeing a professional.
 - Use metric units.
+- The athlete's current local date is given as "Today is ..." at the top of their data. Treat that as the present moment for everything time-related: recency, "this week", days until the race, and whether a plan session is upcoming or already done. Compute relative dates (e.g. "in 3 days", "last Tuesday") from it, and never state a date that contradicts it.
 
 Plan moves:
 - The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original Runna-plan dates.
@@ -109,9 +110,39 @@ function formatFitnessProfile(
   return lines.length > 0 ? lines.join("\n") : "No fitness profile data available.";
 }
 
+// Strava reports `start_date` in true UTC and `start_date_local` as the local
+// wall-clock time (with a misleading trailing "Z"). Diffing the two recovers
+// the athlete's UTC offset, which we use to compute *their* current date when
+// the client didn't send one.
+function athleteOffsetMs(activities: StravaActivity[]): number | null {
+  const a = activities[0];
+  if (!a?.start_date || !a?.start_date_local) return null;
+  const utc = new Date(a.start_date).getTime();
+  const local = new Date(a.start_date_local).getTime();
+  if (Number.isNaN(utc) || Number.isNaN(local)) return null;
+  return local - utc;
+}
+
+// Resolve "today" in the athlete's timezone. Priority:
+//   1. the date the browser sent (most reliable — it's the user's real clock)
+//   2. derived from their most recent activity's UTC offset
+//   3. server UTC date (last resort)
+function resolveToday(
+  clientToday: string | undefined,
+  activities: StravaActivity[],
+): string {
+  if (clientToday && /^\d{4}-\d{2}-\d{2}$/.test(clientToday)) return clientToday;
+  const offset = athleteOffsetMs(activities);
+  if (offset !== null) {
+    return new Date(Date.now() + offset).toISOString().split("T")[0];
+  }
+  return new Date().toISOString().split("T")[0];
+}
+
 export async function buildTrainingContext(
   userId: string,
   activities: StravaActivity[],
+  clientToday?: string,
 ): Promise<string> {
   const weekly = groupByWeek(activities);
   const load = calcTrainingLoad(activities);
@@ -142,7 +173,7 @@ export async function buildTrainingContext(
     })
     .join("\n");
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = resolveToday(clientToday, activities);
 
   const [overrides, goals, pbs, workouts, recentAnalyses] = await Promise.all([
     getOverrides(userId),
@@ -180,7 +211,9 @@ export async function buildTrainingContext(
   const zones = zonesResult.status === "fulfilled" ? zonesResult.value : null;
   const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
 
-  return `# Athlete training data (from Strava, last 12 weeks)
+  return `# Today is ${today} (the athlete's current local date — treat this as "now")
+
+# Athlete training data (from Strava, last 12 weeks)
 
 ## Fitness profile
 ${formatFitnessProfile(athlete, zones, stats)}
@@ -251,9 +284,7 @@ ${
       return `### Analysis of ${label}\n${a.text}`;
     })
     .join("\n\n") || "None yet"
-}
-
-Today's date: ${today}`;
+}`;
 }
 
 function formatPaceFromSpeed(metersPerSecond: number): string {

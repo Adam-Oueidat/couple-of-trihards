@@ -7,7 +7,8 @@ import { TrainingLoadPoint } from "@trihards/core";
 import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
 import { TrainingLoadChart } from "./TrainingLoadChart";
 import { ActivityList } from "./ActivityList";
-import { SummaryCards } from "./SummaryCards";
+import { OverviewHero } from "./OverviewHero";
+import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
 import { CoachChat } from "./CoachChat";
 import { PlannedVsActual } from "./PlannedVsActual";
@@ -49,9 +50,15 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
               />
             )}
             <div>
-              <h1 className="font-black text-lg text-white leading-tight">
-                Couple of <span className="text-orange-500">Trihards</span>
-              </h1>
+              <Link
+                href="/dashboard"
+                aria-label="TriLog — go to dashboard"
+                className="inline-block cursor-pointer transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 rounded"
+              >
+                <h1 className="font-display font-bold text-xl text-white leading-none uppercase tracking-wide">
+                  Tri<span className="text-orange-500">Log</span>
+                </h1>
+              </Link>
               <p className="text-gray-400 text-xs">
                 {athlete.firstname} {athlete.lastname}
               </p>
@@ -91,20 +98,16 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
       <main className="max-w-7xl mx-auto px-4 py-6">
         {tab === "overview" ? (
           <div className="space-y-6">
-            <SummaryCards currentWeek={currentWeek} trainingLoad={recentLoad} />
+            <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                  Weekly Volume
-                </h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                <SectionLabel>Weekly Volume</SectionLabel>
                 <WeeklyVolumeChart data={recentWeeks} />
               </div>
 
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-                  Training Load (ATL / CTL / TSB)
-                </h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                <SectionLabel>Training Load · ATL / CTL / TSB</SectionLabel>
                 <TrainingLoadChart data={recentLoad} />
               </div>
             </div>
@@ -112,10 +115,8 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
             <GoalsCard />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-4">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
-                  Recent Activities
-                </h2>
+              <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
+                <SectionLabel>Recent Activities</SectionLabel>
                 <ActivityList activities={activities.slice(0, 5)} />
               </div>
               <FitnessProfile />

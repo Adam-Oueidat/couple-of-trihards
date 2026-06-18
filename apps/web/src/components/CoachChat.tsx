@@ -13,6 +13,15 @@ const SUGGESTIONS = [
   "How should I structure next week based on my current form?",
 ];
 
+// The athlete's local calendar date (YYYY-MM-DD). Sent with each turn so the
+// coach anchors on the user's real timezone instead of the server's UTC clock.
+function localToday(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
 export function CoachChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -57,6 +66,7 @@ export function CoachChat() {
         body: JSON.stringify({
           messages: [{ role: "user", content }],
           conversationId,
+          today: localToday(),
         }),
       });
 
