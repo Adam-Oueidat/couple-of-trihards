@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0a0a0f"/>
+  <!-- Triangle motif: three discipline-colored strokes forming a "tri" -->
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Swim (cyan) - left side of triangle -->
+    <path d="M 256 96 L 116 360" stroke="#22d3ee" stroke-width="44"/>
+    <!-- Ride (blue) - right side of triangle -->
+    <path d="M 256 96 L 396 360" stroke="#60a5fa" stroke-width="44"/>
+    <!-- Run (green) - base of triangle -->
+    <path d="M 116 360 L 396 360" stroke="#4ade80" stroke-width="44"/>
+  </g>
+  <!-- Orange center dot (Strava nod) -->
+  <circle cx="256" cy="272" r="40" fill="#f97316"/>
+</svg>
