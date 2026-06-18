@@ -26,6 +26,14 @@
   --ride: #1d4ed8;
   --swim: #0e7a72;
 
+  /* Heart-rate zones: a cool→hot intensity ramp, independent of the discipline
+     colors above so the scale reads as its own sequence (Z1 easy → Z5 max). */
+  --zone-1: #64748b; /* recovery — slate */
+  --zone-2: #2563eb; /* endurance — blue */
+  --zone-3: #059669; /* tempo — emerald */
+  --zone-4: #d97706; /* threshold — amber */
+  --zone-5: #dc2626; /* VO2 / max — red */
+
   --err: #b91c1c;
   --warn: #b45309;
   --ok: #15803d;
@@ -55,6 +63,14 @@
   --run: #bef264;
   --ride: #60a5fa;
   --swim: #2dd4bf;
+
+  /* Heart-rate zones: cool→hot ramp, independent of the discipline colors
+     above so Z2 can't drift into Z5's red. */
+  --zone-1: #94a3b8; /* recovery — slate */
+  --zone-2: #60a5fa; /* endurance — blue */
+  --zone-3: #34d399; /* tempo — emerald */
+  --zone-4: #fbbf24; /* threshold — amber */
+  --zone-5: #f87171; /* VO2 / max — red */
 
   --err: #f87171;
   --warn: #facc15;
