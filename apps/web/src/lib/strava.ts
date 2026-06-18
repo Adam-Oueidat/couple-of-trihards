@@ -29,6 +29,21 @@ async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Prom
   return data;
 }
 
+// Drops every cached Strava response for one athlete so the next render
+// refetches live data. Used by the dashboard's manual "Refresh" action; normal
+// renders keep hitting the TTL cache to stay within Strava's rate limits.
+export function invalidateAthleteCache(athleteId: number | string): void {
+  const prefixes = [
+    `activities:${athleteId}:`,
+    `athlete-detail:${athleteId}`,
+    `athlete-zones:${athleteId}`,
+    `athlete-stats:${athleteId}`,
+  ];
+  for (const key of apiCache.keys()) {
+    if (prefixes.some((p) => key.startsWith(p))) apiCache.delete(key);
+  }
+}
+
 export function getStravaAuthUrl(): string {
   const params = new URLSearchParams({
     client_id: process.env.STRAVA_CLIENT_ID!,

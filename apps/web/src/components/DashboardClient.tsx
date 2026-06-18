@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
+import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import { TrainingLoadPoint } from "@trihards/core";
 import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
@@ -27,9 +28,47 @@ interface Props {
 
 type Tab = "overview" | "plan" | "calendar" | "activities";
 
+// "Updated …" label from a load timestamp. Only ever called from async
+// callbacks (never during render), so Date.now() stays out of the render path.
+function formatAgo(loadedAt: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - loadedAt) / 1000));
+  if (secs < 45) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  return `${hours}h ago`;
+}
+
 export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoad, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pending, startTransition] = useTransition();
+
+  // Client-only "Updated …" clock. Keyed on refreshKey so it resets to "just
+  // now" after each refresh. Renders empty on the server / first paint (no
+  // hydration mismatch); setState is only called from timer callbacks, never
+  // synchronously in the effect body.
+  const [agoLabel, setAgoLabel] = useState("");
+  useEffect(() => {
+    const loadedAt = Date.now();
+    const update = () => setAgoLabel(formatAgo(loadedAt));
+    const soon = setTimeout(update, 0);
+    const tick = setInterval(update, 60_000);
+    return () => {
+      clearTimeout(soon);
+      clearInterval(tick);
+    };
+  }, [refreshKey]);
+
+  function refresh() {
+    startTransition(async () => {
+      await refreshDashboard();
+      // Server Component data updates via revalidatePath; bump the key so the
+      // client-fetched cards (Goals, Fitness) refetch too.
+      setRefreshKey((k) => k + 1);
+    });
+  }
 
   const recentWeeks = weeklyVolume.slice(-8);
   const currentWeek = weeklyVolume[weeklyVolume.length - 1];
@@ -81,6 +120,33 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
                 </button>
               ))}
             </nav>
+            <div className="flex items-center gap-2">
+              {agoLabel && (
+                <span className="hidden sm:inline text-xs text-gray-500">Updated {agoLabel}</span>
+              )}
+              <button
+                type="button"
+                onClick={refresh}
+                disabled={pending}
+                aria-label="Refresh data from Strava"
+                className="flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className={`h-4 w-4 ${pending ? "animate-spin" : ""}`}
+                  aria-hidden="true"
+                >
+                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+                {pending ? "Refreshing…" : "Refresh"}
+              </button>
+            </div>
             {isAdmin && (
               <Link
                 href="/admin/licenses"
@@ -112,14 +178,14 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
               </div>
             </div>
 
-            <GoalsCard />
+            <GoalsCard refreshKey={refreshKey} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <SectionLabel>Recent Activities</SectionLabel>
                 <ActivityList activities={activities.slice(0, 5)} />
               </div>
-              <FitnessProfile />
+              <FitnessProfile refreshKey={refreshKey} />
             </div>
           </div>
         ) : tab === "plan" ? (

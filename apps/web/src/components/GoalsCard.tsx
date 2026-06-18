@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { Goal } from "@/lib/goals";
 import { SectionLabel } from "./SectionLabel";
 
-export function GoalsCard() {
+export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -20,7 +20,7 @@ export function GoalsCard() {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   async function add() {
     const text = input.trim();
