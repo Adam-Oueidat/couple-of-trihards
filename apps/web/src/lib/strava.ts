@@ -33,14 +33,18 @@ async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Prom
 // refetches live data. Used by the dashboard's manual "Refresh" action; normal
 // renders keep hitting the TTL cache to stay within Strava's rate limits.
 export function invalidateAthleteCache(athleteId: number | string): void {
-  const prefixes = [
-    `activities:${athleteId}:`,
+  // `activities:` keys carry a `:weeks` suffix, so match by prefix. The athlete
+  // detail/zones/stats keys end at the id, so match exactly — a prefix match
+  // would also evict another athlete whose id starts with this one (e.g. 12
+  // vs 123), since apiCache is shared across all athletes.
+  const activitiesPrefix = `activities:${athleteId}:`;
+  const exactKeys = new Set([
     `athlete-detail:${athleteId}`,
     `athlete-zones:${athleteId}`,
     `athlete-stats:${athleteId}`,
-  ];
+  ]);
   for (const key of apiCache.keys()) {
-    if (prefixes.some((p) => key.startsWith(p))) apiCache.delete(key);
+    if (key.startsWith(activitiesPrefix) || exactKeys.has(key)) apiCache.delete(key);
   }
 }
 

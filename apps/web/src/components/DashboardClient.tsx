@@ -63,10 +63,15 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
 
   function refresh() {
     startTransition(async () => {
-      await refreshDashboard();
-      // Server Component data updates via revalidatePath; bump the key so the
-      // client-fetched cards (Goals, Fitness) refetch too.
-      setRefreshKey((k) => k + 1);
+      try {
+        await refreshDashboard();
+        // Server Component data updates via revalidatePath; bump the key so the
+        // client-fetched cards (Goals, Fitness) refetch too.
+        setRefreshKey((k) => k + 1);
+      } catch {
+        // Refresh failed (e.g. expired session); keep the current data rather
+        // than throwing an unhandled rejection out of the transition.
+      }
     });
   }
 

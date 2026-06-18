@@ -56,7 +56,10 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
     fetch("/api/fitness")
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((d) => {
-        if (!cancelled) setData(d);
+        if (!cancelled) {
+          setError(false);
+          setData(d);
+        }
       })
       .catch(() => {
         if (!cancelled) setError(true);
