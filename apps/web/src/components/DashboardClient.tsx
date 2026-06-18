@@ -125,33 +125,6 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
                 </button>
               ))}
             </nav>
-            <div className="flex items-center gap-2">
-              {agoLabel && (
-                <span className="hidden sm:inline text-xs text-gray-500">Updated {agoLabel}</span>
-              )}
-              <button
-                type="button"
-                onClick={refresh}
-                disabled={pending}
-                aria-label="Refresh data from Strava"
-                className="flex items-center gap-1.5 rounded-md border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className={`h-4 w-4 ${pending ? "animate-spin" : ""}`}
-                  aria-hidden="true"
-                >
-                  <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-                  <path d="M21 3v6h-6" />
-                </svg>
-                {pending ? "Refreshing…" : "Refresh"}
-              </button>
-            </div>
             {isAdmin && (
               <Link
                 href="/admin/licenses"
@@ -167,6 +140,44 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        {/* Sync-status strip: keeps data freshness next to the data it governs,
+            instead of crowding the global header. */}
+        <div className="mb-5 flex items-center justify-end gap-3 text-xs">
+          {agoLabel && (
+            <span className="inline-flex items-center gap-2 uppercase tracking-wider text-gray-500">
+              <span
+                className={`h-1.5 w-1.5 rounded-full bg-orange-500 ${pending ? "animate-pulse" : ""}`}
+                aria-hidden="true"
+              />
+              Synced {agoLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={pending}
+            aria-label="Sync data from Strava"
+            className="group inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-3 py-1.5 font-medium uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-3.5 w-3.5 transition-transform duration-500 motion-reduce:transition-none ${
+                pending ? "animate-spin motion-reduce:animate-none" : "group-hover:-rotate-180"
+              }`}
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+              <path d="M21 3v6h-6" />
+            </svg>
+            {pending ? "Syncing…" : "Sync"}
+          </button>
+        </div>
+
         {tab === "overview" ? (
           <div className="space-y-6">
             <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
