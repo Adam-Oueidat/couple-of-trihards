@@ -21,17 +21,34 @@ const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 // (100 reads / 15 min). Cleared on server restart, which is fine.
 const apiCache = new Map<string, { data: unknown; expires: number }>();
 
+// Sentinel TTL marking an entry as "persistent until explicitly invalidated".
+// Stored as Infinity in `expires`, so it never lapses on a timer — a plain
+// browser refresh re-serves the cached value instead of spending Strava
+// rate-limit budget. Persistent entries are only dropped by
+// invalidateAthleteCache (the dashboard "Sync" button or a fresh OAuth login)
+// or a server restart. This is what enforces the sync-only-on-login-or-button
+// behavior on the dashboard render path (see getRecentActivities below).
+const PERSISTENT = Number.POSITIVE_INFINITY;
+
 async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
   const hit = apiCache.get(key);
+  // PERSISTENT entries store Infinity as `expires`, so this keeps them
+  // indefinitely; only invalidation evicts them.
   if (hit && hit.expires > Date.now()) return hit.data as T;
   const data = await fn();
-  apiCache.set(key, { data, expires: Date.now() + ttlMs });
+  apiCache.set(key, {
+    data,
+    expires: ttlMs === PERSISTENT ? PERSISTENT : Date.now() + ttlMs,
+  });
   return data;
 }
 
 // Drops every cached Strava response for one athlete so the next render
-// refetches live data. Used by the dashboard's manual "Refresh" action; normal
-// renders keep hitting the TTL cache to stay within Strava's rate limits.
+// refetches live data. This is the ONLY way the dashboard's data refreshes:
+// it's called by the manual "Sync" action (refreshDashboard) and on a fresh
+// OAuth login (auth callback). Those entries are otherwise persistent, so a
+// plain browser refresh re-serves the cache and stays within Strava's rate
+// limits (100 reads / 15 min).
 export function invalidateAthleteCache(athleteId: number | string): void {
   // `activities:` keys carry a `:weeks` suffix, so match by prefix. The athlete
   // detail/zones/stats keys end at the id, so match exactly — a prefix match
@@ -163,10 +180,14 @@ export async function getActivityDetail(id: number): Promise<DetailedActivity> {
   });
 }
 
+// Athlete detail/zones/stats back the dashboard's Fitness Profile, which is
+// re-fetched on every dashboard load. Cache persistently (sync only on login or
+// the "Sync" button) for the same reason as getRecentActivities — a plain
+// refresh must not hit Strava. invalidateAthleteCache evicts these keys.
 export async function getAthleteDetail(): Promise<AthleteDetail> {
   const session = await getSession();
   const id = session.tokens?.athlete_id ?? "anon";
-  return cached(`athlete-detail:${id}`, 24 * 60 * 60_000, () =>
+  return cached(`athlete-detail:${id}`, PERSISTENT, () =>
     stravaFetch<AthleteDetail>("/athlete")
   );
 }
@@ -174,7 +195,7 @@ export async function getAthleteDetail(): Promise<AthleteDetail> {
 export async function getAthleteZones(): Promise<AthleteZones> {
   const session = await getSession();
   const id = session.tokens?.athlete_id ?? "anon";
-  return cached(`athlete-zones:${id}`, 24 * 60 * 60_000, () =>
+  return cached(`athlete-zones:${id}`, PERSISTENT, () =>
     stravaFetch<AthleteZones>("/athlete/zones")
   );
 }
@@ -183,7 +204,7 @@ export async function getAthleteStats(): Promise<AthleteStats> {
   const session = await getSession();
   const id = session.tokens?.athlete_id;
   if (!id) throw new Error("Not authenticated");
-  return cached(`athlete-stats:${id}`, 24 * 60 * 60_000, () =>
+  return cached(`athlete-stats:${id}`, PERSISTENT, () =>
     stravaFetch<AthleteStats>(`/athletes/${id}/stats`)
   );
 }
@@ -202,12 +223,18 @@ export async function getActivityStreams(id: number): Promise<StreamSet | null> 
   });
 }
 
-// Fetch activities from the past N weeks (cached for 5 minutes per athlete)
+// Fetch activities from the past N weeks. Cached persistently per athlete:
+// the dashboard renders from this on every browser refresh, so we deliberately
+// do NOT auto-expire it. A new Strava fetch happens only when (a) there is no
+// cached entry yet (first load, server restart, or right after a fresh OAuth
+// login — see the auth callback, which invalidates this athlete's cache), or
+// (b) the user presses the dashboard "Sync" button (refreshDashboard ->
+// invalidateAthleteCache). This keeps plain refreshes off Strava's rate limit.
 export async function getRecentActivities(weeks = 12): Promise<StravaActivity[]> {
   const session = await getSession();
   const athleteId = session.tokens?.athlete_id ?? "unknown";
 
-  return cached(`activities:${athleteId}:${weeks}`, 5 * 60_000, async () => {
+  return cached(`activities:${athleteId}:${weeks}`, PERSISTENT, async () => {
     const after = Math.floor(Date.now() / 1000) - weeks * 7 * 24 * 3600;
     const all: StravaActivity[] = [];
     let page = 1;
