@@ -17,10 +17,12 @@ interface Props {
   data: WeeklyVolume[];
 }
 
+// Colors come from the discipline CSS variables (defined in globals.css) so the
+// chart always matches the badges, icons, and bars used elsewhere in both themes.
 const DISCIPLINES = [
-  { key: "Swim", color: "#22d3ee", glyph: "swim" },
-  { key: "Ride", color: "#60a5fa", glyph: "ride" },
-  { key: "Run", color: "#4ade80", glyph: "run" },
+  { key: "Swim", color: "var(--swim)", glyph: "swim" },
+  { key: "Ride", color: "var(--ride)", glyph: "ride" },
+  { key: "Run", color: "var(--run)", glyph: "run" },
 ] as const satisfies ReadonlyArray<{
   key: string;
   color: string;

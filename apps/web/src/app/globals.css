@@ -3,7 +3,8 @@
 /* ---------- Palette ----------
    Light: warm paper + terracotta — like a vintage running journal
    Dark : midnight slate + coral + cream — distinctive but readable
-   Disciplines stay semantic: swim=teal, ride=indigo, run=moss/lime
+   Disciplines stay semantic and consistent across themes:
+   run=green, ride=blue, swim=cyan/teal — kept distinct from the heart-rate red.
 */
 :root {
   --page: #f5eddb;
@@ -22,7 +23,7 @@
   --accent-fg: #ffffff;
 
   --run: #4d7c0f;
-  --ride: #4338ca;
+  --ride: #1d4ed8;
   --swim: #0e7a72;
 
   --err: #b91c1c;
@@ -33,8 +34,9 @@
 }
 
 .dark {
-  /* Espresso night: warm dark earth tones with amber-gold accent and
-     vivid earth disciplines — lime / coral / emerald, no blue hues. */
+  /* Espresso night: warm dark earth tones with amber-gold accent. Disciplines
+     follow the canonical scheme — run=lime-green, ride=blue, swim=teal — kept
+     clearly distinct from the heart-rate red (--err). */
   --page: #14100b;
   --card: #1e1812;
   --inset: #29211a;
@@ -51,7 +53,7 @@
   --accent-fg: #14100b;
 
   --run: #bef264;
-  --ride: #fb7185;
+  --ride: #60a5fa;
   --swim: #2dd4bf;
 
   --err: #f87171;
