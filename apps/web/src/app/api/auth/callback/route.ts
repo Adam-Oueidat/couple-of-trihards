@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     // persistently (sync only on login or the "Sync" button), so invalidate this
     // athlete's entries to guarantee the first post-login render refetches —
     // this also refreshes a returning user whose cache survived a prior session.
-    invalidateAthleteCache(tokens.athlete_id);
+    await invalidateAthleteCache(tokens.athlete_id);
 
     const resolved = await resolveSession();
     const destination = resolved?.license ? "/dashboard" : "/activate";

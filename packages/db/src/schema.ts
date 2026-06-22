@@ -195,6 +195,26 @@ export const personalBests = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.effortName] })],
 );
 
+// Durable cache for Strava API responses that back the dashboard render path
+// (recent activities + the Fitness Profile's athlete detail/zones/stats). Stored
+// in the database — not an in-memory Map — so it survives server restarts and is
+// shared across serverless instances: a plain browser reload re-serves these
+// rows instead of spending Strava rate-limit budget. Rows are refreshed only
+// when explicitly invalidated (a fresh OAuth login or the dashboard "Sync"
+// button), which deletes the athlete's rows so the next render refetches.
+export const stravaCache = sqliteTable(
+  "strava_cache",
+  {
+    athleteId: integer("athlete_id").notNull(),
+    cacheKey: text("cache_key").notNull(),
+    data: text("data").notNull(),
+    fetchedAt: integer("fetched_at")
+      .notNull()
+      .$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  (t) => [primaryKey({ columns: [t.athleteId, t.cacheKey] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type License = typeof licenses.$inferSelect;
@@ -208,6 +228,7 @@ export type Conversation = typeof conversations.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
 export type StravaToken = typeof stravaTokens.$inferSelect;
 export type MobileToken = typeof mobileTokens.$inferSelect;
+export type StravaCacheEntry = typeof stravaCache.$inferSelect;
 
 // Suppress unused-import warning for `sql` if no schema entry uses it.
 void sql;
