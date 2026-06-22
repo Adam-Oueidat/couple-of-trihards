@@ -22,6 +22,8 @@ interface Props {
   athlete: { firstname: string; lastname: string; profile: string };
   activities: StravaActivity[];
   weeklyVolume: WeeklyVolume[];
+  /** Current calendar week (resets Monday); zero-filled until trained in. */
+  currentWeek: WeeklyVolume;
   trainingLoad: TrainingLoadPoint[];
   isAdmin: boolean;
 }
@@ -39,7 +41,7 @@ function formatAgo(loadedAt: number): string {
   return `${hours}h ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoad, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -76,7 +78,6 @@ export function DashboardClient({ athlete, activities, weeklyVolume, trainingLoa
   }
 
   const recentWeeks = weeklyVolume.slice(-8);
-  const currentWeek = weeklyVolume[weeklyVolume.length - 1];
   const recentLoad = trainingLoad.slice(-60);
 
   return (
