@@ -1,6 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
+
+// The `dark` class on <html> is the single source of truth (a pre-hydration
+// FOUC script sets it before React mounts). Derive the toggle's state from it
+// via useSyncExternalStore instead of mirroring it into React state in an
+// effect — that avoids a setState-in-effect, and the server snapshot is a
+// stable `false` so there's no hydration mismatch.
+function subscribe(callback: () => void): () => void {
+  const observer = new MutationObserver(callback);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
+
+const getSnapshot = () => document.documentElement.classList.contains("dark");
 
 function SunGlyph({ size = 12 }: { size?: number }) {
   return (
@@ -39,30 +55,22 @@ function MoonGlyph({ size = 12 }: { size?: number }) {
 }
 
 export function ThemeToggle() {
-  const [isDark, setIsDark] = useState(false);
+  const isDark = useSyncExternalStore(subscribe, getSnapshot, () => false);
 
-  // Sync UI with whatever the FOUC script applied
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains("dark"));
-  }, []);
-
-  // Live-follow OS preference if the user hasn't made an explicit choice
+  // Live-follow OS preference if the user hasn't made an explicit choice. This
+  // only toggles the <html> class; the store subscription above re-renders us.
   useEffect(() => {
     const stored = localStorage.getItem("theme");
     if (stored === "light" || stored === "dark") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => {
-      const next = media.matches;
-      setIsDark(next);
-      document.documentElement.classList.toggle("dark", next);
-    };
+    const handler = () =>
+      document.documentElement.classList.toggle("dark", media.matches);
     media.addEventListener("change", handler);
     return () => media.removeEventListener("change", handler);
   }, []);
 
   function toggle() {
     const next = !isDark;
-    setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem("theme", next ? "dark" : "light");
   }

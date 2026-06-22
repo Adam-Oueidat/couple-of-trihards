@@ -88,8 +88,9 @@ export function CalendarTab({ activities }: Props) {
   }, []);
 
   useEffect(() => {
-    loadWorkouts();
-    loadOverrides();
+    void (async () => {
+      await Promise.all([loadWorkouts(), loadOverrides()]);
+    })();
   }, [loadWorkouts, loadOverrides]);
 
   const year = viewDate.getFullYear();
