@@ -19,7 +19,9 @@ export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
   }, []);
 
   useEffect(() => {
-    load();
+    void (async () => {
+      await load();
+    })();
   }, [load, refreshKey]);
 
   async function add() {

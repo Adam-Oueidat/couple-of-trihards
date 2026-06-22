@@ -40,7 +40,10 @@ export default async function DashboardPage() {
   );
   const syncedAt = fetchedAt != null ? fetchedAt * 1000 : null;
 
-  const displayCutoff = Date.now() - DISPLAY_WEEKS * 7 * 24 * 3600 * 1000;
+  // Single per-request "now" so the display window and the current-week cutoff
+  // agree, and so render stays free of repeated impure clock reads.
+  const now = new Date();
+  const displayCutoff = now.getTime() - DISPLAY_WEEKS * 7 * 24 * 3600 * 1000;
   const activities = history.filter(
     (a) => new Date(a.start_date_local).getTime() >= displayCutoff,
   );
@@ -49,7 +52,7 @@ export default async function DashboardPage() {
   // "This week" is the current calendar week (resets every Monday), NOT the most
   // recent week that happens to contain an activity. Until the athlete trains
   // this week it shows zeros rather than rolling back to last week's totals.
-  const currentWeekStart = getWeekStart(new Date());
+  const currentWeekStart = getWeekStart(now);
   const currentWeek: WeeklyVolume = weeklyVolume.find(
     (w) => w.weekStart === currentWeekStart,
   ) ?? {
