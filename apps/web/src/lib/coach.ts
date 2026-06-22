@@ -145,8 +145,11 @@ export async function buildTrainingContext(
   activities: StravaActivity[],
   clientToday?: string,
 ): Promise<string> {
+  const today = resolveToday(clientToday, activities);
   const weekly = groupByWeek(activities);
-  const load = calcTrainingLoad(activities);
+  // Use the athlete-local today so Form (TSB) decays to now, not to the last
+  // logged activity.
+  const load = calcTrainingLoad(activities, today);
   const latest = load[load.length - 1];
 
   const weeklyLines = weekly
@@ -173,8 +176,6 @@ export async function buildTrainingContext(
       return `- ${a.start_date_local.split("T")[0]} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
     })
     .join("\n");
-
-  const today = resolveToday(clientToday, activities);
 
   const [overrides, goals, pbs, workouts, recentAnalyses] = await Promise.all([
     getOverrides(userId),
@@ -214,7 +215,7 @@ export async function buildTrainingContext(
 
   return `# Today is ${today} (the athlete's current local date — treat this as "now")
 
-# Athlete training data (from Strava, last 12 weeks)
+# Athlete training data (from Strava, last 12 months)
 
 ## Fitness profile
 ${formatFitnessProfile(athlete, zones, stats)}
