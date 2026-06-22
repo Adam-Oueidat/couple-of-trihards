@@ -112,16 +112,22 @@ export function calcTrainingLoad(
   const dates = Array.from(dailyTSS.keys()).sort();
   if (dates.length === 0) return [];
 
-  const start = new Date(dates[0]);
   const lastActivityDay = dates[dates.length - 1];
   // ISO date strings compare correctly lexicographically; extend to today
   // whenever it's later than the last logged activity.
-  const end = new Date(today > lastActivityDay ? today : lastActivityDay);
+  const endDay = today > lastActivityDay ? today : lastActivityDay;
+  // Walk the day range strictly in UTC. Stepping with the *local* setDate/getDate
+  // drifts the cursor off midnight across a spring-forward DST transition (the
+  // retained wall-clock keeps the lost hour), so by summer the cursor sits at
+  // 01:00 UTC while `end` is UTC midnight — and `cursor <= end` then drops the
+  // final day, silently losing the most recent activity's load. Anchoring both
+  // ends at explicit UTC midnight and stepping with setUTCDate is DST-proof.
+  const end = new Date(`${endDay}T00:00:00Z`);
   const allDays: string[] = [];
-  const cursor = new Date(start);
+  const cursor = new Date(`${dates[0]}T00:00:00Z`);
   while (cursor <= end) {
     allDays.push(cursor.toISOString().split("T")[0]);
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   const points: TrainingLoadPoint[] = [];
