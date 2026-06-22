@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { isAdminAthlete, resolveSession } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { getRecentActivities } from "@/lib/strava";
+import { getCacheFetchedAt, getRecentActivities } from "@/lib/strava";
 import {
   groupByWeek,
   calcTrainingLoad,
@@ -30,6 +30,16 @@ export default async function DashboardPage() {
   const history = await getRecentActivities(TRAINING_HISTORY_WEEKS);
   const trainingLoad = calcTrainingLoad(history);
 
+  // Real last-sync time for the "Synced …" label: the timestamp on the cached
+  // activities row, which only changes on an actual Strava fetch (login / Sync
+  // button), not on a plain refresh. Stored in Unix seconds; null on first load
+  // before any row exists. Converted to millis for the client clock.
+  const fetchedAt = await getCacheFetchedAt(
+    session.tokens.athlete_id,
+    `activities:${TRAINING_HISTORY_WEEKS}`,
+  );
+  const syncedAt = fetchedAt != null ? fetchedAt * 1000 : null;
+
   const displayCutoff = Date.now() - DISPLAY_WEEKS * 7 * 24 * 3600 * 1000;
   const activities = history.filter(
     (a) => new Date(a.start_date_local).getTime() >= displayCutoff,
@@ -55,6 +65,7 @@ export default async function DashboardPage() {
   return (
     <DashboardClient
       currentWeek={currentWeek}
+      syncedAt={syncedAt}
       athlete={{
         firstname: session.tokens.athlete_firstname,
         lastname: session.tokens.athlete_lastname,

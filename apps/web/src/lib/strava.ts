@@ -65,6 +65,22 @@ async function dbCached<T>(
   return data;
 }
 
+// Unix-seconds timestamp of when an athlete's cached row was last fetched from
+// Strava, or null if there is no cached row yet. Drives the dashboard's "Synced
+// …" label so it reflects the real last sync (login / Sync button) and stays put
+// across plain browser refreshes, which re-serve the cache without refetching.
+export async function getCacheFetchedAt(
+  athleteId: number,
+  cacheKey: string
+): Promise<number | null> {
+  const db = getDb();
+  const [hit] = await db
+    .select({ fetchedAt: stravaCache.fetchedAt })
+    .from(stravaCache)
+    .where(and(eq(stravaCache.athleteId, athleteId), eq(stravaCache.cacheKey, cacheKey)));
+  return hit?.fetchedAt ?? null;
+}
+
 async function requireAthleteId(): Promise<number> {
   const session = await getSession();
   const id = session.tokens?.athlete_id;

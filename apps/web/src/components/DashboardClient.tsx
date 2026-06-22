@@ -25,43 +25,53 @@ interface Props {
   /** Current calendar week (resets Monday); zero-filled until trained in. */
   currentWeek: WeeklyVolume;
   trainingLoad: TrainingLoadPoint[];
+  /** Unix-millis of the last real Strava sync; null before any data is cached. */
+  syncedAt: number | null;
   isAdmin: boolean;
 }
 
 type Tab = "overview" | "plan" | "calendar" | "activities";
 
-// "Updated …" label from a load timestamp. Only ever called from async
-// callbacks (never during render), so Date.now() stays out of the render path.
-function formatAgo(loadedAt: number): string {
-  const secs = Math.max(0, Math.round((Date.now() - loadedAt) / 1000));
+// "Synced …" label from a real sync timestamp (Unix millis). Only ever called
+// from async callbacks (never during render), so Date.now() stays out of the
+// render path. Goes up to days because the timestamp is the persisted last sync,
+// which can be arbitrarily old across plain refreshes.
+function formatAgo(syncedAt: number): string {
+  const secs = Math.max(0, Math.round((Date.now() - syncedAt) / 1000));
   if (secs < 45) return "just now";
   const mins = Math.round(secs / 60);
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.round(mins / 60);
-  return `${hours}h ago`;
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pending, startTransition] = useTransition();
 
-  // Client-only "Updated …" clock. Keyed on refreshKey so it resets to "just
-  // now" after each refresh. Renders empty on the server / first paint (no
-  // hydration mismatch); setState is only called from timer callbacks, never
-  // synchronously in the effect body.
+  // Client-only "Synced …" clock, driven by the real last-sync timestamp
+  // (syncedAt) rather than mount time — so a plain refresh keeps counting up
+  // from the actual sync, and only a real Sync (which changes syncedAt) resets
+  // it to "just now". Renders empty on the server / first paint (no hydration
+  // mismatch); setState is only called from timer callbacks, never synchronously
+  // in the effect body.
   const [agoLabel, setAgoLabel] = useState("");
   useEffect(() => {
-    const loadedAt = Date.now();
-    const update = () => setAgoLabel(formatAgo(loadedAt));
+    // No cached row yet → leave the label empty (its initial state); the strip
+    // renders nothing until a real sync exists.
+    if (syncedAt == null) return;
+    const update = () => setAgoLabel(formatAgo(syncedAt));
     const soon = setTimeout(update, 0);
     const tick = setInterval(update, 60_000);
     return () => {
       clearTimeout(soon);
       clearInterval(tick);
     };
-  }, [refreshKey]);
+  }, [syncedAt]);
 
   function refresh() {
     startTransition(async () => {
