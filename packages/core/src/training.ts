@@ -8,14 +8,21 @@ export function getDiscipline(activity: StravaActivity): Discipline {
   return "other";
 }
 
-// Returns the ISO Monday of the week containing a given date
+// Returns the local Monday (YYYY-MM-DD) of the week containing a given date.
+// We shift to Monday in local time, then format from the local Y/M/D parts —
+// NOT toISOString(), which would emit the UTC date and roll back a day in any
+// positive-offset timezone (e.g. CEST: local Monday 00:00 is Sunday 22:00 UTC).
+// That off-by-one would key activities to the wrong week and mislabel it.
 export function getWeekStart(date: Date): string {
   const d = new Date(date);
   const day = d.getDay(); // 0=Sun
   const diff = day === 0 ? -6 : 1 - day; // shift to Monday
   d.setDate(d.getDate() + diff);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 export function groupByWeek(activities: StravaActivity[]): WeeklyVolume[] {

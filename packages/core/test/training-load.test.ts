@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcTrainingLoad, type StravaActivity } from "../src";
+import { calcTrainingLoad, getWeekStart, type StravaActivity } from "../src";
 
 function activity(day: string, sufferScore: number): StravaActivity {
   return {
@@ -42,5 +42,22 @@ describe("calcTrainingLoad", () => {
 
   it("returns nothing without activities", () => {
     expect(calcTrainingLoad([], "2026-01-10")).toEqual([]);
+  });
+});
+
+describe("getWeekStart", () => {
+  // Jun 15 2026 is a Monday; Jun 14 is the Sunday before it.
+  it("returns the local Monday for a midweek date", () => {
+    // A Wednesday afternoon. Must bucket into the Mon Jun 15 week, never Jun 14
+    // (the old UTC-formatting bug rolled back a day in positive-offset zones).
+    expect(getWeekStart(new Date("2026-06-17T14:00:00"))).toBe("2026-06-15");
+  });
+
+  it("maps Sunday to the same week's Monday (six days earlier)", () => {
+    expect(getWeekStart(new Date("2026-06-21T10:00:00"))).toBe("2026-06-15");
+  });
+
+  it("keeps a Monday on itself", () => {
+    expect(getWeekStart(new Date("2026-06-15T09:00:00"))).toBe("2026-06-15");
   });
 });

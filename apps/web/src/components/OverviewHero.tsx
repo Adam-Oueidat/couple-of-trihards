@@ -78,7 +78,9 @@ const TRIAD: Array<{
 
 function weekLabel(weekStart?: string): string {
   if (!weekStart) return "";
-  return new Date(weekStart).toLocaleDateString("en-US", {
+  // Parse as a local date (append time) — `new Date("YYYY-MM-DD")` is UTC
+  // midnight, which renders as the previous day in negative-offset timezones.
+  return new Date(`${weekStart}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
