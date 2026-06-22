@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
-import { chatLimiter, createLogger } from "@trihards/core";
+import { chatLimiter, createLogger, TRAINING_HISTORY_WEEKS } from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
     messageLen: body.messages[body.messages.length - 1].content.length,
   });
 
-  const activities = await getRecentActivities(12);
+  const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
   // The browser sends its local date so the coach reasons in the athlete's
   // timezone rather than the server's UTC clock.
   const clientToday =

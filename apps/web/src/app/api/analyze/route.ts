@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
-import { analyzeLimiter, createLogger } from "@trihards/core";
+import { analyzeLimiter, createLogger, TRAINING_HISTORY_WEEKS } from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
 
   log.info("analyze start", { userId, activityId });
   const [activities, detail] = await Promise.all([
-    getRecentActivities(12),
+    getRecentActivities(TRAINING_HISTORY_WEEKS),
     getActivityDetail(activityId),
   ]);
   await updatePersonalBests(userId, detail);

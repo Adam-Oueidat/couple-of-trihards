@@ -59,6 +59,14 @@ export function groupByWeek(activities: StravaActivity[]): WeeklyVolume[] {
   return Array.from(map.values()).sort((a, b) => a.weekStart.localeCompare(b.weekStart));
 }
 
+// One year of history. Fetching this much on first sync (then caching it) lets
+// the CTL/ATL exponential averages warm up over a full season instead of
+// cold-starting at 0 over a short window — so Fitness/Fatigue/Form read
+// accurately rather than ramping up from nothing. This is used only for the
+// calculations and the AI coach context, not for the activity lists the UI
+// renders, which stay on their shorter display window.
+export const TRAINING_HISTORY_WEEKS = 52;
+
 // Acute/Chronic Training Load using 42-day window
 // TSS proxy: duration_hours * RPE (we use suffer_score if available, else estimate)
 export function estimateTSS(act: StravaActivity): number {
@@ -78,7 +86,14 @@ export interface TrainingLoadPoint {
   dailyTSS: number;
 }
 
-export function calcTrainingLoad(activities: StravaActivity[]): TrainingLoadPoint[] {
+// `today` is an ISO date (YYYY-MM-DD), athlete-local where the caller knows the
+// timezone, else the server's UTC date. The series runs through it — not just
+// the last activity — so Form (TSB) decays forward and reflects current
+// freshness. Days with no activity contribute 0 TSS, so CTL/ATL ebb naturally.
+export function calcTrainingLoad(
+  activities: StravaActivity[],
+  today: string = new Date().toISOString().split("T")[0],
+): TrainingLoadPoint[] {
   if (activities.length === 0) return [];
 
   const dailyTSS = new Map<string, number>();
@@ -91,7 +106,10 @@ export function calcTrainingLoad(activities: StravaActivity[]): TrainingLoadPoin
   if (dates.length === 0) return [];
 
   const start = new Date(dates[0]);
-  const end = new Date(dates[dates.length - 1]);
+  const lastActivityDay = dates[dates.length - 1];
+  // ISO date strings compare correctly lexicographically; extend to today
+  // whenever it's later than the last logged activity.
+  const end = new Date(today > lastActivityDay ? today : lastActivityDay);
   const allDays: string[] = [];
   const cursor = new Date(start);
   while (cursor <= end) {
