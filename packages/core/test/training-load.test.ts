@@ -32,6 +32,20 @@ describe("calcTrainingLoad", () => {
     expect(today.tsb).toBeGreaterThan(lastActivityDay.tsb);
   });
 
+  it("includes the most recent day even across a spring-forward DST transition", () => {
+    // Range spans Europe/Copenhagen's 2026 spring-forward (Mar 29). Walking the
+    // days with local setDate/getDate drifts the cursor to 01:00 UTC by summer
+    // and drops the final day (its TSS vanishes); the UTC walk must keep it.
+    // Regression: the load curve used to silently ignore the latest activity.
+    const points = calcTrainingLoad(
+      [activity("2025-06-23", 100), activity("2026-06-22", 145)],
+      "2026-06-22",
+    );
+    const last = points[points.length - 1];
+    expect(last.date).toBe("2026-06-22");
+    expect(last.dailyTSS).toBe(145);
+  });
+
   it("still ends at the last activity when today is earlier", () => {
     const points = calcTrainingLoad(
       [activity("2026-01-01", 100), activity("2026-01-05", 100)],
