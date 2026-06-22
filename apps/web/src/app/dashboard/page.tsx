@@ -5,7 +5,9 @@ import { getRecentActivities } from "@/lib/strava";
 import {
   groupByWeek,
   calcTrainingLoad,
+  getWeekStart,
   TRAINING_HISTORY_WEEKS,
+  type WeeklyVolume,
 } from "@trihards/core";
 import { DashboardClient } from "@/components/DashboardClient";
 
@@ -34,8 +36,25 @@ export default async function DashboardPage() {
   );
   const weeklyVolume = groupByWeek(activities);
 
+  // "This week" is the current calendar week (resets every Monday), NOT the most
+  // recent week that happens to contain an activity. Until the athlete trains
+  // this week it shows zeros rather than rolling back to last week's totals.
+  const currentWeekStart = getWeekStart(new Date());
+  const currentWeek: WeeklyVolume = weeklyVolume.find(
+    (w) => w.weekStart === currentWeekStart,
+  ) ?? {
+    weekStart: currentWeekStart,
+    run: 0,
+    ride: 0,
+    swim: 0,
+    runTime: 0,
+    rideTime: 0,
+    swimTime: 0,
+  };
+
   return (
     <DashboardClient
+      currentWeek={currentWeek}
       athlete={{
         firstname: session.tokens.athlete_firstname,
         lastname: session.tokens.athlete_lastname,
