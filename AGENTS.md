@@ -56,6 +56,10 @@ description: When to use this skill (AI reads this to auto-load)
 
 Skills are auto-invoked based on a match between their `description` and the current context. An empty `SKILL.md` will register the skill by name but it will not load or do anything.
 
+## Session/Task start
+
+**When starting a session or a task**, you MUST pull the latest changes from main, and branch off the main branch given the feature or changes you are given.
+
 ## Session Completion
 
 **When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
