@@ -6,12 +6,24 @@ import { withLimit } from "@/lib/api";
 
 const log = createLogger("api:chat");
 import { getRecentActivities } from "@/lib/strava";
-import { buildTrainingContext, COACH_SYSTEM_PROMPT } from "@/lib/coach";
+import {
+  buildTrainingContext,
+  COACH_SYSTEM_PROMPT,
+  localDateOf,
+  resolveToday,
+  summarizeConversation,
+} from "@/lib/coach";
 import { addWorkout, validateWorkoutInput } from "@/lib/workouts";
 import {
+  getCarryoverSummary,
+  getConversation,
   getConversationMessages,
+  getLatestConversation,
   getOrCreateConversation,
+  lastInteractionTs,
+  messageToText,
   saveMessage,
+  setConversationSummary,
 } from "@/lib/chat";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -77,17 +89,6 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const conversationId = await getOrCreateConversation(
-    userId,
-    typeof body.conversationId === "string" ? body.conversationId : undefined,
-  );
-  log.info("chat turn", {
-    userId,
-    conversationId,
-    newConversation: typeof body.conversationId !== "string",
-    messageLen: body.messages[body.messages.length - 1].content.length,
-  });
-
   const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
   // The browser sends its local date so the coach reasons in the athlete's
   // timezone rather than the server's UTC clock.
@@ -95,10 +96,66 @@ export async function POST(request: NextRequest) {
     typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.today)
       ? body.today
       : undefined;
+  const today = resolveToday(clientToday, activities);
+
+  // When was the athlete last in any conversation? Read it before we touch the
+  // DB so newly-logged activities can be flagged "new since we last spoke".
+  const sinceTs = await lastInteractionTs(userId);
+
+  // Resume the requested conversation only if it's from today. A prior-day
+  // thread is stale (the source of date-confusion), so we open a fresh one —
+  // the same backstop the client applies on mount.
+  const requested =
+    typeof body.conversationId === "string"
+      ? await getConversation(userId, body.conversationId)
+      : null;
+  const isStale =
+    requested !== null &&
+    localDateOf(requested.lastMessageAt, activities) !== today;
+
+  let conversationId: string;
+  if (requested && !isStale) {
+    conversationId = requested.id;
+  } else {
+    // Leaving a thread (cleared, or a new day): summarize it for memory, then
+    // start fresh. Best-effort — never let summarization block the chat.
+    const leaving = requested ?? (await getLatestConversation(userId));
+    if (leaving && !leaving.summary) {
+      try {
+        const prior = await getConversationMessages(userId, leaving.id, 50);
+        const text: { role: string; content: string }[] = [];
+        for (const m of prior) {
+          const content = messageToText(m);
+          if (content !== null) text.push({ role: m.role, content });
+        }
+        const summary = await summarizeConversation(text);
+        if (summary) await setConversationSummary(userId, leaving.id, summary);
+      } catch (err) {
+        log.warn("conversation summary failed", {
+          userId,
+          conversationId: leaving.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    conversationId = await getOrCreateConversation(userId);
+  }
+
+  // Carry the most recent prior-conversation summary into context as memory.
+  const priorSummary = await getCarryoverSummary(userId, conversationId);
+
+  log.info("chat turn", {
+    userId,
+    conversationId,
+    newConversation: requested === null || isStale,
+    messageLen: body.messages[body.messages.length - 1].content.length,
+  });
+
   const trainingContext = await buildTrainingContext(
     userId,
     activities,
     clientToday,
+    { priorSummary, sinceTs },
   );
 
   const system: Anthropic.TextBlockParam[] = [

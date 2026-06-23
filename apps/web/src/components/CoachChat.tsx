@@ -31,19 +31,39 @@ export function CoachChat() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Load latest conversation on mount.
+    // Load the latest conversation on mount — but only resume it if it's from
+    // today. A thread from a prior calendar day is stale (its replayed turns
+    // carry old dates and confuse the coach), so we leave the panel fresh and
+    // let the next message open a new thread. The browser clock is the
+    // athlete's real timezone, so it's the most accurate day-boundary signal.
     (async () => {
       try {
         const res = await fetch("/api/chat/history");
         if (!res.ok) return;
         const data = await res.json();
-        if (data.conversationId) setConversationId(data.conversationId);
-        if (Array.isArray(data.messages)) setMessages(data.messages);
+        const sameDay =
+          typeof data.lastMessageAt === "number" &&
+          new Date(data.lastMessageAt * 1000).toDateString() ===
+            new Date().toDateString();
+        if (sameDay && data.conversationId) {
+          setConversationId(data.conversationId);
+          if (Array.isArray(data.messages)) setMessages(data.messages);
+        }
       } catch {
         // best-effort; user can still chat without history
       }
     })();
   }, []);
+
+  // Begin a fresh thread. Non-destructive: the old conversation stays in the DB
+  // and gets summarized server-side when the next message opens a new thread.
+  function clearChat() {
+    if (loading) return;
+    setConversationId(null);
+    setMessages([]);
+    setError(null);
+    setInput("");
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -103,13 +123,24 @@ export function CoachChat() {
 
   return (
     <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-800">
-        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-          AI Coach
-        </h2>
-        <p className="text-gray-600 text-xs mt-0.5">
-          Grounded in your last 12 weeks of Strava data
-        </p>
+      <div className="px-5 py-3 border-b border-gray-800 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+            AI Coach
+          </h2>
+          <p className="text-gray-600 text-xs mt-0.5">
+            Grounded in your last 12 months of Strava data
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearChat}
+            disabled={loading}
+            className="shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-full px-3 py-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            New chat
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
