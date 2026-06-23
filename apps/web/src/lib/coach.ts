@@ -1,3 +1,4 @@
+import Anthropic from "@anthropic-ai/sdk";
 import {
   AthleteDetail,
   AthleteStats,
@@ -19,8 +20,13 @@ import { getGoals } from "./goals";
 import { getRecentAnalyses } from "./analyses";
 import { getAthleteDetail, getAthleteStats, getAthleteZones } from "./strava";
 import { getPersonalBests, type PersonalBest } from "./personal-bests";
+import { resolveToday } from "./coach-dates";
+
+export { localDateOf, resolveToday } from "./coach-dates";
 
 const log = createLogger("coach");
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const COACH_SYSTEM_PROMPT = `You are a triathlon coach embedded in a training dashboard app called "TriLog". You advise the athlete based on their real Strava training data, which is provided below.
 
@@ -40,6 +46,8 @@ Guidelines:
 - Use metric units.
 - Never use emojis. Write in plain text only — no emoji, emoticons, or decorative symbols anywhere in your replies, including headings, lists, and summaries.
 - The athlete's current local date is given as "Today is ..." at the top of their data. Treat that as the present moment for everything time-related: recency, "this week", days until the race, and whether a plan session is upcoming or already done. Compute relative dates (e.g. "in 3 days", "last Tuesday") from it, and never state a date that contradicts it.
+- A short recap of earlier chats may appear under "Earlier coaching context". Use it only as background memory for continuity — it describes the past, not the present. Never read a date or current state from it; the live data sections and the "Today is ..." line are authoritative.
+- When the athlete refers to "my session", "my workout", "today's effort" or similar without naming one, assume they mean the most recent / newly-synced activity (see "New since we last spoke" when present), and confirm which one if it's ambiguous.
 
 Plan moves:
 - The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original Runna-plan dates.
@@ -111,39 +119,44 @@ function formatFitnessProfile(
   return lines.length > 0 ? lines.join("\n") : "No fitness profile data available.";
 }
 
-// Strava reports `start_date` in true UTC and `start_date_local` as the local
-// wall-clock time (with a misleading trailing "Z"). Diffing the two recovers
-// the athlete's UTC offset, which we use to compute *their* current date when
-// the client didn't send one.
-function athleteOffsetMs(activities: StravaActivity[]): number | null {
-  const a = activities[0];
-  if (!a?.start_date || !a?.start_date_local) return null;
-  const utc = new Date(a.start_date).getTime();
-  const local = new Date(a.start_date_local).getTime();
-  if (Number.isNaN(utc) || Number.isNaN(local)) return null;
-  return local - utc;
+// Condense a finished conversation into a few sentences for the coach's own
+// future reference. Cheap model, best-effort — callers must tolerate null.
+export async function summarizeConversation(
+  messages: { role: string; content: string }[],
+): Promise<string | null> {
+  const transcript = messages
+    .map((m) => `${m.role === "user" ? "Athlete" : "Coach"}: ${m.content}`)
+    .join("\n")
+    .trim();
+  if (!transcript) return null;
+  const res = await anthropic.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 400,
+    system:
+      "You summarize a triathlon coaching conversation for the coach's own future reference. Write 3-5 sentences in plain past tense. Capture: the topics discussed, the advice or decisions given, any injuries, concerns, or goals the athlete raised, and any workouts added. Do not include specific calendar dates unless they refer to a fixed event like a race. No preamble, no headings, plain text only.",
+    messages: [{ role: "user", content: transcript }],
+  });
+  const text = res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+  return text || null;
 }
 
-// Resolve "today" in the athlete's timezone. Priority:
-//   1. the date the browser sent (most reliable — it's the user's real clock)
-//   2. derived from their most recent activity's UTC offset
-//   3. server UTC date (last resort)
-function resolveToday(
-  clientToday: string | undefined,
-  activities: StravaActivity[],
-): string {
-  if (clientToday && /^\d{4}-\d{2}-\d{2}$/.test(clientToday)) return clientToday;
-  const offset = athleteOffsetMs(activities);
-  if (offset !== null) {
-    return new Date(Date.now() + offset).toISOString().split("T")[0];
-  }
-  return new Date().toISOString().split("T")[0];
+export interface TrainingContextOpts {
+  // Rolling summary of prior conversations, injected as background memory.
+  priorSummary?: string | null;
+  // Unix seconds: activities started after this are flagged "new since we last
+  // spoke" so the coach can reference them without the athlete pointing them out.
+  sinceTs?: number | null;
 }
 
 export async function buildTrainingContext(
   userId: string,
   activities: StravaActivity[],
   clientToday?: string,
+  opts: TrainingContextOpts = {},
 ): Promise<string> {
   const today = resolveToday(clientToday, activities);
   const weekly = groupByWeek(activities);
@@ -162,20 +175,40 @@ export async function buildTrainingContext(
     )
     .join("\n");
 
-  const recentLines = activities
-    .slice(0, 20)
-    .map((a) => {
-      const d = getDiscipline(a);
-      const dist =
-        d === "swim"
-          ? `${a.distance.toFixed(0)}m`
-          : `${(a.distance / 1000).toFixed(1)}km`;
-      const hr = a.average_heartrate
-        ? `, avg HR ${a.average_heartrate.toFixed(0)}`
-        : "";
-      return `- ${a.start_date_local.split("T")[0]} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
-    })
-    .join("\n");
+  const activityLine = (a: StravaActivity) => {
+    const d = getDiscipline(a);
+    const dist =
+      d === "swim"
+        ? `${a.distance.toFixed(0)}m`
+        : `${(a.distance / 1000).toFixed(1)}km`;
+    const hr = a.average_heartrate
+      ? `, avg HR ${a.average_heartrate.toFixed(0)}`
+      : "";
+    return `- ${a.start_date_local.split("T")[0]} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
+  };
+
+  const recentLines = activities.slice(0, 20).map(activityLine).join("\n");
+
+  // Activities logged since the athlete last spoke to the coach, so it can
+  // discuss "my session" without being told which one.
+  const sinceTs = opts.sinceTs ?? null;
+  const newActivities = sinceTs
+    ? activities.filter((a) => {
+        const t = new Date(a.start_date).getTime();
+        return !Number.isNaN(t) && t > sinceTs * 1000;
+      })
+    : [];
+  const newSinceSection =
+    newActivities.length > 0
+      ? `\n## New since we last spoke
+These activities were logged since your last conversation with the athlete. If they ask about "my session" or "my workout" without specifics, assume they mean the most recent of these.
+${newActivities.slice(0, 10).map(activityLine).join("\n")}\n`
+      : "";
+
+  const memorySection = opts.priorSummary
+    ? `\n## Earlier coaching context (memory of prior conversations — background only, not "now")
+${opts.priorSummary}\n`
+    : "";
 
   const [overrides, goals, pbs, workouts, recentAnalyses] = await Promise.all([
     getOverrides(userId),
@@ -214,7 +247,7 @@ export async function buildTrainingContext(
   const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
 
   return `# Today is ${today} (the athlete's current local date — treat this as "now")
-
+${memorySection}
 # Athlete training data (from Strava, last 12 months)
 
 ## Fitness profile
@@ -238,7 +271,7 @@ ${weeklyLines || "No activities"}
 
 ## Recent activities (latest 20)
 ${recentLines || "No activities"}
-
+${newSinceSection}
 # Running plan: ${plan.name} (${plan.source})
 Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace()} days away)
 Plan span: ${plan.startDate} to ${plan.raceDate}

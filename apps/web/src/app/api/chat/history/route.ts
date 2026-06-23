@@ -3,8 +3,9 @@ import { defaultLimiter } from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 import {
+  getConversation,
   getConversationMessages,
-  getLatestConversationId,
+  getLatestConversation,
   messageToText,
 } from "@/lib/chat";
 
@@ -15,15 +16,20 @@ export async function GET(request: NextRequest) {
   if (limited) return limited;
 
   const url = new URL(request.url);
-  let conversationId = url.searchParams.get("conversation_id");
-  if (!conversationId) {
-    conversationId = await getLatestConversationId(auth.userId);
-  }
-  if (!conversationId) {
-    return NextResponse.json({ conversationId: null, messages: [] });
+  const requestedId = url.searchParams.get("conversation_id");
+  const conversation = requestedId
+    ? await getConversation(auth.userId, requestedId)
+    : await getLatestConversation(auth.userId);
+  if (!conversation) {
+    return NextResponse.json({
+      conversationId: null,
+      messages: [],
+      startedAt: null,
+      lastMessageAt: null,
+    });
   }
 
-  const stored = await getConversationMessages(auth.userId, conversationId, 50);
+  const stored = await getConversationMessages(auth.userId, conversation.id, 50);
   const messages = stored
     .map((m) => {
       const text = messageToText(m);
@@ -32,5 +38,10 @@ export async function GET(request: NextRequest) {
     })
     .filter((m): m is { role: "user" | "assistant"; content: string } => m !== null);
 
-  return NextResponse.json({ conversationId, messages });
+  return NextResponse.json({
+    conversationId: conversation.id,
+    messages,
+    startedAt: conversation.startedAt,
+    lastMessageAt: conversation.lastMessageAt,
+  });
 }
