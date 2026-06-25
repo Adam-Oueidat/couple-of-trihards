@@ -76,7 +76,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
   }
 
   const sorted = sortable
-    ? [...activities].sort((a, b) => {
+    ? activities.toSorted((a, b) => {
         const diff = sortValue(a, sortKey) - sortValue(b, sortKey);
         return descending ? -diff : diff;
       })
