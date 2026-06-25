@@ -14,7 +14,10 @@ import {
 
 const log = createLogger("admin:licenses");
 
-async function adminAthleteIdOrThrow(): Promise<number> {
+// Gate for every server action in this file. Named requireAuth so it reads as
+// the action's authentication boundary: each exported action below is a public
+// POST endpoint and must verify the caller is an admin before any data access.
+async function requireAuth(): Promise<number> {
   const resolved = await resolveSession();
   if (!resolved || !isAdminAthlete(resolved.stravaAthleteId)) {
     throw new Error("forbidden");
@@ -25,6 +28,7 @@ async function adminAthleteIdOrThrow(): Promise<number> {
 // Removes unredeemed, expired rows. Bound rows have expires_at = NULL and
 // are never touched. Returns how many rows were pruned.
 export async function pruneExpiredLicenses(db: Db = getDb()): Promise<number> {
+  await requireAuth();
   const now = Math.floor(Date.now() / 1000);
   const deleted = await db
     .delete(licenses)
@@ -43,7 +47,7 @@ export async function pruneExpiredLicenses(db: Db = getDb()): Promise<number> {
 }
 
 export async function generateLicenses(count: number): Promise<string[]> {
-  const adminId = await adminAthleteIdOrThrow();
+  const adminId = await requireAuth();
   const n = Math.max(1, Math.min(50, Math.floor(count)));
   const db = getDb();
 
@@ -70,7 +74,7 @@ export async function generateLicenses(count: number): Promise<string[]> {
 }
 
 export async function revokeLicense(id: string) {
-  const adminId = await adminAthleteIdOrThrow();
+  const adminId = await requireAuth();
   const db = getDb();
   // Hard delete. The WARN log line below is the audit trail.
   // Any user bound to this license loses access on their next request:
