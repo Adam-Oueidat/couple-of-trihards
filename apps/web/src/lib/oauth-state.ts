@@ -19,7 +19,10 @@ export function encodeState(data: object): string {
   return `${body}.${sign(body)}`;
 }
 
-export function decodeState<T>(signed: string | null): T | null {
+// Verifies the signature and, when maxAgeMs is given, rejects a state whose
+// embedded `ts` is missing or older than the window — bounding how long a
+// captured state URL can be replayed.
+export function decodeState<T>(signed: string | null, maxAgeMs?: number): T | null {
   if (!signed) return null;
   const [body, sig] = signed.split(".");
   if (!body || !sig) return null;
@@ -31,7 +34,13 @@ export function decodeState<T>(signed: string | null): T | null {
     return null;
   }
   try {
-    return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T;
+    const data = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as T & {
+      ts?: number;
+    };
+    if (maxAgeMs !== undefined) {
+      if (typeof data.ts !== "number" || Date.now() - data.ts > maxAgeMs) return null;
+    }
+    return data as T;
   } catch {
     return null;
   }
