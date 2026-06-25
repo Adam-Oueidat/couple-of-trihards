@@ -6,20 +6,38 @@ import { exchangeCodeForTokens, invalidateAthleteCache } from "@/lib/strava";
 import { getSession } from "@/lib/session";
 import { resolveSession } from "@/lib/auth";
 import { mintMobileToken } from "@/lib/mobile-tokens";
-import { decodeState } from "@/lib/oauth-state";
+import { decodeState, OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 
 const log = createLogger("auth:callback");
 
-interface MobileState {
-  kind: "mobile";
-  redirect: string;
+type OAuthState =
+  | { kind: "mobile"; redirect: string }
+  | { kind: "web"; nonce: string };
+
+// Expire the CSRF state cookie once it has served its purpose.
+function clearStateCookie(res: NextResponse): NextResponse {
+  res.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/", maxAge: 0 });
+  return res;
 }
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
-  const state = decodeState<MobileState>(searchParams.get("state"));
+  const state = decodeState<OAuthState>(searchParams.get("state"));
+
+  // CSRF defense for the web flow: the signed state must carry the same nonce
+  // we stored in the browser's httpOnly cookie at /start. Reject otherwise so a
+  // forged callback can't complete a login in the victim's browser.
+  if (state?.kind !== "mobile") {
+    const cookieNonce = request.cookies.get(OAUTH_STATE_COOKIE)?.value;
+    if (state?.kind !== "web" || !cookieNonce || cookieNonce !== state.nonce) {
+      log.warn("web oauth state mismatch");
+      return clearStateCookie(
+        NextResponse.redirect(new URL("/?error=access_denied", request.url)),
+      );
+    }
+  }
 
   if (error || !code) {
     log.warn("oauth denied or missing code", { error, kind: state?.kind ?? "web" });
@@ -28,7 +46,9 @@ export async function GET(request: NextRequest) {
       url.searchParams.set("error", "access_denied");
       return NextResponse.redirect(url.toString());
     }
-    return NextResponse.redirect(new URL("/?error=access_denied", request.url));
+    return clearStateCookie(
+      NextResponse.redirect(new URL("/?error=access_denied", request.url)),
+    );
   }
 
   try {
@@ -93,7 +113,9 @@ export async function GET(request: NextRequest) {
       userId: resolved?.userId,
       destination,
     });
-    return NextResponse.redirect(new URL(destination, request.url));
+    return clearStateCookie(
+      NextResponse.redirect(new URL(destination, request.url)),
+    );
   } catch (err) {
     log.error("oauth callback failed", err);
     if (state?.kind === "mobile") {
@@ -101,6 +123,8 @@ export async function GET(request: NextRequest) {
       url.searchParams.set("error", "auth_failed");
       return NextResponse.redirect(url.toString());
     }
-    return NextResponse.redirect(new URL("/?error=auth_failed", request.url));
+    return clearStateCookie(
+      NextResponse.redirect(new URL("/?error=auth_failed", request.url)),
+    );
   }
 }

@@ -1,5 +1,4 @@
 import { getSession } from "@/lib/session";
-import { getStravaAuthUrl } from "@/lib/strava";
 import { redirect } from "next/navigation";
 
 export default async function Home({
@@ -11,7 +10,9 @@ export default async function Home({
   if (session.tokens) redirect("/dashboard");
 
   const { error } = await searchParams;
-  const authUrl = getStravaAuthUrl();
+  // Route through the start handler so it can set the CSRF state cookie before
+  // redirecting to Strava (a Server Component can't set cookies itself).
+  const authUrl = "/api/auth/strava/start";
 
   return (
     <main className="min-h-screen bg-gray-950 flex items-center justify-center">
