@@ -100,6 +100,7 @@ export function PlannedVsActual({ activities }: Props) {
   );
 
   const chartData = weeks.map((w, i) => ({
+    weekStart: w.weekStart,
     week: formatWeekLabel(w.weekStart),
     Planned: w.plannedKm,
     Actual: w.isFuture ? null : w.actualKm,
@@ -144,9 +145,9 @@ export function PlannedVsActual({ activities }: Props) {
               onClick={(_, i) => setSelectedIdx(i)}
               style={{ cursor: "pointer" }}
             >
-              {chartData.map((d, i) => (
+              {chartData.map((d) => (
                 <Cell
-                  key={i}
+                  key={d.weekStart}
                   fill={
                     d.isSelected
                       ? "#f97316"
