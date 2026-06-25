@@ -4,7 +4,6 @@ import {
   AthleteZones,
   DetailedActivity,
   StravaActivity,
-  StravaAthlete,
   StravaTokens,
   StreamSet,
   createLogger,
@@ -193,11 +192,7 @@ async function stravaFetch<T>(path: string, params?: Record<string, string>): Pr
   return res.json();
 }
 
-export async function getAthlete(): Promise<StravaAthlete> {
-  return stravaFetch<StravaAthlete>("/athlete");
-}
-
-export async function getActivities(
+async function getActivities(
   page = 1,
   perPage = 50,
   after?: number

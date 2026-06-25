@@ -73,11 +73,6 @@ export async function resolveSession(): Promise<ResolvedSession | null> {
   };
 }
 
-export async function getCurrentUserId(): Promise<string | null> {
-  const resolved = await resolveSession();
-  return resolved?.userId ?? null;
-}
-
 function adminAthleteIds(): Set<number> {
   const raw = process.env.ADMIN_ATHLETE_IDS ?? "";
   const ids = raw
@@ -116,17 +111,6 @@ export type LooseAuthResult = { userId: string; stravaAthleteId: number } | Next
 export async function requireUserId(): Promise<LooseAuthResult> {
   const resolved = await resolveSession();
   if (!resolved) return failure("needs_login", 401);
-  return { userId: resolved.userId, stravaAthleteId: resolved.stravaAthleteId };
-}
-
-export type AdminAuthResult = { userId: string; stravaAthleteId: number } | NextResponse;
-
-export async function requireAdmin(): Promise<AdminAuthResult> {
-  const resolved = await resolveSession();
-  if (!resolved) return failure("needs_login", 401);
-  if (!isAdminAthlete(resolved.stravaAthleteId)) {
-    return NextResponse.json({ error: "forbidden" }, { status: 403 });
-  }
   return { userId: resolved.userId, stravaAthleteId: resolved.stravaAthleteId };
 }
 
