@@ -23,16 +23,31 @@ export async function mintMobileToken(userId: string): Promise<string> {
   return token;
 }
 
+// Absolute lifetime of a mobile bearer token. Default 90 days; override with
+// MOBILE_TOKEN_TTL_DAYS. Expired tokens are rejected so a leaked token can't be
+// replayed indefinitely.
+function mobileTokenTtlSeconds(): number {
+  const days = Number(process.env.MOBILE_TOKEN_TTL_DAYS ?? "90");
+  if (!Number.isFinite(days) || days <= 0) return 90 * 24 * 3600;
+  return Math.floor(days * 24 * 3600);
+}
+
 export async function resolveBearerToken(token: string): Promise<User | null> {
   const hash = hashToken(token);
   const db = getDb();
   const [row] = await db
-    .select({ user: users })
+    .select({ user: users, createdAt: mobileTokens.createdAt })
     .from(mobileTokens)
     .innerJoin(users, eq(users.id, mobileTokens.userId))
     .where(and(eq(mobileTokens.tokenHash, hash), isNull(mobileTokens.revokedAt)));
   if (!row) {
     log.warn("bearer token not recognized", { hashPrefix: hash.slice(0, 8) });
+    return null;
+  }
+
+  const now = Math.floor(Date.now() / 1000);
+  if (row.createdAt && now > row.createdAt + mobileTokenTtlSeconds()) {
+    log.warn("bearer token expired", { hashPrefix: hash.slice(0, 8) });
     return null;
   }
   // Touch last_used_at (fire-and-forget — failure shouldn't block auth).
