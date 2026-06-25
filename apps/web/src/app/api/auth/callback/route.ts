@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const error = searchParams.get("error");
-  const state = decodeState<OAuthState>(searchParams.get("state"));
+  // States are minted at /start and must be redeemed promptly; a stale one is
+  // rejected to bound replay of a captured callback URL.
+  const state = decodeState<OAuthState>(searchParams.get("state"), 10 * 60 * 1000);
 
   // CSRF defense for the web flow: the signed state must carry the same nonce
   // we stored in the browser's httpOnly cookie at /start. Reject otherwise so a
