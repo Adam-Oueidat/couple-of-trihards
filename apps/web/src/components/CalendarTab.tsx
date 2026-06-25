@@ -451,14 +451,14 @@ export function CalendarTab({ activities }: Props) {
       </p>
 
       {form && (
-        <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setForm(null)}
-        >
-          <div
-            className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={() => setForm(null)}
+            className="absolute inset-0 bg-black/70 cursor-default"
+          />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
             <h3 className="text-white font-bold mb-4">
               Add workout ·{" "}
               {new Date(form.date + "T12:00:00").toLocaleDateString("en-US", {

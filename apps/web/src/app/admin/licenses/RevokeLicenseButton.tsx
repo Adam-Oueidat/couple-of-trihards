@@ -37,14 +37,14 @@ export function RevokeLicenseButton({ licenseId, keyPrefix, boundLabel }: Props)
       </button>
 
       {open ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          onClick={() => !pending && setOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-6 text-white shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={() => !pending && setOpen(false)}
+            className="absolute inset-0 bg-black/60 cursor-default"
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-base font-semibold">Revoke license?</h3>
             <p className="mb-1 text-sm text-gray-300">
               <span className="font-mono">{keyPrefix}-…</span>

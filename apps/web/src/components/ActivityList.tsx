@@ -119,10 +119,11 @@ export function ActivityList({ activities, sortable = false }: Props) {
         const discipline = getDiscipline(act);
         const cfg = DISCIPLINE_CONFIG[discipline];
         return (
-          <div
+          <button
+            type="button"
             key={act.id}
             onClick={() => setSelected(act)}
-            className={`flex items-center gap-4 p-3 rounded-lg border ${cfg.bg} cursor-pointer hover:brightness-125 transition-[filter]`}
+            className={`w-full text-left flex items-center gap-4 p-3 rounded-lg border ${cfg.bg} cursor-pointer hover:brightness-125 transition-[filter]`}
           >
             <span
               className={`flex-shrink-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${cfg.badge}`}
@@ -158,7 +159,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
                 </div>
               )}
             </div>
-          </div>
+          </button>
         );
         })}
       </div>
