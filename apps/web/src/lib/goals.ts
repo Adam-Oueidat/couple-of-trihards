@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb, goals, type Goal } from "@trihards/db";
 
 export type { Goal };
@@ -24,7 +24,7 @@ export async function deleteGoal(userId: string, id: string): Promise<boolean> {
   const db = getDb();
   const deleted = await db
     .delete(goals)
-    .where(eq(goals.id, id))
-    .returning({ id: goals.id, userId: goals.userId });
-  return deleted.length > 0 && deleted[0].userId === userId;
+    .where(and(eq(goals.id, id), eq(goals.userId, userId)))
+    .returning({ id: goals.id });
+  return deleted.length > 0;
 }
