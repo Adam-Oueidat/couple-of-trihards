@@ -67,7 +67,7 @@ function formatPbDate(iso: string): string {
 // single date when all PBs share one day, otherwise an "earliest – latest"
 // range. PB dates are ISO `YYYY-MM-DD` so lexical comparison matches chronology.
 function formatPbRange(bests: PersonalBest[]): string | null {
-  const dates = bests.map((pb) => pb.activityDate).filter(Boolean);
+  const dates = bests.flatMap((pb) => (pb.activityDate ? [pb.activityDate] : []));
   if (dates.length === 0) return null;
   let earliest = dates[0];
   let latest = dates[0];
