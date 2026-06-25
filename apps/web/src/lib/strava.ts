@@ -98,7 +98,7 @@ export async function invalidateAthleteCache(athleteId: number): Promise<void> {
   await db.delete(stravaCache).where(eq(stravaCache.athleteId, athleteId));
 }
 
-export function getStravaAuthUrl(): string {
+export function getStravaAuthUrl(state?: string): string {
   const params = new URLSearchParams({
     client_id: process.env.STRAVA_CLIENT_ID!,
     redirect_uri: process.env.STRAVA_REDIRECT_URI!,
@@ -108,6 +108,9 @@ export function getStravaAuthUrl(): string {
     // receive weight/FTP fields on /athlete.
     scope: "read,activity:read_all,profile:read_all",
   });
+  // CSRF defense: a signed state, echoed back by Strava and verified against a
+  // browser cookie in the callback, so a forged callback can't log a victim in.
+  if (state) params.set("state", state);
   return `https://www.strava.com/oauth/authorize?${params}`;
 }
 

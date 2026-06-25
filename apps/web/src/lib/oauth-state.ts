@@ -1,5 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+// Browser-bound CSRF nonce for the web OAuth flow: set as an httpOnly cookie at
+// /api/auth/strava/start and compared against the signed state in the callback.
+export const OAUTH_STATE_COOKIE = "trihard_oauth_state";
+
 function secret(): string {
   const s = process.env.SESSION_SECRET;
   if (!s) throw new Error("SESSION_SECRET is not set");
