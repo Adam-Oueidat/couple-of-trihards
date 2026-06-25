@@ -297,13 +297,15 @@ ${
 ## Custom workouts on the calendar (added by athlete or you)
 ${
   workouts
-    .filter((w) => w.date >= today)
-    .map(
-      (w) =>
-        `- ${w.date} ${w.discipline}: ${w.name}` +
-        (w.distanceKm ? ` ${w.distanceKm}km` : "") +
-        (w.durationMin ? ` ${w.durationMin}min` : "") +
-        ` (added by ${w.addedBy})`,
+    .flatMap((w) =>
+      w.date >= today
+        ? [
+            `- ${w.date} ${w.discipline}: ${w.name}` +
+              (w.distanceKm ? ` ${w.distanceKm}km` : "") +
+              (w.durationMin ? ` ${w.durationMin}min` : "") +
+              ` (added by ${w.addedBy})`,
+          ]
+        : [],
     )
     .join("\n") || "None"
 }
