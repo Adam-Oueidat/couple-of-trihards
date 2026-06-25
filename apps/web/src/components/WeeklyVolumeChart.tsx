@@ -172,6 +172,7 @@ export function WeeklyVolumeChart({ data }: Props) {
       <div className="flex justify-center gap-2 mt-3">
         {DISCIPLINES.map((d) => (
           <button
+            type="button"
             key={d.key}
             onClick={() => toggle(d.key)}
             className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer inline-flex items-center gap-1.5 ${

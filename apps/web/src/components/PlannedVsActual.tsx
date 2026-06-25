@@ -190,6 +190,7 @@ export function PlannedVsActual({ activities }: Props) {
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setSelectedIdx((i) => Math.max(0, i - 1))}
               disabled={selectedIdx === 0}
               className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 text-sm transition-colors cursor-pointer"
@@ -198,6 +199,7 @@ export function PlannedVsActual({ activities }: Props) {
             </button>
             {!isCurrent && (
               <button
+                type="button"
                 onClick={() => setSelectedIdx(currentIdx)}
                 className="px-3 py-1.5 rounded-lg border border-orange-500/40 hover:border-orange-500 text-orange-400 text-xs font-semibold transition-colors cursor-pointer"
               >
@@ -205,6 +207,7 @@ export function PlannedVsActual({ activities }: Props) {
               </button>
             )}
             <button
+              type="button"
               onClick={() =>
                 setSelectedIdx((i) => Math.min(weeks.length - 1, i + 1))
               }

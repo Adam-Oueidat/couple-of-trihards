@@ -134,6 +134,7 @@ export function CoachChat() {
         </div>
         {messages.length > 0 && (
           <button
+            type="button"
             onClick={clearChat}
             disabled={loading}
             className="shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-full px-3 py-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
@@ -152,6 +153,7 @@ export function CoachChat() {
             <div className="flex flex-col gap-2 w-full max-w-md">
               {SUGGESTIONS.map((s) => (
                 <button
+                  type="button"
                   key={s}
                   onClick={() => send(s)}
                   className="text-left text-sm text-gray-300 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 transition-colors cursor-pointer"

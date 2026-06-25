@@ -90,6 +90,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
           <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
             {SORT_OPTIONS.map((opt) => (
               <button
+                type="button"
                 key={opt.key}
                 onClick={() => setSortKey(opt.key)}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
@@ -103,6 +104,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
             ))}
           </div>
           <button
+            type="button"
             onClick={() => setDescending((d) => !d)}
             title={descending ? "Descending" : "Ascending"}
             className="px-2.5 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-xs font-medium transition-colors cursor-pointer"

@@ -200,6 +200,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-white text-sm px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors cursor-pointer flex-shrink-0"
           >
@@ -231,6 +232,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
           <div>
             {analysis === null ? (
               <button
+                type="button"
                 onClick={runAnalysis}
                 disabled={!data}
                 className="w-full py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer"
@@ -245,6 +247,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                   </h3>
                   {!analyzing && (
                     <button
+                      type="button"
                       onClick={runAnalysis}
                       className="text-gray-500 hover:text-white text-xs transition-colors cursor-pointer"
                     >
