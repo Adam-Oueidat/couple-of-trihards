@@ -13,8 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { DetailedActivity, StravaActivity, StreamSet } from "@trihards/core";
-import { getDiscipline, formatDuration, formatPace } from "@trihards/core";
-import { activityLocalDate } from "@/lib/activity-date";
+import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
 
 interface Props {
   activity: StravaActivity;
@@ -192,7 +191,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
               {activity.name}
             </h2>
             <p className="text-gray-500 text-xs mt-0.5">
-              {activityLocalDate(activity.start_date_local).toLocaleDateString("en-US", {
+              {activityDay(activity.start_date_local).toLocaleDateString("en-US", {
                 weekday: "long",
                 month: "long",
                 day: "numeric",
