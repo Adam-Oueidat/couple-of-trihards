@@ -37,6 +37,7 @@ export function ActivateForm() {
         type="text"
         value={key}
         onChange={(e) => setKey(e.target.value)}
+        aria-label="License key"
         placeholder="LIC-XXXX-XXXX-XXXX"
         className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono uppercase tracking-wider"
         autoFocus

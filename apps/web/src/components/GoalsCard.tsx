@@ -86,6 +86,7 @@ export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          aria-label="New goal"
           placeholder='e.g. "Sub 1:45 at Copenhagen Half" or "Build toward a 70.3 next season"'
           maxLength={300}
           className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"

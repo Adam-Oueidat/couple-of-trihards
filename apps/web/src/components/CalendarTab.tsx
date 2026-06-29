@@ -484,6 +484,7 @@ export function CalendarTab({ activities }: Props) {
               <input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
+                aria-label="Workout name"
                 placeholder="Workout name"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
               />
@@ -492,6 +493,7 @@ export function CalendarTab({ activities }: Props) {
                 <input
                   value={form.distanceKm}
                   onChange={(e) => setForm({ ...form, distanceKm: e.target.value })}
+                  aria-label="Distance in kilometers"
                   placeholder="Distance (km)"
                   type="number"
                   min="0"
@@ -500,6 +502,7 @@ export function CalendarTab({ activities }: Props) {
                 <input
                   value={form.durationMin}
                   onChange={(e) => setForm({ ...form, durationMin: e.target.value })}
+                  aria-label="Duration in minutes"
                   placeholder="Duration (min)"
                   type="number"
                   min="0"

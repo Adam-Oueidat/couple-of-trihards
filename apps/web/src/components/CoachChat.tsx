@@ -204,6 +204,7 @@ export function CoachChat() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          aria-label="Message to your coach"
           placeholder="Ask your coach..."
           className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
         />
