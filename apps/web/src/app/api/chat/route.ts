@@ -212,38 +212,44 @@ export async function POST(request: NextRequest) {
 
           if (final.stop_reason !== "tool_use") break;
 
-          const toolResults: Anthropic.ToolResultBlockParam[] = [];
-          for (const block of final.content) {
-            if (block.type !== "tool_use") continue;
-            let result: string;
-            if (block.name === "add_workout") {
-              try {
-                const input = validateWorkoutInput(block.input);
-                const workout = await addWorkout(userId, input, "coach");
-                log.info("coach added workout", {
-                  userId,
-                  workoutId: workout.id,
-                  date: workout.date,
-                  discipline: workout.discipline,
-                });
-                result = `Added to calendar: ${workout.name} (${workout.discipline}) on ${workout.date}`;
-              } catch (err) {
-                log.warn("add_workout tool failed", {
-                  userId,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-                result = `Failed to add workout: ${err instanceof Error ? err.message : "unknown error"}`;
+          // Each tool_use block is an independent write (addWorkout inserts a
+          // distinct row), so execute them concurrently. `.map` preserves order,
+          // so tool_result blocks still line up with their tool_use ids.
+          const toolUses = final.content.filter(
+            (block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+          );
+          const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
+            toolUses.map(async (block) => {
+              let result: string;
+              if (block.name === "add_workout") {
+                try {
+                  const input = validateWorkoutInput(block.input);
+                  const workout = await addWorkout(userId, input, "coach");
+                  log.info("coach added workout", {
+                    userId,
+                    workoutId: workout.id,
+                    date: workout.date,
+                    discipline: workout.discipline,
+                  });
+                  result = `Added to calendar: ${workout.name} (${workout.discipline}) on ${workout.date}`;
+                } catch (err) {
+                  log.warn("add_workout tool failed", {
+                    userId,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                  result = `Failed to add workout: ${err instanceof Error ? err.message : "unknown error"}`;
+                }
+              } else {
+                log.warn("unknown tool requested", { userId, name: block.name });
+                result = `Unknown tool: ${block.name}`;
               }
-            } else {
-              log.warn("unknown tool requested", { userId, name: block.name });
-              result = `Unknown tool: ${block.name}`;
-            }
-            toolResults.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: result,
-            });
-          }
+              return {
+                type: "tool_result" as const,
+                tool_use_id: block.id,
+                content: result,
+              };
+            }),
+          );
 
           // Persist the tool_result turn so the next request can replay it.
           await saveMessage(userId, conversationId, "user", toolResults);
