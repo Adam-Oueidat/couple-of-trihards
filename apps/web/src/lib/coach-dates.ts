@@ -7,7 +7,7 @@ import type { StravaActivity } from "@trihards/core";
 // wall-clock time (with a misleading trailing "Z"). Diffing the two recovers
 // the athlete's UTC offset, which we use to compute *their* current date when
 // the client didn't send one.
-function athleteOffsetMs(activities: StravaActivity[]): number | null {
+export function athleteOffsetMs(activities: StravaActivity[]): number | null {
   const a = activities[0];
   if (!a?.start_date || !a?.start_date_local) return null;
   const utc = new Date(a.start_date).getTime();
