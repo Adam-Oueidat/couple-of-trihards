@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { calcTrainingLoad, getWeekStart, type StravaActivity } from "../src";
+import {
+  calcTrainingLoad,
+  getWeekStart,
+  activityDay,
+  groupByWeek,
+  type StravaActivity,
+} from "../src";
 
 function activity(day: string, sufferScore: number): StravaActivity {
   return {
@@ -73,5 +79,35 @@ describe("getWeekStart", () => {
 
   it("keeps a Monday on itself", () => {
     expect(getWeekStart(new Date("2026-06-15T09:00:00"))).toBe("2026-06-15");
+  });
+});
+
+describe("activityDay", () => {
+  // start_date_local is wall-clock time with a misleading trailing "Z". Reading
+  // the date part keeps the athlete's calendar day regardless of the runtime's
+  // timezone — `new Date(start_date_local)` would shift an evening activity.
+  it("preserves the wall-clock day from a late-evening start_date_local", () => {
+    const d = activityDay("2026-06-28T22:00:00Z");
+    expect(getWeekStart(d)).toBe("2026-06-22"); // Sunday Jun 28 → week of Jun 22
+  });
+});
+
+describe("groupByWeek timezone handling", () => {
+  // Regression: a Sunday-evening run leaked into the *next* week (Mon Jun 29)
+  // because groupByWeek parsed start_date_local as UTC, shifting it to Monday in
+  // a positive-offset runtime. It must bucket into the week of Jun 22.
+  it("buckets a Sunday-evening run into its own week, not the next one", () => {
+    const sundayRun = {
+      sport_type: "Run",
+      type: "Run",
+      start_date_local: "2026-06-28T22:00:00Z",
+      moving_time: 3180,
+      distance: 8760,
+    } as unknown as StravaActivity;
+
+    const weeks = groupByWeek([sundayRun]);
+    expect(weeks).toHaveLength(1);
+    expect(weeks[0].weekStart).toBe("2026-06-22");
+    expect(weeks[0].run).toBeCloseTo(8.76, 2);
   });
 });

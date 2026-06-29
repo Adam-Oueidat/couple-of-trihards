@@ -8,11 +8,6 @@ export function getDiscipline(activity: StravaActivity): Discipline {
   return "other";
 }
 
-// Returns the local Monday (YYYY-MM-DD) of the week containing a given date.
-// We shift to Monday in local time, then format from the local Y/M/D parts —
-// NOT toISOString(), which would emit the UTC date and roll back a day in any
-// positive-offset timezone (e.g. CEST: local Monday 00:00 is Sunday 22:00 UTC).
-// That off-by-one would key activities to the wrong week and mislabel it.
 // Today's calendar date (YYYY-MM-DD) built from local Y/M/D parts — NOT
 // toISOString(), which emits the UTC date. In a negative-offset timezone (the
 // Americas) the UTC clock has already rolled to tomorrow during the local
@@ -27,6 +22,21 @@ export function localToday(): string {
   return `${y}-${m}-${dd}`;
 }
 
+// The activity's wall-clock day as a Date anchored at local noon. Strava's
+// start_date_local is the athlete's wall-clock time but carries a misleading
+// trailing "Z"; `new Date(start_date_local)` reads it as UTC, so an evening
+// activity shifts into the next day once the runtime (or browser) re-applies its
+// offset — mis-bucketing it into the wrong week. Take the literal date part and
+// anchor at noon so the wall-clock day survives regardless of timezone.
+export function activityDay(startDateLocal: string): Date {
+  return new Date(`${startDateLocal.split("T")[0]}T12:00:00`);
+}
+
+// Returns the local Monday (YYYY-MM-DD) of the week containing a given date.
+// We shift to Monday in local time, then format from the local Y/M/D parts —
+// NOT toISOString(), which would emit the UTC date and roll back a day in any
+// positive-offset timezone (e.g. CEST: local Monday 00:00 is Sunday 22:00 UTC).
+// That off-by-one would key activities to the wrong week and mislabel it.
 export function getWeekStart(date: Date): string {
   const d = new Date(date);
   const day = d.getDay(); // 0=Sun
@@ -46,7 +56,7 @@ export function groupByWeek(activities: StravaActivity[]): WeeklyVolume[] {
     const discipline = getDiscipline(act);
     if (discipline === "other") continue;
 
-    const weekStart = getWeekStart(new Date(act.start_date_local));
+    const weekStart = getWeekStart(activityDay(act.start_date_local));
 
     if (!map.has(weekStart)) {
       map.set(weekStart, {

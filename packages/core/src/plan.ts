@@ -1,6 +1,6 @@
 import planData from "./data/runna-plan.json" with { type: "json" };
 import { StravaActivity } from "./types/strava";
-import { getDiscipline, getWeekStart, localToday } from "./training";
+import { activityDay, getDiscipline, getWeekStart, localToday } from "./training";
 
 export type SessionType =
   | "easy"
@@ -166,7 +166,7 @@ export function plannedVsActualByWeek(
   const actualByWeek = new Map<string, number>();
   for (const act of activities) {
     if (getDiscipline(act) !== "run") continue;
-    const week = getWeekStart(new Date(act.start_date_local));
+    const week = getWeekStart(activityDay(act.start_date_local));
     actualByWeek.set(week, (actualByWeek.get(week) ?? 0) + act.distance / 1000);
   }
 

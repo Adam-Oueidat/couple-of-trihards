@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { StravaActivity } from "@trihards/core";
-import { getDiscipline, formatDuration, formatPace } from "@trihards/core";
+import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
 import { ActivityDetailModal } from "./ActivityDetailModal";
 import { DisciplineGlyph } from "./DisciplineGlyph";
-import { activityLocalDate } from "@/lib/activity-date";
 
 interface Props {
   activities: StravaActivity[];
@@ -60,7 +59,7 @@ function formatDistance(activity: StravaActivity): string {
 }
 
 function formatDate(dateStr: string): string {
-  return activityLocalDate(dateStr).toLocaleDateString("en-US", {
+  return activityDay(dateStr).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
