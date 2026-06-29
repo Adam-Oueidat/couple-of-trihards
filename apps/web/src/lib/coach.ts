@@ -218,7 +218,7 @@ ${opts.priorSummary}\n`
     getRecentAnalyses(userId, 3),
   ]);
 
-  const sessions = matchSessions(activities, overrides);
+  const sessions = matchSessions(activities, overrides, today);
 
   const pastSessions = sessions.filter((s) => s.date <= today).slice(-10);
   const upcomingSessions = sessions
@@ -273,7 +273,7 @@ ${weeklyLines || "No activities"}
 ${recentLines || "No activities"}
 ${newSinceSection}
 # Running plan: ${plan.name} (${plan.source})
-Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace()} days away)
+Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace(today)} days away)
 Plan span: ${plan.startDate} to ${plan.raceDate}
 
 ## Recent plan sessions (with adherence)
