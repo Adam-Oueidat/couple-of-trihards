@@ -13,6 +13,20 @@ export function getDiscipline(activity: StravaActivity): Discipline {
 // NOT toISOString(), which would emit the UTC date and roll back a day in any
 // positive-offset timezone (e.g. CEST: local Monday 00:00 is Sunday 22:00 UTC).
 // That off-by-one would key activities to the wrong week and mislabel it.
+// Today's calendar date (YYYY-MM-DD) built from local Y/M/D parts — NOT
+// toISOString(), which emits the UTC date. In a negative-offset timezone (the
+// Americas) the UTC clock has already rolled to tomorrow during the local
+// evening, so toISOString() makes the app think it is a day ahead of the
+// athlete: their Sunday session reads as "missed" and Monday's as "today" early.
+// Reading local parts keeps "today" anchored to the athlete's wall clock.
+export function localToday(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
 export function getWeekStart(date: Date): string {
   const d = new Date(date);
   const day = d.getDay(); // 0=Sun
@@ -99,7 +113,7 @@ export interface TrainingLoadPoint {
 // freshness. Days with no activity contribute 0 TSS, so CTL/ATL ebb naturally.
 export function calcTrainingLoad(
   activities: StravaActivity[],
-  today: string = new Date().toISOString().split("T")[0],
+  today: string = localToday(),
 ): TrainingLoadPoint[] {
   if (activities.length === 0) return [];
 

@@ -10,6 +10,7 @@ import {
   type WeeklyVolume,
 } from "@trihards/core";
 import { DashboardClient } from "@/components/DashboardClient";
+import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
 
 // What the activity lists, calendar, and plan tabs render. The full year of
 // history backs the training-load calculation only — we slice down to this
@@ -28,7 +29,16 @@ export default async function DashboardPage() {
   // so CTL/ATL are warmed up and Form decays through today; the UI gets only the
   // recent slice to avoid rendering a year of activities.
   const history = await getRecentActivities(TRAINING_HISTORY_WEEKS);
-  const trainingLoad = calcTrainingLoad(history);
+
+  // This is a server component, so a bare `new Date()` is the server's UTC clock
+  // — which has already rolled to tomorrow during the athlete's evening in any
+  // negative-offset timezone. Anchor "now"/"today" to the athlete's local date,
+  // derived from their most recent activity's UTC offset (falling back to server
+  // UTC only when there's no activity to read an offset from). Without this the
+  // "This week" panel resets a day early and shows zeros right after a session.
+  const today = resolveToday(undefined, history);
+  const athleteNow = new Date(new Date().getTime() + (athleteOffsetMs(history) ?? 0));
+  const trainingLoad = calcTrainingLoad(history, today);
 
   // Real last-sync time for the "Synced …" label: the timestamp on the cached
   // activities row, which only changes on an actual Strava fetch (login / Sync
@@ -40,10 +50,10 @@ export default async function DashboardPage() {
   );
   const syncedAt = fetchedAt != null ? fetchedAt * 1000 : null;
 
-  // Single per-request "now" so the display window and the current-week cutoff
-  // agree, and so render stays free of repeated impure clock reads.
-  const now = new Date();
-  const displayCutoff = now.getTime() - DISPLAY_WEEKS * 7 * 24 * 3600 * 1000;
+  // Athlete-local "now" so the display window and current-week cutoff agree,
+  // and so render stays free of repeated impure clock reads.
+  const displayCutoff =
+    athleteNow.getTime() - DISPLAY_WEEKS * 7 * 24 * 3600 * 1000;
   const activities = history.filter(
     (a) => new Date(a.start_date_local).getTime() >= displayCutoff,
   );
@@ -52,7 +62,9 @@ export default async function DashboardPage() {
   // "This week" is the current calendar week (resets every Monday), NOT the most
   // recent week that happens to contain an activity. Until the athlete trains
   // this week it shows zeros rather than rolling back to last week's totals.
-  const currentWeekStart = getWeekStart(now);
+  // Keyed off the athlete-local date (noon-anchored to stay on the right day
+  // whatever the server's timezone) so the week doesn't reset a day early.
+  const currentWeekStart = getWeekStart(new Date(today + "T12:00:00"));
   const currentWeek: WeeklyVolume = weeklyVolume.find(
     (w) => w.weekStart === currentWeekStart,
   ) ?? {

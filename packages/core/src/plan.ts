@@ -1,6 +1,6 @@
 import planData from "./data/runna-plan.json" with { type: "json" };
 import { StravaActivity } from "./types/strava";
-import { getDiscipline, getWeekStart } from "./training";
+import { getDiscipline, getWeekStart, localToday } from "./training";
 
 export type SessionType =
   | "easy"
@@ -101,13 +101,14 @@ export interface SessionWithStatus extends PlannedSession {
   matchedActivity?: string;
 }
 
-function todayLocal(): string {
-  return new Date().toISOString().split("T")[0];
-}
-
+// `today` is an athlete-local ISO date (YYYY-MM-DD). It defaults to the local
+// date, which is correct when these run client-side (PlannedVsActual); server
+// callers (the coach) must pass the athlete's resolved local date so they don't
+// fall back to the server's UTC clock and drift a day ahead.
 export function matchSessions(
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
+  today: string = localToday(),
 ): SessionWithStatus[] {
   const sessions = applyPlanOverrides(plan.sessions, overrides);
 
@@ -119,8 +120,6 @@ export function matchSessions(
     list.push(act);
     runsByDate.set(day, list);
   }
-
-  const today = todayLocal();
 
   return sessions.map((session) => {
     const runs = runsByDate.get(session.date) ?? [];
@@ -154,6 +153,7 @@ export interface PlannedVsActualWeek {
 export function plannedVsActualByWeek(
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
+  today: string = localToday(),
 ): PlannedVsActualWeek[] {
   const sessions = applyPlanOverrides(plan.sessions, overrides);
 
@@ -170,7 +170,7 @@ export function plannedVsActualByWeek(
     actualByWeek.set(week, (actualByWeek.get(week) ?? 0) + act.distance / 1000);
   }
 
-  const currentWeek = getWeekStart(new Date());
+  const currentWeek = getWeekStart(new Date(today + "T12:00:00"));
 
   return Array.from(plannedByWeek.keys())
     .sort()
@@ -186,15 +186,16 @@ export function plannedVsActualByWeek(
 export function getCurrentWeekSessions(
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
+  today: string = localToday(),
 ): SessionWithStatus[] {
-  const currentWeek = getWeekStart(new Date());
-  return matchSessions(activities, overrides).filter(
+  const currentWeek = getWeekStart(new Date(today + "T12:00:00"));
+  return matchSessions(activities, overrides, today).filter(
     (s) => getWeekStart(new Date(s.date + "T12:00:00")) === currentWeek,
   );
 }
 
-export function daysUntilRace(): number {
+export function daysUntilRace(today: string = localToday()): number {
   const race = new Date(plan.raceDate + "T12:00:00");
-  const now = new Date();
+  const now = new Date(today + "T12:00:00");
   return Math.max(0, Math.ceil((race.getTime() - now.getTime()) / 86400000));
 }
