@@ -35,10 +35,13 @@ export async function updatePersonalBests(
   const existing = new Map(existingRows.map((r) => [r.effortName, r]));
 
   const date = activity.start_date_local.split("T")[0];
-  for (const e of activity.best_efforts) {
+  // Each effort has a distinct name, so the upserts are independent — fire them
+  // together instead of awaiting one at a time.
+  const writes = activity.best_efforts.flatMap((e) => {
     const prior = existing.get(e.name);
-    if (!prior || e.moving_time < prior.movingTime) {
-      await db
+    if (prior && e.moving_time >= prior.movingTime) return [];
+    return [
+      db
         .insert(personalBests)
         .values({
           userId,
@@ -59,9 +62,10 @@ export async function updatePersonalBests(
             activityDate: date,
             updatedAt: Math.floor(Date.now() / 1000),
           },
-        });
-    }
-  }
+        }),
+    ];
+  });
+  await Promise.all(writes);
 }
 
 export async function getPersonalBests(userId: string): Promise<PersonalBest[]> {

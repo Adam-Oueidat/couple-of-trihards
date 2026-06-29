@@ -65,6 +65,7 @@ export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
               <span className="flex-shrink-0 w-1.5 h-1.5 rounded-full bg-orange-500" />
               <span className="flex-1 text-gray-200 text-sm">{g.text}</span>
               <button
+                type="button"
                 onClick={() => remove(g.id)}
                 title="Remove goal"
                 className="text-gray-600 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"

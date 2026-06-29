@@ -177,14 +177,14 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close activity details"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/70 cursor-default"
+      />
+      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto">
         <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-white font-bold text-lg leading-tight">
@@ -200,6 +200,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-white text-sm px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 transition-colors cursor-pointer flex-shrink-0"
           >
@@ -231,6 +232,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
           <div>
             {analysis === null ? (
               <button
+                type="button"
                 onClick={runAnalysis}
                 disabled={!data}
                 className="w-full py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer"
@@ -245,6 +247,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                   </h3>
                   {!analyzing && (
                     <button
+                      type="button"
                       onClick={runAnalysis}
                       className="text-gray-500 hover:text-white text-xs transition-colors cursor-pointer"
                     >

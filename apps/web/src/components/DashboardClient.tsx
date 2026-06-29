@@ -124,6 +124,7 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             <nav className="flex gap-1 bg-gray-800 rounded-lg p-1">
               {(["overview", "plan", "calendar", "activities"] as Tab[]).map((t) => (
                 <button
+                  type="button"
                   key={t}
                   onClick={() => setTab(t)}
                   className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
@@ -242,6 +243,7 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
       </div>
 
       <button
+        type="button"
         onClick={() => setCoachOpen((o) => !o)}
         className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-full text-sm font-bold shadow-xl transition-colors cursor-pointer ${
           coachOpen

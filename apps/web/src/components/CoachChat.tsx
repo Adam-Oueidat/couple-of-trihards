@@ -24,7 +24,9 @@ function localToday(): string {
 
 export function CoachChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  // The active conversation id is only sent with requests, never rendered — a
+  // ref avoids re-rendering the whole chat each time it changes.
+  const conversationIdRef = useRef<string | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export function CoachChat() {
           new Date(data.lastMessageAt * 1000).toDateString() ===
             new Date().toDateString();
         if (sameDay && data.conversationId) {
-          setConversationId(data.conversationId);
+          conversationIdRef.current = data.conversationId;
           if (Array.isArray(data.messages)) setMessages(data.messages);
         }
       } catch {
@@ -59,7 +61,7 @@ export function CoachChat() {
   // and gets summarized server-side when the next message opens a new thread.
   function clearChat() {
     if (loading) return;
-    setConversationId(null);
+    conversationIdRef.current = null;
     setMessages([]);
     setError(null);
     setInput("");
@@ -85,7 +87,7 @@ export function CoachChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "user", content }],
-          conversationId,
+          conversationId: conversationIdRef.current,
           today: localToday(),
         }),
       });
@@ -95,8 +97,8 @@ export function CoachChat() {
       }
 
       const newConvId = res.headers.get("X-Conversation-Id");
-      if (newConvId && newConvId !== conversationId) {
-        setConversationId(newConvId);
+      if (newConvId && newConvId !== conversationIdRef.current) {
+        conversationIdRef.current = newConvId;
       }
 
       const reader = res.body.getReader();
@@ -134,6 +136,7 @@ export function CoachChat() {
         </div>
         {messages.length > 0 && (
           <button
+            type="button"
             onClick={clearChat}
             disabled={loading}
             className="shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-full px-3 py-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
@@ -152,6 +155,7 @@ export function CoachChat() {
             <div className="flex flex-col gap-2 w-full max-w-md">
               {SUGGESTIONS.map((s) => (
                 <button
+                  type="button"
                   key={s}
                   onClick={() => send(s)}
                   className="text-left text-sm text-gray-300 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 transition-colors cursor-pointer"

@@ -76,7 +76,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
   }
 
   const sorted = sortable
-    ? [...activities].sort((a, b) => {
+    ? activities.toSorted((a, b) => {
         const diff = sortValue(a, sortKey) - sortValue(b, sortKey);
         return descending ? -diff : diff;
       })
@@ -90,6 +90,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
           <div className="flex gap-1 bg-gray-800 rounded-lg p-1">
             {SORT_OPTIONS.map((opt) => (
               <button
+                type="button"
                 key={opt.key}
                 onClick={() => setSortKey(opt.key)}
                 className={`px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
@@ -103,6 +104,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
             ))}
           </div>
           <button
+            type="button"
             onClick={() => setDescending((d) => !d)}
             title={descending ? "Descending" : "Ascending"}
             className="px-2.5 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-xs font-medium transition-colors cursor-pointer"
@@ -117,10 +119,11 @@ export function ActivityList({ activities, sortable = false }: Props) {
         const discipline = getDiscipline(act);
         const cfg = DISCIPLINE_CONFIG[discipline];
         return (
-          <div
+          <button
+            type="button"
             key={act.id}
             onClick={() => setSelected(act)}
-            className={`flex items-center gap-4 p-3 rounded-lg border ${cfg.bg} cursor-pointer hover:brightness-125 transition-[filter]`}
+            className={`w-full text-left flex items-center gap-4 p-3 rounded-lg border ${cfg.bg} cursor-pointer hover:brightness-125 transition-[filter]`}
           >
             <span
               className={`flex-shrink-0 inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${cfg.badge}`}
@@ -156,7 +159,7 @@ export function ActivityList({ activities, sortable = false }: Props) {
                 </div>
               )}
             </div>
-          </div>
+          </button>
         );
         })}
       </div>

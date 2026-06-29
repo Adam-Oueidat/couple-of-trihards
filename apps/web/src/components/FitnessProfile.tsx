@@ -67,7 +67,7 @@ function formatPbDate(iso: string): string {
 // single date when all PBs share one day, otherwise an "earliest – latest"
 // range. PB dates are ISO `YYYY-MM-DD` so lexical comparison matches chronology.
 function formatPbRange(bests: PersonalBest[]): string | null {
-  const dates = bests.map((pb) => pb.activityDate).filter(Boolean);
+  const dates = bests.flatMap((pb) => (pb.activityDate ? [pb.activityDate] : []));
   if (dates.length === 0) return null;
   let earliest = dates[0];
   let latest = dates[0];
@@ -152,7 +152,7 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
           <div className="flex flex-wrap gap-1.5">
             {hrZones.map((z, i) => (
               <div
-                key={i}
+                key={`${z.min}-${z.max}`}
                 className={`px-2 py-0.5 rounded-full border text-[11px] font-semibold ${ZONE_COLORS[i] ?? ZONE_COLORS[0]}`}
               >
                 {ZONE_NAMES[i] ?? `Z${i + 1}`} {z.min}{z.max === -1 ? "+" : `–${z.max}`}

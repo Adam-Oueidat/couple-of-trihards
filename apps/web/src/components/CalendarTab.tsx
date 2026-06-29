@@ -261,6 +261,7 @@ export function CalendarTab({ activities }: Props) {
         </h2>
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setViewDate(new Date(year, month - 1, 1))}
             className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
@@ -270,6 +271,7 @@ export function CalendarTab({ activities }: Props) {
             {viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
           </span>
           <button
+            type="button"
             onClick={() => setViewDate(new Date(year, month + 1, 1))}
             className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
@@ -321,6 +323,7 @@ export function CalendarTab({ activities }: Props) {
                       {day.getDate()}
                     </span>
                     <button
+                      type="button"
                       onClick={() =>
                         setForm({
                           date: dateStr,
@@ -377,6 +380,7 @@ export function CalendarTab({ activities }: Props) {
                           </span>
                           {moved && (
                             <button
+                              type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 resetMove(s.id);
@@ -419,6 +423,7 @@ export function CalendarTab({ activities }: Props) {
                             {w.name}
                           </span>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               removeWorkout(w.id);
@@ -446,14 +451,14 @@ export function CalendarTab({ activities }: Props) {
       </p>
 
       {form && (
-        <div
-          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
-          onClick={() => setForm(null)}
-        >
-          <div
-            className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={() => setForm(null)}
+            className="absolute inset-0 bg-black/70 cursor-default"
+          />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
             <h3 className="text-white font-bold mb-4">
               Add workout ·{" "}
               {new Date(form.date + "T12:00:00").toLocaleDateString("en-US", {
@@ -467,6 +472,7 @@ export function CalendarTab({ activities }: Props) {
               <div className="flex gap-2">
                 {(["swim", "ride", "run"] as const).map((d) => (
                   <button
+                    type="button"
                     key={d}
                     onClick={() => setForm({ ...form, discipline: d })}
                     className={`flex-1 py-1.5 rounded-full text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
@@ -514,12 +520,14 @@ export function CalendarTab({ activities }: Props) {
 
               <div className="flex gap-2 pt-1">
                 <button
+                  type="button"
                   onClick={() => setForm(null)}
                   className="flex-1 py-2 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={submitWorkout}
                   disabled={saving || !form.name.trim()}
                   className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"

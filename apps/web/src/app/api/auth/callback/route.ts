@@ -100,13 +100,17 @@ export async function GET(request: NextRequest) {
     // Web flow: set the iron-session cookie.
     const session = await getSession();
     session.tokens = tokens;
-    await session.save();
 
-    // A fresh login should always show live data. Dashboard fetches are cached
-    // persistently (sync only on login or the "Sync" button), so invalidate this
-    // athlete's entries to guarantee the first post-login render refetches —
-    // this also refreshes a returning user whose cache survived a prior session.
-    await invalidateAthleteCache(tokens.athlete_id);
+    // Persist the cookie and drop this athlete's cached Strava rows in parallel
+    // — they're independent. A fresh login should always show live data:
+    // dashboard fetches are cached persistently (sync only on login or the
+    // "Sync" button), so invalidating here guarantees the first post-login
+    // render refetches, and also refreshes a returning user whose cache
+    // survived a prior session.
+    await Promise.all([
+      session.save(),
+      invalidateAthleteCache(tokens.athlete_id),
+    ]);
 
     const resolved = await resolveSession();
     const destination = resolved?.license ? "/dashboard" : "/activate";

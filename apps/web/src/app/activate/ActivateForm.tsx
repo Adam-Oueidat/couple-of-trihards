@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function ActivateForm() {
@@ -8,6 +8,13 @@ export function ActivateForm() {
   const [key, setKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the field imperatively on mount instead of the autoFocus prop, which
+  // steals focus on page load and disorients screen-reader users.
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,13 +41,13 @@ export function ActivateForm() {
   return (
     <form onSubmit={submit} className="space-y-3">
       <input
+        ref={inputRef}
         type="text"
         value={key}
         onChange={(e) => setKey(e.target.value)}
         aria-label="License key"
         placeholder="LIC-XXXX-XXXX-XXXX"
         className="w-full rounded-md border border-gray-300 px-3 py-2 font-mono uppercase tracking-wider"
-        autoFocus
         required
       />
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

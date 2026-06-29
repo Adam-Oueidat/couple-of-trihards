@@ -6,7 +6,7 @@ export interface RefreshedTokens {
   expires_at: number;
 }
 
-export const TOKEN_REFRESH_MARGIN_SECONDS = 300;
+const TOKEN_REFRESH_MARGIN_SECONDS = 300;
 
 export function tokensNeedRefresh(expiresAt: number): boolean {
   return (
