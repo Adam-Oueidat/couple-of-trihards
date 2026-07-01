@@ -57,7 +57,7 @@ export function Footer() {
           <div className="text-center sm:text-right">
             <p className="text-sm text-gray-500">Built with Next.js &amp; TypeScript</p>
             <p className="mt-2 text-sm text-gray-500">
-              © {new Date().getFullYear()} Adam Oueidat · MIT Licensed
+              © {new Date().getFullYear()} Adam Oueidat
             </p>
           </div>
         </div>
