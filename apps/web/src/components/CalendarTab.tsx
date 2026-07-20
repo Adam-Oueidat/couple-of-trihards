@@ -118,6 +118,20 @@ export function CalendarTab({ activities }: Props) {
     })();
   }, [loadWorkouts, loadOverrides]);
 
+  // Close any open modal on Escape.
+  useEffect(() => {
+    if (!form && !editWorkoutForm && !editSessionForm) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setForm(null);
+        setEditWorkoutForm(null);
+        setEditSessionForm(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [form, editWorkoutForm, editSessionForm]);
+
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
   const weeks = monthGrid(year, month);
@@ -713,8 +727,16 @@ export function CalendarTab({ activities }: Props) {
             onClick={() => setEditWorkoutForm(null)}
             className="absolute inset-0 bg-black/70 cursor-default"
           />
-          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
-            <h3 className="text-white font-bold mb-4">
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-7">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setEditWorkoutForm(null)}
+              className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-md text-gray-500 hover:text-white hover:bg-gray-800 text-xl leading-none transition-colors cursor-pointer"
+            >
+              ×
+            </button>
+            <h3 className="text-white font-bold mb-4 pr-8">
               Edit workout ·{" "}
               {new Date(editWorkoutForm.date + "T12:00:00").toLocaleDateString("en-US", {
                 weekday: "short",
@@ -723,7 +745,7 @@ export function CalendarTab({ activities }: Props) {
               })}
             </h3>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex gap-2">
                 {(["swim", "ride", "run"] as const).map((d) => (
                   <button
@@ -777,27 +799,20 @@ export function CalendarTab({ activities }: Props) {
 
               {editWorkoutError && <p className="text-red-400 text-xs">{editWorkoutError}</p>}
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center justify-between pt-3">
                 <button
                   type="button"
                   onClick={deleteWorkoutEdit}
                   disabled={editWorkoutSaving}
-                  className="py-2 px-3 rounded-lg border border-red-900 hover:border-red-500 text-red-400 hover:text-red-300 text-sm transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Delete
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditWorkoutForm(null)}
-                  className="flex-1 py-2 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
                   onClick={saveWorkoutEdit}
                   disabled={editWorkoutSaving || !editWorkoutForm.name.trim()}
-                  className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
+                  className="px-8 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
                 >
                   {editWorkoutSaving ? "Saving..." : "Save"}
                 </button>
@@ -815,13 +830,21 @@ export function CalendarTab({ activities }: Props) {
             onClick={() => setEditSessionForm(null)}
             className="absolute inset-0 bg-black/70 cursor-default"
           />
-          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
-            <h3 className="text-white font-bold mb-1">Plan session</h3>
-            <p className="text-gray-500 text-xs mb-4">
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-7">
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setEditSessionForm(null)}
+              className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-md text-gray-500 hover:text-white hover:bg-gray-800 text-xl leading-none transition-colors cursor-pointer"
+            >
+              ×
+            </button>
+            <h3 className="text-white font-bold mb-1 pr-8">Plan session</h3>
+            <p className="text-gray-500 text-xs mb-5">
               Prescribed by the training plan — name, type, and distance are fixed.
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center gap-2 bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2">
                 <DisciplineGlyph discipline="run" size={14} className="text-green-400 flex-shrink-0" />
                 <span className="text-sm text-white flex-1 truncate">
@@ -851,29 +874,22 @@ export function CalendarTab({ activities }: Props) {
 
               {editSessionError && <p className="text-red-400 text-xs">{editSessionError}</p>}
 
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center justify-between pt-3">
                 <button
                   type="button"
                   onClick={hideSession}
                   disabled={editSessionSaving}
-                  className="py-2 px-3 rounded-lg border border-red-900 hover:border-red-500 text-red-400 hover:text-red-300 text-sm transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Remove from calendar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditSessionForm(null)}
-                  className="flex-1 py-2 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
-                >
-                  Cancel
+                  Remove
                 </button>
                 <button
                   type="button"
                   onClick={saveSessionDate}
                   disabled={editSessionSaving}
-                  className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
+                  className="px-8 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
                 >
-                  {editSessionSaving ? "Saving..." : "Save date"}
+                  {editSessionSaving ? "Saving..." : "Save"}
                 </button>
               </div>
             </div>
