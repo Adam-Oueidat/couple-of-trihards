@@ -11,6 +11,7 @@ export interface OverrideInput {
   originalDate: string;
   newDate: string;
   reason?: string;
+  hidden?: boolean;
 }
 
 export function validateOverrideInput(input: unknown): OverrideInput {
@@ -22,11 +23,14 @@ export function validateOverrideInput(input: unknown): OverrideInput {
     throw new Error("originalDate must be YYYY-MM-DD");
   if (typeof o.newDate !== "string" || !DATE_RE.test(o.newDate))
     throw new Error("newDate must be YYYY-MM-DD");
+  if (o.hidden !== undefined && typeof o.hidden !== "boolean")
+    throw new Error("hidden must be a boolean");
   return {
     sessionId: o.sessionId,
     originalDate: o.originalDate,
     newDate: o.newDate,
     reason: typeof o.reason === "string" ? o.reason.slice(0, 300) : undefined,
+    hidden: typeof o.hidden === "boolean" ? o.hidden : undefined,
   };
 }
 
@@ -44,6 +48,7 @@ export async function getOverrides(userId: string): Promise<PlanOverrideMap> {
       newDate: row.newDate,
       movedAt: new Date(row.movedAt * 1000).toISOString(),
       reason: row.reason ?? undefined,
+      hidden: row.hidden,
     };
   }
   return map;
@@ -54,8 +59,12 @@ export async function setOverride(
   input: OverrideInput,
 ): Promise<PlanOverride | null> {
   const db = getDb();
+  const hidden = input.hidden ?? false;
 
-  if (input.newDate === input.originalDate) {
+  // A plain date "reset" (new === original, not hidden) has nothing left to
+  // record, so drop the row entirely. A hidden override is kept even when the
+  // date hasn't moved, since it's the only thing persisting the hide.
+  if (input.newDate === input.originalDate && !hidden) {
     await db
       .delete(planOverrides)
       .where(
@@ -74,6 +83,7 @@ export async function setOverride(
       newDate: input.newDate,
       movedAt,
       reason: input.reason,
+      hidden,
     })
     .onConflictDoUpdate({
       target: [planOverrides.userId, planOverrides.sessionId],
@@ -82,6 +92,7 @@ export async function setOverride(
         newDate: input.newDate,
         movedAt,
         reason: input.reason,
+        hidden,
       },
     });
 
@@ -91,6 +102,7 @@ export async function setOverride(
     newDate: input.newDate,
     movedAt: new Date(movedAt * 1000).toISOString(),
     reason: input.reason,
+    hidden,
   };
 }
 

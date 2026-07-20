@@ -6,8 +6,9 @@ import {
   addWorkout,
   deleteWorkout,
   getWorkouts,
-  updateWorkoutDate,
+  updateWorkout,
   validateWorkoutInput,
+  validateWorkoutPatch,
 } from "@/lib/workouts";
 
 async function gate() {
@@ -44,13 +45,11 @@ export async function PATCH(request: NextRequest) {
   if (g.error) return g.error;
   try {
     const body = await request.json();
-    if (typeof body.id !== "string" || typeof body.date !== "string") {
-      return NextResponse.json(
-        { error: "id and date required" },
-        { status: 400 },
-      );
+    if (typeof body.id !== "string") {
+      return NextResponse.json({ error: "id required" }, { status: 400 });
     }
-    const updated = await updateWorkoutDate(g.userId, body.id, body.date);
+    const patch = validateWorkoutPatch(body);
+    const updated = await updateWorkout(g.userId, body.id, patch);
     if (!updated) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json(updated);
   } catch (err) {
