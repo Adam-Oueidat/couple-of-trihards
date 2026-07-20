@@ -1,0 +1,1 @@
+ALTER TABLE `plan_overrides` ADD `hidden` integer DEFAULT false NOT NULL;

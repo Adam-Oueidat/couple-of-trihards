@@ -7,6 +7,7 @@ import {
   plan,
   applyPlanOverrides,
   type PlannedSession,
+  type SessionType,
 } from "@trihards/core";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
@@ -59,6 +60,24 @@ interface AddFormState {
   durationMin: string;
 }
 
+interface EditWorkoutFormState {
+  id: string;
+  date: string;
+  discipline: "swim" | "ride" | "run";
+  name: string;
+  distanceKm: string;
+  durationMin: string;
+}
+
+interface EditSessionFormState {
+  sessionId: string;
+  originalDate: string;
+  date: string;
+  name: string;
+  type: SessionType;
+  km: number;
+}
+
 export function CalendarTab({ activities }: Props) {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
@@ -68,6 +87,12 @@ export function CalendarTab({ activities }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [editWorkoutForm, setEditWorkoutForm] = useState<EditWorkoutFormState | null>(null);
+  const [editWorkoutSaving, setEditWorkoutSaving] = useState(false);
+  const [editWorkoutError, setEditWorkoutError] = useState<string | null>(null);
+  const [editSessionForm, setEditSessionForm] = useState<EditSessionFormState | null>(null);
+  const [editSessionSaving, setEditSessionSaving] = useState(false);
+  const [editSessionError, setEditSessionError] = useState<string | null>(null);
 
   const loadWorkouts = useCallback(async () => {
     try {
@@ -106,6 +131,7 @@ export function CalendarTab({ activities }: Props) {
 
   const planByDate = new Map<string, PlannedSession[]>();
   for (const s of planSessions) {
+    if (s.hidden) continue;
     const list = planByDate.get(s.date) ?? [];
     list.push(s);
     planByDate.set(s.date, list);
@@ -253,6 +279,127 @@ export function CalendarTab({ activities }: Props) {
     await loadOverrides();
   }
 
+  // Custom workout edit modal
+  function openWorkoutEditor(w: CustomWorkout) {
+    setEditWorkoutForm({
+      id: w.id,
+      date: w.date,
+      discipline: w.discipline,
+      name: w.name,
+      distanceKm: w.distanceKm != null ? String(w.distanceKm) : "",
+      durationMin: w.durationMin != null ? String(w.durationMin) : "",
+    });
+    setEditWorkoutError(null);
+  }
+
+  async function saveWorkoutEdit() {
+    if (!editWorkoutForm || !editWorkoutForm.name.trim()) return;
+    setEditWorkoutSaving(true);
+    setEditWorkoutError(null);
+    try {
+      const res = await fetch("/api/workouts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editWorkoutForm.id,
+          discipline: editWorkoutForm.discipline,
+          name: editWorkoutForm.name.trim(),
+          distanceKm: editWorkoutForm.distanceKm ? Number(editWorkoutForm.distanceKm) : null,
+          durationMin: editWorkoutForm.durationMin ? Number(editWorkoutForm.durationMin) : null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save");
+      }
+      setEditWorkoutForm(null);
+      await loadWorkouts();
+    } catch (err) {
+      setEditWorkoutError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setEditWorkoutSaving(false);
+    }
+  }
+
+  async function deleteWorkoutEdit() {
+    if (!editWorkoutForm) return;
+    setEditWorkoutSaving(true);
+    try {
+      await removeWorkout(editWorkoutForm.id);
+      setEditWorkoutForm(null);
+    } finally {
+      setEditWorkoutSaving(false);
+    }
+  }
+
+  // Plan session edit modal
+  function openSessionEditor(s: PlannedSession) {
+    setEditSessionForm({
+      sessionId: s.id,
+      originalDate: s.originalDate,
+      date: s.date,
+      name: s.name,
+      type: s.type,
+      km: s.km,
+    });
+    setEditSessionError(null);
+  }
+
+  async function saveSessionDate() {
+    if (!editSessionForm) return;
+    setEditSessionSaving(true);
+    setEditSessionError(null);
+    try {
+      const res = await fetch("/api/plan-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: editSessionForm.sessionId,
+          originalDate: editSessionForm.originalDate,
+          newDate: editSessionForm.date,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to save");
+      }
+      setEditSessionForm(null);
+      await loadOverrides();
+    } catch (err) {
+      setEditSessionError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setEditSessionSaving(false);
+    }
+  }
+
+  async function hideSession() {
+    if (!editSessionForm) return;
+    setEditSessionSaving(true);
+    setEditSessionError(null);
+    try {
+      const res = await fetch("/api/plan-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: editSessionForm.sessionId,
+          originalDate: editSessionForm.originalDate,
+          newDate: editSessionForm.date,
+          hidden: true,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Failed to remove");
+      }
+      setEditSessionForm(null);
+      await loadOverrides();
+    } catch (err) {
+      setEditSessionError(err instanceof Error ? err.message : "Failed to remove");
+    } finally {
+      setEditSessionSaving(false);
+    }
+  }
+
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
@@ -348,6 +495,15 @@ export function CalendarTab({ activities }: Props) {
                         <div
                           key={s.id}
                           draggable
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openSessionEditor(s)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openSessionEditor(s);
+                            }
+                          }}
                           onDragStart={(e) =>
                             onDragStart(e, {
                               kind: "plan",
@@ -360,9 +516,9 @@ export function CalendarTab({ activities }: Props) {
                           title={
                             `${s.name} (${s.km}km, ${s.type})` +
                             (moved ? ` — moved from ${s.movedFrom}` : "") +
-                            "\nDrag to reschedule"
+                            "\nClick to edit · Drag to reschedule"
                           }
-                          className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-grab active:cursor-grabbing ${
+                          className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
                             DISCIPLINE_PILL.run
                           } ${
                             done?.has("run") && s.date <= today
@@ -400,6 +556,15 @@ export function CalendarTab({ activities }: Props) {
                         <div
                           key={w.id}
                           draggable
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => openWorkoutEditor(w)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openWorkoutEditor(w);
+                            }
+                          }}
                           onDragStart={(e) =>
                             onDragStart(e, {
                               kind: "custom",
@@ -408,8 +573,8 @@ export function CalendarTab({ activities }: Props) {
                             })
                           }
                           onDragEnd={onDragEnd}
-                          title={`${w.name}${w.notes ? ` — ${w.notes}` : ""} (added by ${w.addedBy})\nDrag to reschedule`}
-                          className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-grab active:cursor-grabbing ${
+                          title={`${w.name}${w.notes ? ` — ${w.notes}` : ""} (added by ${w.addedBy})\nClick to edit · Drag to reschedule`}
+                          className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
                             DISCIPLINE_PILL[w.discipline]
                           } ${draggingId === dragId ? "opacity-30" : ""}`}
                         >
@@ -533,6 +698,182 @@ export function CalendarTab({ activities }: Props) {
                   className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
                 >
                   {saving ? "Saving..." : "Add"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editWorkoutForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={() => setEditWorkoutForm(null)}
+            className="absolute inset-0 bg-black/70 cursor-default"
+          />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
+            <h3 className="text-white font-bold mb-4">
+              Edit workout ·{" "}
+              {new Date(editWorkoutForm.date + "T12:00:00").toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+              })}
+            </h3>
+
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                {(["swim", "ride", "run"] as const).map((d) => (
+                  <button
+                    type="button"
+                    key={d}
+                    onClick={() => setEditWorkoutForm({ ...editWorkoutForm, discipline: d })}
+                    className={`flex-1 py-1.5 rounded-full text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
+                      editWorkoutForm.discipline === d
+                        ? DISCIPLINE_PILL[d]
+                        : "border-gray-700 text-gray-500"
+                    }`}
+                  >
+                    <DisciplineGlyph discipline={d} size={12} />
+                    {d}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                value={editWorkoutForm.name}
+                onChange={(e) => setEditWorkoutForm({ ...editWorkoutForm, name: e.target.value })}
+                aria-label="Workout name"
+                placeholder="Workout name"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+              />
+
+              <div className="flex gap-2">
+                <input
+                  value={editWorkoutForm.distanceKm}
+                  onChange={(e) =>
+                    setEditWorkoutForm({ ...editWorkoutForm, distanceKm: e.target.value })
+                  }
+                  aria-label="Distance in kilometers"
+                  placeholder="Distance (km)"
+                  type="number"
+                  min="0"
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                />
+                <input
+                  value={editWorkoutForm.durationMin}
+                  onChange={(e) =>
+                    setEditWorkoutForm({ ...editWorkoutForm, durationMin: e.target.value })
+                  }
+                  aria-label="Duration in minutes"
+                  placeholder="Duration (min)"
+                  type="number"
+                  min="0"
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              {editWorkoutError && <p className="text-red-400 text-xs">{editWorkoutError}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={deleteWorkoutEdit}
+                  disabled={editWorkoutSaving}
+                  className="py-2 px-3 rounded-lg border border-red-900 hover:border-red-500 text-red-400 hover:text-red-300 text-sm transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Delete
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditWorkoutForm(null)}
+                  className="flex-1 py-2 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveWorkoutEdit}
+                  disabled={editWorkoutSaving || !editWorkoutForm.name.trim()}
+                  className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  {editWorkoutSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editSessionForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close dialog"
+            onClick={() => setEditSessionForm(null)}
+            className="absolute inset-0 bg-black/70 cursor-default"
+          />
+          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
+            <h3 className="text-white font-bold mb-1">Plan session</h3>
+            <p className="text-gray-500 text-xs mb-4">
+              Prescribed by the training plan — name, type, and distance are fixed.
+            </p>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2">
+                <DisciplineGlyph discipline="run" size={14} className="text-green-400 flex-shrink-0" />
+                <span className="text-sm text-white flex-1 truncate">
+                  {editSessionForm.km}km {editSessionForm.name}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL.run}`}
+                >
+                  {editSessionForm.type.replace("_", " ")}
+                </span>
+              </div>
+
+              <div>
+                <label htmlFor="session-date" className="block text-xs text-gray-500 mb-1">
+                  Date
+                </label>
+                <input
+                  id="session-date"
+                  value={editSessionForm.date}
+                  onChange={(e) =>
+                    setEditSessionForm({ ...editSessionForm, date: e.target.value })
+                  }
+                  type="date"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 [color-scheme:dark]"
+                />
+              </div>
+
+              {editSessionError && <p className="text-red-400 text-xs">{editSessionError}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={hideSession}
+                  disabled={editSessionSaving}
+                  className="py-2 px-3 rounded-lg border border-red-900 hover:border-red-500 text-red-400 hover:text-red-300 text-sm transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Remove from calendar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSessionForm(null)}
+                  className="flex-1 py-2 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveSessionDate}
+                  disabled={editSessionSaving}
+                  className="flex-1 py-2 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
+                >
+                  {editSessionSaving ? "Saving..." : "Save date"}
                 </button>
               </div>
             </div>

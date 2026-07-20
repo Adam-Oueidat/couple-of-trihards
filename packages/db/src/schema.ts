@@ -172,6 +172,7 @@ export const planOverrides = sqliteTable(
     newDate: text("new_date").notNull(),
     movedAt: integer("moved_at").notNull(),
     reason: text("reason"),
+    hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );

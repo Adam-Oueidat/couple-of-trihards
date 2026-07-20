@@ -19,6 +19,7 @@ export interface PlannedSession {
   km: number;
   movedFrom?: string;
   moveReason?: string;
+  hidden?: boolean;
 }
 
 export interface TrainingPlan {
@@ -37,6 +38,7 @@ export interface PlanOverride {
   newDate: string;
   movedAt: string;
   reason?: string;
+  hidden?: boolean;
 }
 
 export type PlanOverrideMap = Record<string, PlanOverride>;
@@ -82,8 +84,9 @@ export function applyPlanOverrides(
     return {
       ...s,
       date: override.newDate,
-      movedFrom: s.originalDate,
+      movedFrom: override.newDate !== s.originalDate ? s.originalDate : undefined,
       moveReason: override.reason,
+      hidden: override.hidden,
     };
   });
 }
