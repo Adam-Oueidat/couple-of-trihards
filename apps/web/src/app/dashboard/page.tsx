@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { isAdminAthlete, resolveSession } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { getCacheFetchedAt, getRecentActivities } from "@/lib/strava";
+import { getActivitiesWithDailySync } from "@/lib/strava";
 import {
   groupByWeek,
   calcTrainingLoad,
@@ -27,8 +27,14 @@ export default async function DashboardPage() {
 
   // One fetch of the full year (cached). The training-load curve uses all of it
   // so CTL/ATL are warmed up and Form decays through today; the UI gets only the
-  // recent slice to avoid rendering a year of activities.
-  const history = await getRecentActivities(TRAINING_HISTORY_WEEKS);
+  // recent slice to avoid rendering a year of activities. This also auto-syncs
+  // once per athlete-local day: if the cached data is from an earlier day it
+  // refetches live from Strava (mirroring the coach's new-day reset), otherwise
+  // it serves the cache untouched to stay off Strava's rate limit.
+  const { activities: history, fetchedAt } = await getActivitiesWithDailySync(
+    session.tokens.athlete_id,
+    TRAINING_HISTORY_WEEKS,
+  );
 
   // This is a server component, so a bare `new Date()` is the server's UTC clock
   // — which has already rolled to tomorrow during the athlete's evening in any
@@ -42,12 +48,9 @@ export default async function DashboardPage() {
 
   // Real last-sync time for the "Synced …" label: the timestamp on the cached
   // activities row, which only changes on an actual Strava fetch (login / Sync
-  // button), not on a plain refresh. Stored in Unix seconds; null on first load
-  // before any row exists. Converted to millis for the client clock.
-  const fetchedAt = await getCacheFetchedAt(
-    session.tokens.athlete_id,
-    `activities:${TRAINING_HISTORY_WEEKS}`,
-  );
+  // button / daily auto-sync above), not on a plain refresh. Stored in Unix
+  // seconds; null on first load before any row exists. Converted to millis for
+  // the client clock.
   const syncedAt = fetchedAt != null ? fetchedAt * 1000 : null;
 
   // Athlete-local "now" so the display window and current-week cutoff agree,
