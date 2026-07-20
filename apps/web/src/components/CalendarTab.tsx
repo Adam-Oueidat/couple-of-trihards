@@ -67,6 +67,8 @@ interface EditWorkoutFormState {
   name: string;
   distanceKm: string;
   durationMin: string;
+  notes?: string;
+  addedBy: "athlete" | "coach";
 }
 
 interface EditSessionFormState {
@@ -302,6 +304,8 @@ export function CalendarTab({ activities }: Props) {
       name: w.name,
       distanceKm: w.distanceKm != null ? String(w.distanceKm) : "",
       durationMin: w.durationMin != null ? String(w.durationMin) : "",
+      notes: w.notes ?? undefined,
+      addedBy: w.addedBy,
     });
     setEditWorkoutError(null);
   }
@@ -746,6 +750,17 @@ export function CalendarTab({ activities }: Props) {
             </h3>
 
             <div className="space-y-4">
+              {editWorkoutForm.notes && (
+                <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-orange-400 mb-1">
+                    {editWorkoutForm.addedBy === "coach" ? "Coach note" : "Note"}
+                  </p>
+                  <p className="text-sm text-gray-200 leading-snug whitespace-pre-line">
+                    {editWorkoutForm.notes}
+                  </p>
+                </div>
+              )}
+
               <div className="flex gap-2">
                 {(["swim", "ride", "run"] as const).map((d) => (
                   <button
