@@ -22,6 +22,7 @@ import {
 } from "@trihards/core";
 import type { PlanOverrideMap } from "@trihards/core";
 import { getWeekStart } from "@trihards/core";
+import type { CustomWorkout } from "@/lib/workouts";
 
 interface Props {
   activities: StravaActivity[];
@@ -59,21 +60,28 @@ function formatWeekRange(weekStart: string): string {
 
 export function PlannedVsActual({ activities }: Props) {
   const [overrides, setOverrides] = useState<PlanOverrideMap>({});
+  const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
 
   useEffect(() => {
     fetch("/api/plan-overrides")
       .then((res) => (res.ok ? res.json() : {}))
       .then(setOverrides)
       .catch(() => {});
+    // Custom workouts added/edited in the calendar live in a separate table, so
+    // fetch them too and merge them in — otherwise they never surface here.
+    fetch("/api/workouts")
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setWorkouts)
+      .catch(() => {});
   }, []);
 
   const weeks = useMemo(
-    () => plannedVsActualByWeek(activities, overrides),
-    [activities, overrides]
+    () => plannedVsActualByWeek(activities, overrides, undefined, workouts),
+    [activities, overrides, workouts]
   );
   const allSessions = useMemo(
-    () => matchSessions(activities, overrides),
-    [activities, overrides]
+    () => matchSessions(activities, overrides, undefined, workouts),
+    [activities, overrides, workouts]
   );
   const days = daysUntilRace();
 
@@ -228,7 +236,7 @@ export function PlannedVsActual({ activities }: Props) {
               const style = STATUS_STYLES[s.status];
               return (
                 <div
-                  key={s.date}
+                  key={s.id}
                   className="flex items-center gap-4 p-3 rounded-lg border border-gray-800 bg-gray-950/50"
                 >
                   <span
@@ -239,7 +247,8 @@ export function PlannedVsActual({ activities }: Props) {
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{s.name}</p>
                     <p className="text-gray-500 text-xs">
-                      {formatSessionDate(s.date)} · {s.type.replace("_", " ")}
+                      {formatSessionDate(s.date)} ·{" "}
+                      {s.isCustom ? s.discipline : s.type.replace("_", " ")}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
