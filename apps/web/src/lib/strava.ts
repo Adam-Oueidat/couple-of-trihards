@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, stravaCache } from "@trihards/db";
 import { getSession } from "./session";
 import { refreshStravaTokens, tokensNeedRefresh } from "./strava-auth";
+import { localDateOf, resolveToday } from "./coach-dates";
 
 const log = createLogger("strava");
 
@@ -95,6 +96,34 @@ async function requireAthleteId(): Promise<number> {
 export async function invalidateAthleteCache(athleteId: number): Promise<void> {
   const db = getDb();
   await db.delete(stravaCache).where(eq(stravaCache.athleteId, athleteId));
+}
+
+// Serves cached activities, but if the last sync happened on an earlier
+// athlete-local day, invalidates once and refetches live — a daily auto-sync
+// that mirrors the coach's new-day reset (app/api/chat/route.ts). This is the
+// only automatic refresh: within the same local day the check is false, so a
+// plain reload keeps re-serving the cache and stays off Strava's rate limit.
+// The initial read comes from the DB cache (no Strava call), so a stale day
+// costs exactly one live refetch. Returns the (possibly refreshed) activities
+// and last-sync timestamp (Unix seconds; null before any row exists).
+export async function getActivitiesWithDailySync(
+  athleteId: number,
+  weeks = 12,
+): Promise<{ activities: StravaActivity[]; fetchedAt: number | null }> {
+  const key = `activities:${weeks}`;
+  let activities = await getRecentActivities(weeks);
+  let fetchedAt = await getCacheFetchedAt(athleteId, key);
+
+  // Server render has no client-sent date, so "today" is derived from the
+  // athlete's activity-based UTC offset (same as the rest of the dashboard).
+  const today = resolveToday(undefined, activities);
+  if (fetchedAt != null && localDateOf(fetchedAt, activities) !== today) {
+    await invalidateAthleteCache(athleteId);
+    activities = await getRecentActivities(weeks);
+    fetchedAt = await getCacheFetchedAt(athleteId, key);
+  }
+
+  return { activities, fetchedAt };
 }
 
 export function getStravaAuthUrl(state?: string): string {
