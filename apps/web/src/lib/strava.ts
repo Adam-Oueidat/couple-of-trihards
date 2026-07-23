@@ -221,6 +221,38 @@ async function stravaFetch<T>(path: string, params?: Record<string, string>): Pr
   return res.json();
 }
 
+// Strava's summary-activity payload carries ~58 fields per activity (map
+// polylines, lat/lng arrays, device/upload metadata, kudos counts, …). We only
+// consume the ~20 declared on StravaActivity, so we project down to those before
+// anything caches or persists the result. This keeps the durable strava_cache
+// rows ~65% smaller — the activities:* row is by far the largest thing we store.
+// Anything the app reads is in StravaActivity by construction; to surface a new
+// field, add it here and to the interface (and re-sync to backfill cached rows).
+function toStravaActivity(a: StravaActivity): StravaActivity {
+  return {
+    id: a.id,
+    name: a.name,
+    sport_type: a.sport_type,
+    type: a.type,
+    start_date: a.start_date,
+    start_date_local: a.start_date_local,
+    distance: a.distance,
+    moving_time: a.moving_time,
+    elapsed_time: a.elapsed_time,
+    total_elevation_gain: a.total_elevation_gain,
+    average_speed: a.average_speed,
+    max_speed: a.max_speed,
+    average_heartrate: a.average_heartrate,
+    max_heartrate: a.max_heartrate,
+    suffer_score: a.suffer_score,
+    kilojoules: a.kilojoules,
+    average_watts: a.average_watts,
+    weighted_average_watts: a.weighted_average_watts,
+    trainer: a.trainer,
+    manual: a.manual,
+  };
+}
+
 async function getActivities(
   page = 1,
   perPage = 50,
@@ -231,7 +263,8 @@ async function getActivities(
     per_page: String(perPage),
   };
   if (after) params.after = String(after);
-  return stravaFetch<StravaActivity[]>("/athlete/activities", params);
+  const raw = await stravaFetch<StravaActivity[]>("/athlete/activities", params);
+  return raw.map(toStravaActivity);
 }
 
 export async function getActivityDetail(id: number): Promise<DetailedActivity> {
