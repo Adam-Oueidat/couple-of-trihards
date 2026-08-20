@@ -417,7 +417,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                 Laps
               </h3>
               <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={lapPoints} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <BarChart data={lapPoints} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
                   <XAxis dataKey="lap" tick={axisStyle} axisLine={false} tickLine={false} />
                   <YAxis
@@ -426,7 +426,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                     tickLine={false}
                     tickFormatter={(v: number) => `${v}`}
                     unit=" km/h"
-                    width={60}
+                    width={56}
                   />
                   <Tooltip cursor={{ fill: "#ffffff0a" }} content={LapTooltip} />
                   <Bar dataKey="kmh" radius={[3, 3, 0, 0]}>
