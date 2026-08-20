@@ -372,6 +372,22 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
     ?.map((e) => `  ${e.name}: ${Math.floor(e.moving_time / 60)}:${String(e.moving_time % 60).padStart(2, "0")}`)
     .join("\n");
 
+  // When the athlete recorded laps AND wrote a description, the description is
+  // usually the prescribed session (e.g. "4x800m @ 3:20, 2min jog"). Ask the
+  // coach to grade the recorded laps rep-by-rep against that target.
+  const analysisPoints = [
+    "**Verdict** — how this session went relative to its purpose in my plan and my goals (one short paragraph).",
+    ...(laps && detail.description
+      ? [
+          "**Workout execution** — compare the recorded laps rep-by-rep against the workout I described in my notes: did I hit the target paces/durations/recoveries for each interval, and how did they hold up (fade, negative split, HR drift)?",
+        ]
+      : []),
+    "**What went well / what to improve** — grounded in the laps, splits, HR, and pacing data above.",
+    "**Cross-training** — given my upcoming plan sessions and current fatigue (TSB), what swim/bike cross-training is reasonable in the next few days, or whether I should skip it.",
+  ]
+    .map((point, i) => `${i + 1}. ${point}`)
+    .join("\n");
+
   return `Analyze this activity for me:
 
 Activity: "${detail.name}" (${discipline})
@@ -386,9 +402,7 @@ ${splits ? `\nSplits:\n${splits}` : ""}
 ${efforts ? `\nBest efforts:\n${efforts}` : ""}
 
 Give me:
-1. **Verdict** — how this session went relative to its purpose in my plan and my goals (one short paragraph).
-2. **What went well / what to improve** — grounded in the splits, HR, and pacing data above.
-3. **Cross-training** — given my upcoming plan sessions and current fatigue (TSB), what swim/bike cross-training is reasonable in the next few days, or whether I should skip it.
+${analysisPoints}
 
 Keep it tight and specific to my data.`;
 }

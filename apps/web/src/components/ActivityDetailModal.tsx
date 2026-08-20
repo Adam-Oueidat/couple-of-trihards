@@ -6,12 +6,16 @@ import {
   Line,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import type { TooltipContentProps } from "recharts";
 import { DetailedActivity, StravaActivity, StreamSet } from "@trihards/core";
 import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
 
@@ -31,6 +35,16 @@ interface ChartPoint {
   hr?: number;
   pace?: number; // min/km for runs, km/h for rides
   alt?: number;
+}
+
+interface LapPoint {
+  lap: string;
+  kmh: number; // bar height — faster laps read taller across every discipline
+  pace: string; // discipline-aware label for the tooltip
+  dist: string;
+  time: string;
+  hr?: number;
+  work: boolean; // at/above the median lap speed — the hard reps
 }
 
 const MAX_POINTS = 300;
@@ -92,6 +106,42 @@ function formatLapDistance(
     : `${(meters / 1000).toFixed(2)} km`;
 }
 
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function buildLapPoints(
+  laps: NonNullable<DetailedActivity["laps"]>,
+  discipline: ReturnType<typeof getDiscipline>,
+): LapPoint[] {
+  const medianSpeed = median(laps.map((l) => l.average_speed));
+  return laps.map((l) => ({
+    lap: `${l.lap_index}`,
+    kmh: Math.round(l.average_speed * 3.6 * 10) / 10,
+    pace: formatSplitPace(l.average_speed, discipline),
+    dist: formatLapDistance(l.distance, discipline),
+    time: formatTime(l.moving_time),
+    hr: l.average_heartrate,
+    work: l.average_speed >= medianSpeed,
+  }));
+}
+
+function LapTooltip({ active, payload }: TooltipContentProps) {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload as LapPoint;
+  return (
+    <div style={tooltipStyle} className="px-3 py-2 text-gray-200">
+      <p className="font-semibold text-white">Lap {p.lap}</p>
+      <p>{p.dist} · {p.time}</p>
+      <p>{p.pace}</p>
+      {p.hr ? <p>{p.hr.toFixed(0)} bpm</p> : null}
+    </div>
+  );
+}
+
 const axisStyle = { fill: "#9ca3af", fontSize: 11 };
 const tooltipStyle = {
   backgroundColor: "#1f2937",
@@ -105,6 +155,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [lapsOpen, setLapsOpen] = useState(false);
 
   async function runAnalysis() {
     if (analyzing) return;
@@ -167,6 +218,10 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const hasHr = points.some((p) => p.hr !== undefined);
   const hasPace = points.some((p) => p.pace !== undefined);
   const hasAlt = points.some((p) => p.alt !== undefined);
+
+  const laps = detail?.laps ?? [];
+  const hasLaps = laps.length > 1;
+  const lapPoints = hasLaps ? buildLapPoints(laps, discipline) : [];
 
   const stats: { label: string; value: string }[] = [
     {
@@ -356,55 +411,93 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
             </div>
           )}
 
-          {detail?.laps && detail.laps.length > 1 && (
+          {hasLaps && (
             <div>
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                 Laps
               </h3>
-              <div className="border border-gray-800 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-950/60 text-gray-500 text-xs">
-                      <th className="text-left px-3 py-2 font-medium">Lap</th>
-                      <th className="text-left px-3 py-2 font-medium">Dist</th>
-                      <th className="text-left px-3 py-2 font-medium">Time</th>
-                      <th className="text-left px-3 py-2 font-medium">
-                        {isRide ? "Speed" : "Pace"}
-                      </th>
-                      <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">HR</th>
-                      {!isRide && discipline !== "swim" && (
-                        <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
-                          Elev
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart data={lapPoints} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                  <XAxis dataKey="lap" tick={axisStyle} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={axisStyle}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v: number) => `${v}`}
+                    unit=" km/h"
+                    width={60}
+                  />
+                  <Tooltip cursor={{ fill: "#ffffff0a" }} content={LapTooltip} />
+                  <Bar dataKey="kmh" radius={[3, 3, 0, 0]}>
+                    {lapPoints.map((p, i) => (
+                      <Cell key={i} fill={p.work ? "#f97316" : "#4b5563"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+
+              <button
+                type="button"
+                onClick={() => setLapsOpen((o) => !o)}
+                aria-expanded={lapsOpen}
+                className="mt-2 flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors cursor-pointer"
+              >
+                <span
+                  className={`inline-block transition-transform ${lapsOpen ? "rotate-90" : ""}`}
+                  aria-hidden
+                >
+                  ›
+                </span>
+                {lapsOpen ? "Hide" : "Show"} lap details
+              </button>
+
+              {lapsOpen && (
+                <div className="mt-2 border border-gray-800 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-950/60 text-gray-500 text-xs">
+                        <th className="text-left px-3 py-2 font-medium">Lap</th>
+                        <th className="text-left px-3 py-2 font-medium">Dist</th>
+                        <th className="text-left px-3 py-2 font-medium">Time</th>
+                        <th className="text-left px-3 py-2 font-medium">
+                          {isRide ? "Speed" : "Pace"}
                         </th>
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detail.laps.map((lap) => (
-                      <tr key={lap.id} className="border-t border-gray-800 text-gray-300">
-                        <td className="px-3 py-1.5">{lap.lap_index}</td>
-                        <td className="px-3 py-1.5">
-                          {formatLapDistance(lap.distance, discipline)}
-                        </td>
-                        <td className="px-3 py-1.5">{formatTime(lap.moving_time)}</td>
-                        <td className="px-3 py-1.5">
-                          {formatSplitPace(lap.average_speed, discipline)}
-                        </td>
-                        <td className="px-3 py-1.5 hidden sm:table-cell">
-                          {lap.average_heartrate ? `${lap.average_heartrate.toFixed(0)} bpm` : "-"}
-                        </td>
+                        <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">HR</th>
                         {!isRide && discipline !== "swim" && (
-                          <td className="px-3 py-1.5 hidden sm:table-cell">
-                            {lap.total_elevation_gain
-                              ? `${Math.round(lap.total_elevation_gain)} m`
-                              : "-"}
-                          </td>
+                          <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
+                            Elev
+                          </th>
                         )}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {laps.map((lap) => (
+                        <tr key={lap.id} className="border-t border-gray-800 text-gray-300">
+                          <td className="px-3 py-1.5">{lap.lap_index}</td>
+                          <td className="px-3 py-1.5">
+                            {formatLapDistance(lap.distance, discipline)}
+                          </td>
+                          <td className="px-3 py-1.5">{formatTime(lap.moving_time)}</td>
+                          <td className="px-3 py-1.5">
+                            {formatSplitPace(lap.average_speed, discipline)}
+                          </td>
+                          <td className="px-3 py-1.5 hidden sm:table-cell">
+                            {lap.average_heartrate ? `${lap.average_heartrate.toFixed(0)} bpm` : "-"}
+                          </td>
+                          {!isRide && discipline !== "swim" && (
+                            <td className="px-3 py-1.5 hidden sm:table-cell">
+                              {lap.total_elevation_gain
+                                ? `${Math.round(lap.total_elevation_gain)} m`
+                                : "-"}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
