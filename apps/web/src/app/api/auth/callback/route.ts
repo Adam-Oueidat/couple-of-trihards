@@ -7,6 +7,7 @@ import { getSession } from "@/lib/session";
 import { resolveSession } from "@/lib/auth";
 import { mintMobileToken } from "@/lib/mobile-tokens";
 import { decodeState, OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
+import { appOrigin } from "@/lib/api";
 
 const log = createLogger("auth:callback");
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (state?.kind !== "web" || !cookieNonce || cookieNonce !== state.nonce) {
       log.warn("web oauth state mismatch");
       return clearStateCookie(
-        NextResponse.redirect(new URL("/?error=access_denied", request.url)),
+        NextResponse.redirect(new URL("/?error=access_denied", appOrigin(request))),
       );
     }
   }
@@ -49,7 +50,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(url.toString());
     }
     return clearStateCookie(
-      NextResponse.redirect(new URL("/?error=access_denied", request.url)),
+      NextResponse.redirect(new URL("/?error=access_denied", appOrigin(request))),
     );
   }
 
@@ -120,7 +121,7 @@ export async function GET(request: NextRequest) {
       destination,
     });
     return clearStateCookie(
-      NextResponse.redirect(new URL(destination, request.url)),
+      NextResponse.redirect(new URL(destination, appOrigin(request))),
     );
   } catch (err) {
     log.error("oauth callback failed", err);
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(url.toString());
     }
     return clearStateCookie(
-      NextResponse.redirect(new URL("/?error=auth_failed", request.url)),
+      NextResponse.redirect(new URL("/?error=auth_failed", appOrigin(request))),
     );
   }
 }
