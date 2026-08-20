@@ -1,0 +1,11 @@
+# Keep the build context small and never ship local data or secrets.
+**/node_modules
+**/.next
+**/.turbo
+**/.data
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.local.example
+*.pdf
