@@ -350,6 +350,24 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
     )
     .join("\n");
 
+  // Device-recorded laps reflect the actual workout structure (e.g. interval
+  // reps), which is far more informative than the auto km splits for a
+  // structured session. Only include when the athlete recorded real laps.
+  const laps =
+    detail.laps && detail.laps.length > 1
+      ? detail.laps
+          .map((l) => {
+            const km = (l.distance / 1000).toFixed(2);
+            const time = `${Math.floor(l.moving_time / 60)}:${String(l.moving_time % 60).padStart(2, "0")}`;
+            return (
+              `  L${l.lap_index}: ${km}km ${time} ${formatPaceFromSpeed(l.average_speed)}` +
+              (l.average_heartrate ? ` HR ${l.average_heartrate.toFixed(0)}` : "") +
+              (l.total_elevation_gain ? ` (+${Math.round(l.total_elevation_gain)}m)` : "")
+            );
+          })
+          .join("\n")
+      : undefined;
+
   const efforts = detail.best_efforts
     ?.map((e) => `  ${e.name}: ${Math.floor(e.moving_time / 60)}:${String(e.moving_time % 60).padStart(2, "0")}`)
     .join("\n");
@@ -363,6 +381,7 @@ ${detail.average_heartrate ? `Avg HR: ${detail.average_heartrate.toFixed(0)} | M
 ${detail.total_elevation_gain ? `Elevation gain: ${Math.round(detail.total_elevation_gain)}m` : ""}
 ${detail.suffer_score ? `Suffer score: ${detail.suffer_score}` : ""}
 ${detail.description ? `Athlete notes: ${detail.description}` : ""}
+${laps ? `\nLaps (as recorded):\n${laps}` : ""}
 ${splits ? `\nSplits:\n${splits}` : ""}
 ${efforts ? `\nBest efforts:\n${efforts}` : ""}
 

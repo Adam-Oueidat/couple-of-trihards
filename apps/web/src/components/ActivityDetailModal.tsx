@@ -71,6 +71,27 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Discipline-aware pace/speed for a recorded lap. Swims read per-100m, rides
+// read as speed, everything else as min/km.
+function formatSplitPace(
+  averageSpeed: number,
+  discipline: ReturnType<typeof getDiscipline>,
+): string {
+  if (averageSpeed <= 0) return "-";
+  if (discipline === "swim") return `${formatTime(Math.round(100 / averageSpeed))}/100m`;
+  if (discipline === "ride") return `${(averageSpeed * 3.6).toFixed(1)} km/h`;
+  return `${formatPaceValue(1000 / averageSpeed / 60)}/km`;
+}
+
+function formatLapDistance(
+  meters: number,
+  discipline: ReturnType<typeof getDiscipline>,
+): string {
+  return discipline === "swim"
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1000).toFixed(2)} km`;
+}
+
 const axisStyle = { fill: "#9ca3af", fontSize: 11 };
 const tooltipStyle = {
   backgroundColor: "#1f2937",
@@ -332,6 +353,58 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                   <Area type="monotone" dataKey="alt" stroke="#9ca3af" fill="#9ca3af33" strokeWidth={1} />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {detail?.laps && detail.laps.length > 1 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Laps
+              </h3>
+              <div className="border border-gray-800 rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-950/60 text-gray-500 text-xs">
+                      <th className="text-left px-3 py-2 font-medium">Lap</th>
+                      <th className="text-left px-3 py-2 font-medium">Dist</th>
+                      <th className="text-left px-3 py-2 font-medium">Time</th>
+                      <th className="text-left px-3 py-2 font-medium">
+                        {isRide ? "Speed" : "Pace"}
+                      </th>
+                      <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">HR</th>
+                      {!isRide && discipline !== "swim" && (
+                        <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
+                          Elev
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.laps.map((lap) => (
+                      <tr key={lap.id} className="border-t border-gray-800 text-gray-300">
+                        <td className="px-3 py-1.5">{lap.lap_index}</td>
+                        <td className="px-3 py-1.5">
+                          {formatLapDistance(lap.distance, discipline)}
+                        </td>
+                        <td className="px-3 py-1.5">{formatTime(lap.moving_time)}</td>
+                        <td className="px-3 py-1.5">
+                          {formatSplitPace(lap.average_speed, discipline)}
+                        </td>
+                        <td className="px-3 py-1.5 hidden sm:table-cell">
+                          {lap.average_heartrate ? `${lap.average_heartrate.toFixed(0)} bpm` : "-"}
+                        </td>
+                        {!isRide && discipline !== "swim" && (
+                          <td className="px-3 py-1.5 hidden sm:table-cell">
+                            {lap.total_elevation_gain
+                              ? `${Math.round(lap.total_elevation_gain)} m`
+                              : "-"}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
