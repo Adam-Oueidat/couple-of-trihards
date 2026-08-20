@@ -15,6 +15,7 @@
     "migrate": "tsx src/migrate.ts",
     "import-json": "tsx scripts/import-json.ts",
     "bootstrap": "tsx scripts/bootstrap-user.ts",
+    "pull-prod": "tsx scripts/pull-prod.ts",
     "studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -10,9 +10,10 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "db:generate": "pnpm --filter @trihards/db generate",
-    "db:migrate": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db migrate",
+    "db:migrate": "TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:$PWD/apps/web/.data/local.db} pnpm --filter @trihards/db migrate",
     "db:import": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db run import-json",
-    "db:bootstrap": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db bootstrap",
+    "db:bootstrap": "TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:$PWD/apps/web/.data/local.db} pnpm --filter @trihards/db bootstrap",
+    "db:pull-prod": "pnpm --filter @trihards/db pull-prod",
     "db:studio": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db studio"
   },
   "devDependencies": {
