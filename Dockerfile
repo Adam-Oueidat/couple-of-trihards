@@ -2,6 +2,7 @@
 
 # Debian (glibc) rather than Alpine: @libsql/client ships native bindings that
 # are awkward to source on musl. Node 22 is the active LTS (20 is EOL).
+# Keep this major in sync with .nvmrc, which CI reads via node-version-file.
 FROM node:22-slim AS builder
 WORKDIR /app
 RUN corepack enable
