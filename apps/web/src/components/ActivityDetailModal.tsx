@@ -41,6 +41,16 @@ interface LapPoint {
   dist: string;
   time: string;
   hr?: number;
+  walk: boolean; // slower than a walking threshold — rendered as a grey rest
+}
+
+// A lap slower than 10 min/km on foot reads as a walking rest, not a running
+// effort. 10 min/km = 1000m / 600s ≈ 1.667 m/s. Only meaningful for run/other;
+// bikes and swims have no comparable "walk" pace, so they never grey out.
+const WALK_SPEED = 1000 / (10 * 60);
+
+function isWalk(speed: number, discipline: ReturnType<typeof getDiscipline>): boolean {
+  return (discipline === "run" || discipline === "other") && speed > 0 && speed < WALK_SPEED;
 }
 
 const MAX_POINTS = 300;
@@ -114,6 +124,7 @@ function buildLapPoints(
     dist: formatLapDistance(l.distance, discipline),
     time: formatTime(l.moving_time),
     hr: l.average_heartrate,
+    walk: isWalk(l.average_speed, discipline),
   }));
 }
 
@@ -203,7 +214,7 @@ function LapChart({
                 y={H - b.bh}
                 width={Math.max(0, b.w - GAP * 2)}
                 height={b.bh}
-                fill="#f97316"
+                fill={b.p.walk ? "#4b5563" : "#f97316"}
                 opacity={hover === null || hover === b.i ? 1 : 0.5}
                 onMouseEnter={() => setHover(b.i)}
               />
@@ -228,6 +239,7 @@ function LapChart({
       </div>
       <p className="mt-1.5 text-gray-500 text-xs" style={{ paddingLeft: AXIS_W }}>
         Bar width = duration · height = pace (taller = faster)
+        {points.some((p) => p.walk) ? " · grey = walking rest" : ""}
       </p>
     </div>
   );
