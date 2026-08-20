@@ -374,12 +374,14 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
 
   // When the athlete recorded laps AND wrote a description, the description is
   // usually the prescribed session (e.g. "4x800m @ 3:20, 2min jog"). Ask the
-  // coach to grade the recorded laps rep-by-rep against that target.
+  // coach to judge execution against that target — but at the level of the
+  // session, not lap-by-lap, so the answer stays short and doesn't run out of
+  // room enumerating every rep.
   const analysisPoints = [
     "**Verdict** — how this session went relative to its purpose in my plan and my goals (one short paragraph).",
     ...(laps && detail.description
       ? [
-          "**Workout execution** — compare the recorded laps rep-by-rep against the workout I described in my notes: did I hit the target paces/durations/recoveries for each interval, and how did they hold up (fade, negative split, HR drift)?",
+          "**Workout execution** — did the session hit the workout I described in my notes (target paces/durations/recoveries)? Judge it as a whole — did the work reps land in range and hold up — and call out only anything notably off (a blown rep, a clear fade, HR drift). Do not walk through every lap.",
         ]
       : []),
     "**What went well / what to improve** — grounded in the laps, splits, HR, and pacing data above.",
@@ -404,5 +406,5 @@ ${efforts ? `\nBest efforts:\n${efforts}` : ""}
 Give me:
 ${analysisPoints}
 
-Keep it tight and specific to my data.`;
+Keep it tight and specific to my data. Generalize across the laps rather than listing them — the whole answer should be a few short paragraphs.`;
 }
