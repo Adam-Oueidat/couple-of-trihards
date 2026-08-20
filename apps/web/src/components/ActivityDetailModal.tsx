@@ -6,16 +6,12 @@ import {
   Line,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
-  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import type { TooltipContentProps } from "recharts";
 import { DetailedActivity, StravaActivity, StreamSet } from "@trihards/core";
 import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
 
@@ -39,8 +35,9 @@ interface ChartPoint {
 
 interface LapPoint {
   lap: string;
-  kmh: number; // bar height — faster laps read taller across every discipline
-  pace: string; // discipline-aware label for the tooltip
+  speed: number; // m/s — drives bar height so faster laps read taller
+  seconds: number; // moving time — drives bar width so longer laps read wider
+  pace: string; // discipline-aware label (min/km, /100m, or km/h) for the tooltip
   dist: string;
   time: string;
   hr?: number;
@@ -120,7 +117,8 @@ function buildLapPoints(
   const medianSpeed = median(laps.map((l) => l.average_speed));
   return laps.map((l) => ({
     lap: `${l.lap_index}`,
-    kmh: Math.round(l.average_speed * 3.6 * 10) / 10,
+    speed: l.average_speed,
+    seconds: l.moving_time,
     pace: formatSplitPace(l.average_speed, discipline),
     dist: formatLapDistance(l.distance, discipline),
     time: formatTime(l.moving_time),
@@ -129,15 +127,80 @@ function buildLapPoints(
   }));
 }
 
-function LapTooltip({ active, payload }: TooltipContentProps) {
-  if (!active || !payload?.length) return null;
-  const p = payload[0].payload as LapPoint;
+// A proportional lap timeline: each lap is a bar whose WIDTH is its duration
+// and whose HEIGHT is its speed. So a short fast rep reads narrow-and-tall, a
+// long recovery jog wide-and-short, and a walk break wide-and-flat — the shape
+// of the session is legible at a glance. Rendered as raw SVG because Recharts'
+// categorical bars are always equal width.
+function LapChart({
+  laps,
+  discipline,
+}: {
+  laps: NonNullable<DetailedActivity["laps"]>;
+  discipline: ReturnType<typeof getDiscipline>;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const points = buildLapPoints(laps, discipline);
+  const totalTime = points.reduce((s, p) => s + p.seconds, 0) || 1;
+  const maxSpeed = Math.max(...points.map((p) => p.speed), 0.1);
+
+  const VW = 1000; // viewBox width units (scaled to container by the browser)
+  const H = 160;
+  const GAP = 2; // horizontal inset per side, in viewBox units
+  const MIN_H = 4; // keep even a slow walk visible
+
+  const fracs = points.map((p) => p.seconds / totalTime);
+  const starts = fracs.map((_, i) => fracs.slice(0, i).reduce((a, b) => a + b, 0));
+  const bars = points.map((p, i) => ({
+    i,
+    x: starts[i] * VW,
+    w: fracs[i] * VW,
+    bh: Math.max(MIN_H, (p.speed / maxSpeed) * (H - 8)),
+    p,
+  }));
+
+  const active = hover !== null ? bars[hover] : null;
+
   return (
-    <div style={tooltipStyle} className="px-3 py-2 text-gray-200">
-      <p className="font-semibold text-white">Lap {p.lap}</p>
-      <p>{p.dist} · {p.time}</p>
-      <p>{p.pace}</p>
-      {p.hr ? <p>{p.hr.toFixed(0)} bpm</p> : null}
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${VW} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="none"
+        onMouseLeave={() => setHover(null)}
+      >
+        {bars.map((b) => (
+          <rect
+            key={b.i}
+            x={b.x + GAP}
+            y={H - b.bh}
+            width={Math.max(0, b.w - GAP * 2)}
+            height={b.bh}
+            fill={b.p.work ? "#f97316" : "#4b5563"}
+            opacity={hover === null || hover === b.i ? 1 : 0.45}
+            onMouseEnter={() => setHover(b.i)}
+          />
+        ))}
+      </svg>
+      {active && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-3 py-2 text-gray-200"
+          style={{
+            ...tooltipStyle,
+            left: `${((active.x + active.w / 2) / VW) * 100}%`,
+            top: H - active.bh - 8,
+          }}
+        >
+          <p className="font-semibold text-white">Lap {active.p.lap}</p>
+          <p>{active.p.dist} · {active.p.time}</p>
+          <p>{active.p.pace}</p>
+          {active.p.hr ? <p>{active.p.hr.toFixed(0)} bpm</p> : null}
+        </div>
+      )}
+      <p className="mt-1.5 text-gray-500 text-xs">
+        Bar width = duration · height = speed
+      </p>
     </div>
   );
 }
@@ -221,7 +284,6 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
 
   const laps = detail?.laps ?? [];
   const hasLaps = laps.length > 1;
-  const lapPoints = hasLaps ? buildLapPoints(laps, discipline) : [];
 
   const stats: { label: string; value: string }[] = [
     {
@@ -416,26 +478,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
               <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
                 Laps
               </h3>
-              <ResponsiveContainer width="100%" height={160}>
-                <BarChart data={lapPoints} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                  <XAxis dataKey="lap" tick={axisStyle} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={axisStyle}
-                    axisLine={false}
-                    tickLine={false}
-                    tickFormatter={(v: number) => `${v}`}
-                    unit=" km/h"
-                    width={56}
-                  />
-                  <Tooltip cursor={{ fill: "#ffffff0a" }} content={LapTooltip} />
-                  <Bar dataKey="kmh" radius={[3, 3, 0, 0]}>
-                    {lapPoints.map((p, i) => (
-                      <Cell key={i} fill={p.work ? "#f97316" : "#4b5563"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <LapChart laps={laps} discipline={discipline} />
 
               <button
                 type="button"
