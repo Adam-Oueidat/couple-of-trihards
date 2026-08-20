@@ -33,6 +33,26 @@ interface ChartPoint {
   alt?: number;
 }
 
+interface LapPoint {
+  lap: string;
+  speed: number; // m/s — drives bar height so faster laps read taller
+  seconds: number; // moving time — drives bar width so longer laps read wider
+  pace: string; // discipline-aware label (min/km, /100m, or km/h) for the tooltip
+  dist: string;
+  time: string;
+  hr?: number;
+  walk: boolean; // slower than a walking threshold — rendered as a grey rest
+}
+
+// A lap slower than 10 min/km on foot reads as a walking rest, not a running
+// effort. 10 min/km = 1000m / 600s ≈ 1.667 m/s. Only meaningful for run/other;
+// bikes and swims have no comparable "walk" pace, so they never grey out.
+const WALK_SPEED = 1000 / (10 * 60);
+
+function isWalk(speed: number, discipline: ReturnType<typeof getDiscipline>): boolean {
+  return (discipline === "run" || discipline === "other") && speed > 0 && speed < WALK_SPEED;
+}
+
 const MAX_POINTS = 300;
 
 function buildChartPoints(streams: StreamSet, isRide: boolean): ChartPoint[] {
@@ -71,6 +91,160 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
+// Discipline-aware pace/speed for a recorded lap. Swims read per-100m, rides
+// read as speed, everything else as min/km.
+function formatSplitPace(
+  averageSpeed: number,
+  discipline: ReturnType<typeof getDiscipline>,
+): string {
+  if (averageSpeed <= 0) return "-";
+  if (discipline === "swim") return `${formatTime(Math.round(100 / averageSpeed))}/100m`;
+  if (discipline === "ride") return `${(averageSpeed * 3.6).toFixed(1)} km/h`;
+  return `${formatPaceValue(1000 / averageSpeed / 60)}/km`;
+}
+
+function formatLapDistance(
+  meters: number,
+  discipline: ReturnType<typeof getDiscipline>,
+): string {
+  return discipline === "swim"
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1000).toFixed(2)} km`;
+}
+
+function buildLapPoints(
+  laps: NonNullable<DetailedActivity["laps"]>,
+  discipline: ReturnType<typeof getDiscipline>,
+): LapPoint[] {
+  return laps.map((l) => ({
+    lap: `${l.lap_index}`,
+    speed: l.average_speed,
+    seconds: l.moving_time,
+    pace: formatSplitPace(l.average_speed, discipline),
+    dist: formatLapDistance(l.distance, discipline),
+    time: formatTime(l.moving_time),
+    hr: l.average_heartrate,
+    walk: isWalk(l.average_speed, discipline),
+  }));
+}
+
+// A proportional lap timeline: each lap is a bar whose WIDTH is its duration
+// and whose HEIGHT is its speed. So a short fast rep reads narrow-and-tall, a
+// long recovery jog wide-and-short, and a walk break wide-and-flat — the shape
+// of the session is legible at a glance. Rendered as raw SVG because Recharts'
+// categorical bars are always equal width.
+function LapChart({
+  laps,
+  discipline,
+}: {
+  laps: NonNullable<DetailedActivity["laps"]>;
+  discipline: ReturnType<typeof getDiscipline>;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  const points = buildLapPoints(laps, discipline);
+  const totalTime = points.reduce((s, p) => s + p.seconds, 0) || 1;
+  const maxSpeed = Math.max(...points.map((p) => p.speed), 0.1);
+
+  const VW = 1000; // viewBox width units (scaled to container by the browser)
+  const H = 160;
+  const TOP = 8; // headroom above the tallest bar
+  const GAP = 2; // horizontal inset per side, in viewBox units
+  const MIN_H = 4; // keep even a slow walk visible
+  const AXIS_W = 52; // px gutter for the pace axis
+
+  const fracs = points.map((p) => p.seconds / totalTime);
+  const starts = fracs.map((_, i) => fracs.slice(0, i).reduce((a, b) => a + b, 0));
+  const bars = points.map((p, i) => ({
+    i,
+    x: starts[i] * VW,
+    w: fracs[i] * VW,
+    bh: Math.max(MIN_H, (p.speed / maxSpeed) * (H - TOP)),
+    p,
+  }));
+
+  // Pace reference lines: evenly-spaced speeds mapped to their y and labeled in
+  // pace, so faster (taller) sits higher. Non-round on purpose — they read off
+  // the actual lap range rather than arbitrary round paces.
+  const TICKS = 4;
+  const paceTicks = Array.from({ length: TICKS }, (_, k) => {
+    const speed = (maxSpeed * (k + 1)) / TICKS;
+    return { y: H - (speed / maxSpeed) * (H - TOP), label: formatSplitPace(speed, discipline) };
+  });
+
+  const active = hover !== null ? bars[hover] : null;
+
+  return (
+    <div>
+      <div className="flex">
+        <div className="relative flex-shrink-0" style={{ width: AXIS_W, height: H }}>
+          {paceTicks.map((t, k) => (
+            <span
+              key={k}
+              className="absolute right-1.5 -translate-y-1/2 text-gray-500 text-[10px] tabular-nums"
+              style={{ top: t.y }}
+            >
+              {t.label}
+            </span>
+          ))}
+        </div>
+        <div className="relative flex-1">
+          <svg
+            viewBox={`0 0 ${VW} ${H}`}
+            width="100%"
+            height={H}
+            preserveAspectRatio="none"
+            onMouseLeave={() => setHover(null)}
+          >
+            {paceTicks.map((t, k) => (
+              <line
+                key={k}
+                x1={0}
+                x2={VW}
+                y1={t.y}
+                y2={t.y}
+                stroke="#374151"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+              />
+            ))}
+            {bars.map((b) => (
+              <rect
+                key={b.i}
+                x={b.x + GAP}
+                y={H - b.bh}
+                width={Math.max(0, b.w - GAP * 2)}
+                height={b.bh}
+                fill={b.p.walk ? "#4b5563" : "#f97316"}
+                opacity={hover === null || hover === b.i ? 1 : 0.5}
+                onMouseEnter={() => setHover(b.i)}
+              />
+            ))}
+          </svg>
+          {active && (
+            <div
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-3 py-2 text-gray-200"
+              style={{
+                ...tooltipStyle,
+                left: `${((active.x + active.w / 2) / VW) * 100}%`,
+                top: H - active.bh - 8,
+              }}
+            >
+              <p className="font-semibold text-white">Lap {active.p.lap}</p>
+              <p>{active.p.dist} · {active.p.time}</p>
+              <p>{active.p.pace}</p>
+              {active.p.hr ? <p>{active.p.hr.toFixed(0)} bpm</p> : null}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="mt-1.5 text-gray-500 text-xs" style={{ paddingLeft: AXIS_W }}>
+        Bar width = duration · height = pace (taller = faster)
+        {points.some((p) => p.walk) ? " · grey = walking rest" : ""}
+      </p>
+    </div>
+  );
+}
+
 const axisStyle = { fill: "#9ca3af", fontSize: 11 };
 const tooltipStyle = {
   backgroundColor: "#1f2937",
@@ -84,6 +258,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [lapsOpen, setLapsOpen] = useState(false);
 
   async function runAnalysis() {
     if (analyzing) return;
@@ -146,6 +321,9 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const hasHr = points.some((p) => p.hr !== undefined);
   const hasPace = points.some((p) => p.pace !== undefined);
   const hasAlt = points.some((p) => p.alt !== undefined);
+
+  const laps = detail?.laps ?? [];
+  const hasLaps = laps.length > 1;
 
   const stats: { label: string; value: string }[] = [
     {
@@ -332,6 +510,77 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
                   <Area type="monotone" dataKey="alt" stroke="#9ca3af" fill="#9ca3af33" strokeWidth={1} />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {hasLaps && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Laps
+              </h3>
+              <LapChart laps={laps} discipline={discipline} />
+
+              <button
+                type="button"
+                onClick={() => setLapsOpen((o) => !o)}
+                aria-expanded={lapsOpen}
+                className="mt-2 flex items-center gap-1.5 text-gray-400 hover:text-white text-xs transition-colors cursor-pointer"
+              >
+                <span
+                  className={`inline-block transition-transform ${lapsOpen ? "rotate-90" : ""}`}
+                  aria-hidden
+                >
+                  ›
+                </span>
+                {lapsOpen ? "Hide" : "Show"} lap details
+              </button>
+
+              {lapsOpen && (
+                <div className="mt-2 border border-gray-800 rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-950/60 text-gray-500 text-xs">
+                        <th className="text-left px-3 py-2 font-medium">Lap</th>
+                        <th className="text-left px-3 py-2 font-medium">Dist</th>
+                        <th className="text-left px-3 py-2 font-medium">Time</th>
+                        <th className="text-left px-3 py-2 font-medium">
+                          {isRide ? "Speed" : "Pace"}
+                        </th>
+                        <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">HR</th>
+                        {!isRide && discipline !== "swim" && (
+                          <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
+                            Elev
+                          </th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {laps.map((lap) => (
+                        <tr key={lap.id} className="border-t border-gray-800 text-gray-300">
+                          <td className="px-3 py-1.5">{lap.lap_index}</td>
+                          <td className="px-3 py-1.5">
+                            {formatLapDistance(lap.distance, discipline)}
+                          </td>
+                          <td className="px-3 py-1.5">{formatTime(lap.moving_time)}</td>
+                          <td className="px-3 py-1.5">
+                            {formatSplitPace(lap.average_speed, discipline)}
+                          </td>
+                          <td className="px-3 py-1.5 hidden sm:table-cell">
+                            {lap.average_heartrate ? `${lap.average_heartrate.toFixed(0)} bpm` : "-"}
+                          </td>
+                          {!isRide && discipline !== "swim" && (
+                            <td className="px-3 py-1.5 hidden sm:table-cell">
+                              {lap.total_elevation_gain
+                                ? `${Math.round(lap.total_elevation_gain)} m`
+                                : "-"}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 

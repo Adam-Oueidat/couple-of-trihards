@@ -350,8 +350,44 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
     )
     .join("\n");
 
+  // Device-recorded laps reflect the actual workout structure (e.g. interval
+  // reps), which is far more informative than the auto km splits for a
+  // structured session. Only include when the athlete recorded real laps.
+  const laps =
+    detail.laps && detail.laps.length > 1
+      ? detail.laps
+          .map((l) => {
+            const km = (l.distance / 1000).toFixed(2);
+            const time = `${Math.floor(l.moving_time / 60)}:${String(l.moving_time % 60).padStart(2, "0")}`;
+            return (
+              `  L${l.lap_index}: ${km}km ${time} ${formatPaceFromSpeed(l.average_speed)}` +
+              (l.average_heartrate ? ` HR ${l.average_heartrate.toFixed(0)}` : "") +
+              (l.total_elevation_gain ? ` (+${Math.round(l.total_elevation_gain)}m)` : "")
+            );
+          })
+          .join("\n")
+      : undefined;
+
   const efforts = detail.best_efforts
     ?.map((e) => `  ${e.name}: ${Math.floor(e.moving_time / 60)}:${String(e.moving_time % 60).padStart(2, "0")}`)
+    .join("\n");
+
+  // When the athlete recorded laps AND wrote a description, the description is
+  // usually the prescribed session (e.g. "4x800m @ 3:20, 2min jog"). Ask the
+  // coach to judge execution against that target — but at the level of the
+  // session, not lap-by-lap, so the answer stays short and doesn't run out of
+  // room enumerating every rep.
+  const analysisPoints = [
+    "**Verdict** — how this session went relative to its purpose in my plan and my goals (one short paragraph).",
+    ...(laps && detail.description
+      ? [
+          "**Workout execution** — did the session hit the workout I described in my notes (target paces/durations/recoveries)? Judge it as a whole — did the work reps land in range and hold up — and call out only anything notably off (a blown rep, a clear fade, HR drift). Do not walk through every lap.",
+        ]
+      : []),
+    "**What went well / what to improve** — grounded in the laps, splits, HR, and pacing data above.",
+    "**Cross-training** — given my upcoming plan sessions and current fatigue (TSB), what swim/bike cross-training is reasonable in the next few days, or whether I should skip it.",
+  ]
+    .map((point, i) => `${i + 1}. ${point}`)
     .join("\n");
 
   return `Analyze this activity for me:
@@ -363,13 +399,12 @@ ${detail.average_heartrate ? `Avg HR: ${detail.average_heartrate.toFixed(0)} | M
 ${detail.total_elevation_gain ? `Elevation gain: ${Math.round(detail.total_elevation_gain)}m` : ""}
 ${detail.suffer_score ? `Suffer score: ${detail.suffer_score}` : ""}
 ${detail.description ? `Athlete notes: ${detail.description}` : ""}
+${laps ? `\nLaps (as recorded):\n${laps}` : ""}
 ${splits ? `\nSplits:\n${splits}` : ""}
 ${efforts ? `\nBest efforts:\n${efforts}` : ""}
 
 Give me:
-1. **Verdict** — how this session went relative to its purpose in my plan and my goals (one short paragraph).
-2. **What went well / what to improve** — grounded in the splits, HR, and pacing data above.
-3. **Cross-training** — given my upcoming plan sessions and current fatigue (TSB), what swim/bike cross-training is reasonable in the next few days, or whether I should skip it.
+${analysisPoints}
 
-Keep it tight and specific to my data.`;
+Keep it tight and specific to my data. Generalize across the laps rather than listing them — the whole answer should be a few short paragraphs.`;
 }

@@ -64,10 +64,20 @@ export interface Lap {
   id: number;
   name: string;
   lap_index: number;
-  distance: number;
-  moving_time: number;
-  average_speed: number;
+  distance: number; // meters
+  moving_time: number; // seconds
+  elapsed_time: number; // seconds
+  average_speed: number; // m/s
+  max_speed?: number; // m/s
   average_heartrate?: number;
+  max_heartrate?: number;
+  average_cadence?: number;
+  average_watts?: number;
+  total_elevation_gain?: number; // meters
+  // Indices into the activity's stream arrays — slice streams per lap for
+  // interval-level HR/pace/power analysis.
+  start_index?: number;
+  end_index?: number;
 }
 
 export interface BestEffort {
