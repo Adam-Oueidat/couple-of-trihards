@@ -1,4 +1,4 @@
-import planData from "./data/runna-plan.json" with { type: "json" };
+import seedPlanData from "./data/runna-plan.json" with { type: "json" };
 import { StravaActivity } from "./types/strava";
 import { activityDay, getDiscipline, getWeekStart, localToday } from "./training";
 
@@ -9,6 +9,15 @@ export type SessionType =
   | "long"
   | "time_trial"
   | "race";
+
+export const SESSION_TYPES: readonly SessionType[] = [
+  "easy",
+  "intervals",
+  "tempo",
+  "long",
+  "time_trial",
+  "race",
+];
 
 export interface PlannedSession {
   id: string;
@@ -31,6 +40,21 @@ export interface TrainingPlan {
   raceName: string;
   sessions: PlannedSession[];
 }
+
+// The stored / authored shape of a session: no derived `id`, and none of the
+// override fields, since both are computed when the plan is materialised. This
+// is exactly what the `training_plans.sessions` JSON column holds and what the
+// PDF parser is asked to produce, so one validator covers both paths.
+export interface RawPlannedSession {
+  date: string;
+  name: string;
+  type: SessionType;
+  km: number;
+}
+
+export type RawTrainingPlan = Omit<TrainingPlan, "sessions"> & {
+  sessions: RawPlannedSession[];
+};
 
 export interface PlanOverride {
   sessionId: string;
@@ -55,13 +79,6 @@ export interface CustomWorkoutInput {
   distanceKm: number | null;
 }
 
-interface RawSession {
-  date: string;
-  name: string;
-  type: SessionType;
-  km: number;
-}
-
 function sessionSlug(date: string, name: string): string {
   return `${date}-${name
     .toLowerCase()
@@ -69,21 +86,41 @@ function sessionSlug(date: string, name: string): string {
     .replace(/^-|-$/g, "")}`;
 }
 
-const rawPlan = planData as Omit<TrainingPlan, "sessions"> & {
-  sessions: RawSession[];
-};
+// Materialise an authored/stored plan into the shape the views consume: every
+// session gains the stable slug id (date + name) that plan_overrides keys on,
+// plus an `originalDate` so a moved session can always be reset.
+export function buildTrainingPlan(raw: RawTrainingPlan): TrainingPlan {
+  return {
+    name: raw.name,
+    source: raw.source,
+    discipline: raw.discipline,
+    startDate: raw.startDate,
+    raceDate: raw.raceDate,
+    raceName: raw.raceName,
+    sessions: raw.sessions.map((s) => ({
+      id: sessionSlug(s.date, s.name),
+      date: s.date,
+      originalDate: s.date,
+      name: s.name,
+      type: s.type,
+      km: s.km,
+    })),
+  };
+}
 
-export const plan: TrainingPlan = {
-  ...rawPlan,
-  sessions: rawPlan.sessions.map((s) => ({
-    id: sessionSlug(s.date, s.name),
-    date: s.date,
-    originalDate: s.date,
-    name: s.name,
-    type: s.type,
-    km: s.km,
-  })),
-};
+/**
+ * The bundled Runna plan, kept ONLY as an explicit seed for the one-time
+ * backfill that assigns it to the athlete it was actually written for
+ * (packages/db/scripts/backfill-seed-plan.ts).
+ *
+ * It is deliberately NOT a runtime default. Every plan-aware function below
+ * takes the athlete's plan as a required parameter, so no read path can hand
+ * this plan to an athlete who never uploaded it. Serving it as a fallback is
+ * what let one athlete's sessions surface in another athlete's coaching.
+ */
+export const SEED_PLAN: TrainingPlan = buildTrainingPlan(
+  seedPlanData as RawTrainingPlan,
+);
 
 export function applyPlanOverrides(
   sessions: PlannedSession[],
@@ -121,21 +158,28 @@ export interface SessionWithStatus extends PlannedSession {
   isCustom?: boolean;
 }
 
+// `trainingPlan` is this athlete's own plan, and it leads the parameter list
+// precisely because it is required and has no default: an athlete with no plan
+// is passed `null` and gets no plan sessions, never someone else's.
+//
 // `today` is an athlete-local ISO date (YYYY-MM-DD). It defaults to the local
 // date, which is correct when these run client-side (PlannedVsActual); server
 // callers (the coach) must pass the athlete's resolved local date so they don't
 // fall back to the server's UTC clock and drift a day ahead.
 export function matchSessions(
+  trainingPlan: TrainingPlan | null,
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
   today: string = localToday(),
   customWorkouts: CustomWorkoutInput[] = [],
 ): SessionWithStatus[] {
   // Drop hidden ("Removed" in the calendar) sessions so the plan list and the
-  // calendar agree; the calendar skips them with the same check.
-  const sessions = applyPlanOverrides(plan.sessions, overrides).filter(
-    (s) => !s.hidden,
-  );
+  // calendar agree; the calendar skips them with the same check. With no plan
+  // there is nothing to schedule — only the athlete's own custom workouts.
+  const sessions = applyPlanOverrides(
+    trainingPlan?.sessions ?? [],
+    overrides,
+  ).filter((s) => !s.hidden);
 
   const runsByDate = new Map<string, StravaActivity[]>();
   for (const act of activities) {
@@ -225,17 +269,19 @@ export interface PlannedVsActualWeek {
 }
 
 export function plannedVsActualByWeek(
+  trainingPlan: TrainingPlan | null,
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
   today: string = localToday(),
   customWorkouts: CustomWorkoutInput[] = [],
 ): PlannedVsActualWeek[] {
-  const sessions = applyPlanOverrides(plan.sessions, overrides);
+  const sessions = applyPlanOverrides(trainingPlan?.sessions ?? [], overrides);
 
-  // Which disciplines are planned each week — always "run" (the base plan) plus
+  // Which disciplines are planned each week — the plan's own discipline plus
   // any discipline the athlete added a custom workout for that week. Actual km
   // is then counted only for a week's planned disciplines, so the comparison
   // stays apples-to-apples once non-run workouts enter the picture.
+  const planDiscipline = trainingPlan?.discipline ?? "";
   const plannedByWeek = new Map<string, number>();
   const disciplinesByWeek = new Map<string, Set<string>>();
   const addDiscipline = (week: string, discipline: string) => {
@@ -248,7 +294,7 @@ export function plannedVsActualByWeek(
     if (s.hidden) continue; // "Removed" in the calendar → drop from planned km
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
     plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + s.km);
-    addDiscipline(week, "run");
+    addDiscipline(week, planDiscipline);
   }
   for (const w of customWorkouts) {
     const week = getWeekStart(new Date(w.date + "T12:00:00"));
@@ -277,18 +323,25 @@ export function plannedVsActualByWeek(
 }
 
 export function getCurrentWeekSessions(
+  trainingPlan: TrainingPlan | null,
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
   today: string = localToday(),
 ): SessionWithStatus[] {
   const currentWeek = getWeekStart(new Date(today + "T12:00:00"));
-  return matchSessions(activities, overrides, today).filter(
+  return matchSessions(trainingPlan, activities, overrides, today).filter(
     (s) => getWeekStart(new Date(s.date + "T12:00:00")) === currentWeek,
   );
 }
 
-export function daysUntilRace(today: string = localToday()): number {
-  const race = new Date(plan.raceDate + "T12:00:00");
+// Takes a non-null plan by design: "days until race" is meaningless without
+// one, so a caller has to establish the athlete has a plan before asking. There
+// is no default here to fall through to.
+export function daysUntilRace(
+  trainingPlan: TrainingPlan,
+  today: string = localToday(),
+): number {
+  const race = new Date(trainingPlan.raceDate + "T12:00:00");
   const now = new Date(today + "T12:00:00");
   return Math.max(0, Math.ceil((race.getTime() - now.getTime()) / 86400000));
 }

@@ -4,24 +4,24 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { StravaActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
 import {
-  plan,
   applyPlanOverrides,
   type PlannedSession,
   type SessionType,
+  type TrainingPlan,
 } from "@trihards/core";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
-import { DisciplineGlyph } from "./DisciplineGlyph";
+import { DISCIPLINE_PILL, DisciplineGlyph } from "./DisciplineGlyph";
 
 interface Props {
   activities: StravaActivity[];
+  /**
+   * The athlete's own plan, or null when they have not uploaded one. With no
+   * plan the calendar shows only the workouts they added themselves — it never
+   * borrows a plan from anywhere else.
+   */
+  plan: TrainingPlan | null;
 }
-
-const DISCIPLINE_PILL: Record<string, string> = {
-  run: "bg-green-500/15 text-green-400 border-green-500/30",
-  ride: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-  swim: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
-};
 
 const DRAG_MIME = "application/x-trihard";
 
@@ -80,7 +80,7 @@ interface EditSessionFormState {
   km: number;
 }
 
-export function CalendarTab({ activities }: Props) {
+export function CalendarTab({ activities, plan }: Props) {
   const [viewDate, setViewDate] = useState(() => new Date());
   const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
   const [overrides, setOverrides] = useState<PlanOverrideMap>({});
@@ -139,10 +139,17 @@ export function CalendarTab({ activities }: Props) {
   const weeks = monthGrid(year, month);
   const today = toDateStr(new Date());
 
+  // The plan prescribes a single discipline, so plan chips and their
+  // completion check follow it rather than assuming every plan is a run plan.
+  const planDiscipline: "swim" | "ride" | "run" =
+    plan?.discipline === "ride" || plan?.discipline === "swim"
+      ? plan.discipline
+      : "run";
+
   // Apply overrides to plan sessions to get current scheduled dates
   const planSessions = useMemo(
-    () => applyPlanOverrides(plan.sessions, overrides),
-    [overrides]
+    () => applyPlanOverrides(plan?.sessions ?? [], overrides),
+    [plan, overrides]
   );
 
   const planByDate = new Map<string, PlannedSession[]>();
@@ -537,9 +544,9 @@ export function CalendarTab({ activities }: Props) {
                             "\nClick to edit · Drag to reschedule"
                           }
                           className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
-                            DISCIPLINE_PILL.run
+                            DISCIPLINE_PILL[planDiscipline]
                           } ${
-                            done?.has("run") && s.date <= today
+                            done?.has(planDiscipline) && s.date <= today
                               ? ""
                               : s.date < today
                                 ? "opacity-50 line-through"
@@ -548,7 +555,7 @@ export function CalendarTab({ activities }: Props) {
                             moved ? "ring-1 ring-orange-500/40" : ""
                           }`}
                         >
-                          <DisciplineGlyph discipline="run" size={10} className="flex-shrink-0 opacity-80" />
+                          <DisciplineGlyph discipline={planDiscipline} size={10} className="flex-shrink-0 opacity-80" />
                           <span className="truncate flex-1">
                             {s.km}km {s.name}
                           </span>
@@ -863,12 +870,16 @@ export function CalendarTab({ activities }: Props) {
 
             <div className="space-y-4">
               <div className="flex items-center gap-2 bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2">
-                <DisciplineGlyph discipline="run" size={14} className="text-green-400 flex-shrink-0" />
+                <DisciplineGlyph
+                  discipline={planDiscipline}
+                  size={14}
+                  className="flex-shrink-0"
+                />
                 <span className="text-sm text-white flex-1 truncate">
                   {editSessionForm.km}km {editSessionForm.name}
                 </span>
                 <span
-                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL.run}`}
+                  className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL[planDiscipline]}`}
                 >
                   {editSessionForm.type.replace("_", " ")}
                 </span>

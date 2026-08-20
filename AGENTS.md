@@ -24,7 +24,11 @@ pnpm db:bootstrap   # creates the local SQLite db at apps/web/.data/local.db
 pnpm dev            # turbo run dev — starts the web app on http://localhost:3000
 ```
 
-Other useful scripts (run from the repo root): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and the `pnpm db:*` family (`generate`, `migrate`, `import`, `studio`). The local database uses **Turso / libSQL** (SQLite-based) — there is no separate "push the data" step.
+Other useful scripts (run from the repo root): `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, and the `pnpm db:*` family (`generate`, `migrate`, `import`, `studio`, `backfill-seed-plan`). The local database uses **Turso / libSQL** (SQLite-based) — there is no separate "push the data" step.
+
+### Training plans are per-user
+
+Each athlete's plan is a row in `training_plans`, uploaded on the Plan tab and parsed out of the document by the Claude API. **There is no default plan at read time**: an athlete without a row has no plan, and the calendar, plan tab, and coach prompt must all say so rather than falling back to anything. `SEED_PLAN` in `@trihards/core` (the bundled `runna-plan.json`) exists solely for the one-time `pnpm db:backfill-seed-plan <athlete-or-user-id>` backfill that assigns it to the one athlete it was written for — never import it into a read path.
 
 ### Next.js docs
 

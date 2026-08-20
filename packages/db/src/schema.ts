@@ -8,6 +8,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import type { RawPlannedSession } from "@trihards/core";
 
 const id = () =>
   text("id")
@@ -177,6 +178,45 @@ export const planOverrides = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );
 
+// An athlete's own training plan. One row is one whole plan.
+//
+// `sessions` is a JSON column rather than a `plan_sessions` child table because
+// packages/core/src/plan.ts only ever consumes a plan whole: `matchSessions`,
+// `plannedVsActualByWeek`, and the calendar all take a complete `TrainingPlan`
+// and iterate `plan.sessions` in memory. Nothing queries, filters, or mutates a
+// single session by id in SQL — reschedules and removals live in the separate
+// `plan_overrides` table, keyed by the slug id derived from (date, name). A
+// child table would therefore add a join plus re-ordering on every dashboard
+// render and buy nothing, while the JSON column is a single row read that maps
+// 1:1 onto `RawTrainingPlan`.
+//
+// Uploads are append-only: a new upload inserts a new row and the athlete's
+// active plan is their most recent one, so an accidental upload never destroys
+// the plan it replaced.
+export const trainingPlans = sqliteTable(
+  "training_plans",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Where the plan came from: "Runna", "Coach", the uploaded file's origin.
+    source: text("source").notNull(),
+    discipline: text("discipline", { enum: ["swim", "ride", "run"] }).notNull(),
+    startDate: text("start_date").notNull(),
+    raceDate: text("race_date").notNull(),
+    raceName: text("race_name").notNull(),
+    // JSON array of { date, name, type, km } — validated by
+    // parseRawTrainingPlan (@trihards/core) before it is ever written or read.
+    sessions: text("sessions", { mode: "json" })
+      .$type<RawPlannedSession[]>()
+      .notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index("training_plans_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 export const personalBests = sqliteTable(
   "personal_bests",
   {
@@ -223,6 +263,8 @@ export type NewLicense = typeof licenses.$inferInsert;
 export type Goal = typeof goals.$inferSelect;
 export type CustomWorkout = typeof customWorkouts.$inferSelect;
 export type PlanOverride = typeof planOverrides.$inferSelect;
+export type TrainingPlanRow = typeof trainingPlans.$inferSelect;
+export type NewTrainingPlanRow = typeof trainingPlans.$inferInsert;
 export type PersonalBest = typeof personalBests.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;

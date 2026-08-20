@@ -11,6 +11,7 @@ import {
 } from "@trihards/core";
 import { DashboardClient } from "@/components/DashboardClient";
 import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
+import { getActiveTrainingPlan } from "@/lib/training-plans";
 
 // What the activity lists, calendar, and plan tabs render. The full year of
 // history backs the training-load calculation only — we slice down to this
@@ -31,10 +32,14 @@ export default async function DashboardPage() {
   // once per athlete-local day: if the cached data is from an earlier day it
   // refetches live from Strava (mirroring the coach's new-day reset), otherwise
   // it serves the cache untouched to stay off Strava's rate limit.
-  const { activities: history, fetchedAt } = await getActivitiesWithDailySync(
-    session.tokens.athlete_id,
-    TRAINING_HISTORY_WEEKS,
-  );
+  // The plan is per-athlete: their most recent upload, or null when they have
+  // not uploaded one — there is no shared plan to fall back to. Fetched
+  // alongside the activity history so the plan and calendar tabs render from
+  // this athlete's plan and nobody else's.
+  const [{ activities: history, fetchedAt }, activePlan] = await Promise.all([
+    getActivitiesWithDailySync(session.tokens.athlete_id, TRAINING_HISTORY_WEEKS),
+    getActiveTrainingPlan(resolved.userId),
+  ]);
 
   // This is a server component, so a bare `new Date()` is the server's UTC clock
   // — which has already rolled to tomorrow during the athlete's evening in any
@@ -92,6 +97,8 @@ export default async function DashboardPage() {
       activities={activities}
       weeklyVolume={weeklyVolume}
       trainingLoad={trainingLoad}
+      trainingPlan={activePlan?.plan ?? null}
+      planSummary={activePlan?.summary ?? null}
       isAdmin={isAdminAthlete(resolved.stravaAthleteId)}
     />
   );

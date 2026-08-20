@@ -14,18 +14,22 @@ import {
 } from "recharts";
 import { StravaActivity } from "@trihards/core";
 import {
-  plan,
   plannedVsActualByWeek,
   matchSessions,
-  daysUntilRace,
   SessionWithStatus,
 } from "@trihards/core";
-import type { PlanOverrideMap } from "@trihards/core";
+import type { PlanOverrideMap, TrainingPlan } from "@trihards/core";
 import { getWeekStart } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 
 interface Props {
   activities: StravaActivity[];
+  /**
+   * The athlete's own plan, or null when they have not uploaded one. With no
+   * plan the only planned work is the custom workouts they added themselves —
+   * nothing is filled in from a shared default.
+   */
+  plan: TrainingPlan | null;
 }
 
 const STATUS_STYLES: Record<SessionWithStatus["status"], { label: string; cls: string }> = {
@@ -58,7 +62,7 @@ function formatWeekRange(weekStart: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-export function PlannedVsActual({ activities }: Props) {
+export function PlannedVsActual({ activities, plan }: Props) {
   const [overrides, setOverrides] = useState<PlanOverrideMap>({});
   const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
 
@@ -76,14 +80,13 @@ export function PlannedVsActual({ activities }: Props) {
   }, []);
 
   const weeks = useMemo(
-    () => plannedVsActualByWeek(activities, overrides, undefined, workouts),
-    [activities, overrides, workouts]
+    () => plannedVsActualByWeek(plan, activities, overrides, undefined, workouts),
+    [plan, activities, overrides, workouts]
   );
   const allSessions = useMemo(
-    () => matchSessions(activities, overrides, undefined, workouts),
-    [activities, overrides, workouts]
+    () => matchSessions(plan, activities, overrides, undefined, workouts),
+    [plan, activities, overrides, workouts]
   );
-  const days = daysUntilRace();
 
   const currentWeekStart = getWeekStart(new Date());
   const currentIdx = Math.max(
@@ -91,7 +94,18 @@ export function PlannedVsActual({ activities }: Props) {
     weeks.findIndex((w) => w.weekStart === currentWeekStart)
   );
 
-  const [selectedIdx, setSelectedIdx] = useState(currentIdx);
+  // The selection is stored as a week start, not an index. The week list is
+  // empty on first paint (overrides and workouts are fetched client-side) and
+  // is replaced wholesale when the athlete uploads a new plan; an index would
+  // survive both and end up pointing at the wrong week, or off the end of the
+  // list. A week that no longer exists simply falls back to the current one.
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const foundIdx = selectedWeek
+    ? weeks.findIndex((w) => w.weekStart === selectedWeek)
+    : -1;
+  const selectedIdx = foundIdx >= 0 ? foundIdx : currentIdx;
+  const selectWeek = (idx: number) =>
+    setSelectedWeek(weeks[idx]?.weekStart ?? null);
   const selected = weeks[selectedIdx];
   const planWeekNumber = selectedIdx + 1;
   const isCurrent = selected?.weekStart === currentWeekStart;
@@ -116,16 +130,29 @@ export function PlannedVsActual({ activities }: Props) {
     isSelected: i === selectedIdx,
   }));
 
+  // Nothing planned at all: no uploaded plan and no custom workouts. Say so
+  // rather than rendering an empty chart and a "Week 1 of 0" header.
+  if (weeks.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center">
+        <p className="text-gray-400 text-sm font-medium">Nothing planned yet</p>
+        <p className="text-gray-600 text-xs mt-1">
+          {plan
+            ? "This plan has no sessions left to show."
+            : "Upload a plan above, or add workouts on the calendar, and they will show up here."}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
-            Plan: {plan.name}
+            Planned vs actual
           </h2>
-          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30">
-            Race in {days} days
-          </span>
+          <span className="text-xs text-gray-600">{weeks.length} weeks</span>
         </div>
 
         <ResponsiveContainer width="100%" height={240}>
@@ -150,7 +177,7 @@ export function PlannedVsActual({ activities }: Props) {
             <Bar
               dataKey="Planned"
               radius={[3, 3, 0, 0]}
-              onClick={(_, i) => setSelectedIdx(i)}
+              onClick={(_, i) => selectWeek(i)}
               style={{ cursor: "pointer" }}
             >
               {chartData.map((d) => (
@@ -170,7 +197,7 @@ export function PlannedVsActual({ activities }: Props) {
               dataKey="Actual"
               fill="#4ade80"
               radius={[3, 3, 0, 0]}
-              onClick={(_, i) => setSelectedIdx(i)}
+              onClick={(_, i) => selectWeek(i)}
               style={{ cursor: "pointer" }}
             />
           </BarChart>
@@ -200,7 +227,7 @@ export function PlannedVsActual({ activities }: Props) {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setSelectedIdx((i) => Math.max(0, i - 1))}
+              onClick={() => selectWeek(Math.max(0, selectedIdx - 1))}
               disabled={selectedIdx === 0}
               className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 text-sm transition-colors cursor-pointer"
             >
@@ -209,7 +236,7 @@ export function PlannedVsActual({ activities }: Props) {
             {!isCurrent && (
               <button
                 type="button"
-                onClick={() => setSelectedIdx(currentIdx)}
+                onClick={() => setSelectedWeek(null)}
                 className="px-3 py-1.5 rounded-lg border border-orange-500/40 hover:border-orange-500 text-orange-400 text-xs font-semibold transition-colors cursor-pointer"
               >
                 Today
@@ -218,7 +245,7 @@ export function PlannedVsActual({ activities }: Props) {
             <button
               type="button"
               onClick={() =>
-                setSelectedIdx((i) => Math.min(weeks.length - 1, i + 1))
+                selectWeek(Math.min(weeks.length - 1, selectedIdx + 1))
               }
               disabled={selectedIdx === weeks.length - 1}
               className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 text-sm transition-colors cursor-pointer"
