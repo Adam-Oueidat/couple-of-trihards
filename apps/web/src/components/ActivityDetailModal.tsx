@@ -41,7 +41,6 @@ interface LapPoint {
   dist: string;
   time: string;
   hr?: number;
-  work: boolean; // at/above the median lap speed — the hard reps
 }
 
 const MAX_POINTS = 300;
@@ -103,18 +102,10 @@ function formatLapDistance(
     : `${(meters / 1000).toFixed(2)} km`;
 }
 
-function median(values: number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-}
-
 function buildLapPoints(
   laps: NonNullable<DetailedActivity["laps"]>,
   discipline: ReturnType<typeof getDiscipline>,
 ): LapPoint[] {
-  const medianSpeed = median(laps.map((l) => l.average_speed));
   return laps.map((l) => ({
     lap: `${l.lap_index}`,
     speed: l.average_speed,
@@ -123,7 +114,6 @@ function buildLapPoints(
     dist: formatLapDistance(l.distance, discipline),
     time: formatTime(l.moving_time),
     hr: l.average_heartrate,
-    work: l.average_speed >= medianSpeed,
   }));
 }
 
@@ -146,8 +136,10 @@ function LapChart({
 
   const VW = 1000; // viewBox width units (scaled to container by the browser)
   const H = 160;
+  const TOP = 8; // headroom above the tallest bar
   const GAP = 2; // horizontal inset per side, in viewBox units
   const MIN_H = 4; // keep even a slow walk visible
+  const AXIS_W = 52; // px gutter for the pace axis
 
   const fracs = points.map((p) => p.seconds / totalTime);
   const starts = fracs.map((_, i) => fracs.slice(0, i).reduce((a, b) => a + b, 0));
@@ -155,51 +147,87 @@ function LapChart({
     i,
     x: starts[i] * VW,
     w: fracs[i] * VW,
-    bh: Math.max(MIN_H, (p.speed / maxSpeed) * (H - 8)),
+    bh: Math.max(MIN_H, (p.speed / maxSpeed) * (H - TOP)),
     p,
   }));
+
+  // Pace reference lines: evenly-spaced speeds mapped to their y and labeled in
+  // pace, so faster (taller) sits higher. Non-round on purpose — they read off
+  // the actual lap range rather than arbitrary round paces.
+  const TICKS = 4;
+  const paceTicks = Array.from({ length: TICKS }, (_, k) => {
+    const speed = (maxSpeed * (k + 1)) / TICKS;
+    return { y: H - (speed / maxSpeed) * (H - TOP), label: formatSplitPace(speed, discipline) };
+  });
 
   const active = hover !== null ? bars[hover] : null;
 
   return (
-    <div className="relative">
-      <svg
-        viewBox={`0 0 ${VW} ${H}`}
-        width="100%"
-        height={H}
-        preserveAspectRatio="none"
-        onMouseLeave={() => setHover(null)}
-      >
-        {bars.map((b) => (
-          <rect
-            key={b.i}
-            x={b.x + GAP}
-            y={H - b.bh}
-            width={Math.max(0, b.w - GAP * 2)}
-            height={b.bh}
-            fill={b.p.work ? "#f97316" : "#4b5563"}
-            opacity={hover === null || hover === b.i ? 1 : 0.45}
-            onMouseEnter={() => setHover(b.i)}
-          />
-        ))}
-      </svg>
-      {active && (
-        <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-3 py-2 text-gray-200"
-          style={{
-            ...tooltipStyle,
-            left: `${((active.x + active.w / 2) / VW) * 100}%`,
-            top: H - active.bh - 8,
-          }}
-        >
-          <p className="font-semibold text-white">Lap {active.p.lap}</p>
-          <p>{active.p.dist} · {active.p.time}</p>
-          <p>{active.p.pace}</p>
-          {active.p.hr ? <p>{active.p.hr.toFixed(0)} bpm</p> : null}
+    <div>
+      <div className="flex">
+        <div className="relative flex-shrink-0" style={{ width: AXIS_W, height: H }}>
+          {paceTicks.map((t, k) => (
+            <span
+              key={k}
+              className="absolute right-1.5 -translate-y-1/2 text-gray-500 text-[10px] tabular-nums"
+              style={{ top: t.y }}
+            >
+              {t.label}
+            </span>
+          ))}
         </div>
-      )}
-      <p className="mt-1.5 text-gray-500 text-xs">
-        Bar width = duration · height = speed
+        <div className="relative flex-1">
+          <svg
+            viewBox={`0 0 ${VW} ${H}`}
+            width="100%"
+            height={H}
+            preserveAspectRatio="none"
+            onMouseLeave={() => setHover(null)}
+          >
+            {paceTicks.map((t, k) => (
+              <line
+                key={k}
+                x1={0}
+                x2={VW}
+                y1={t.y}
+                y2={t.y}
+                stroke="#374151"
+                strokeWidth={1}
+                strokeDasharray="4 4"
+              />
+            ))}
+            {bars.map((b) => (
+              <rect
+                key={b.i}
+                x={b.x + GAP}
+                y={H - b.bh}
+                width={Math.max(0, b.w - GAP * 2)}
+                height={b.bh}
+                fill="#f97316"
+                opacity={hover === null || hover === b.i ? 1 : 0.5}
+                onMouseEnter={() => setHover(b.i)}
+              />
+            ))}
+          </svg>
+          {active && (
+            <div
+              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg px-3 py-2 text-gray-200"
+              style={{
+                ...tooltipStyle,
+                left: `${((active.x + active.w / 2) / VW) * 100}%`,
+                top: H - active.bh - 8,
+              }}
+            >
+              <p className="font-semibold text-white">Lap {active.p.lap}</p>
+              <p>{active.p.dist} · {active.p.time}</p>
+              <p>{active.p.pace}</p>
+              {active.p.hr ? <p>{active.p.hr.toFixed(0)} bpm</p> : null}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="mt-1.5 text-gray-500 text-xs" style={{ paddingLeft: AXIS_W }}>
+        Bar width = duration · height = pace (taller = faster)
       </p>
     </div>
   );
