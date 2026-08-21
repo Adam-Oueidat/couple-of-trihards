@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -18,9 +18,9 @@ import {
   matchSessions,
   SessionWithStatus,
 } from "@trihards/core";
-import type { PlanOverrideMap, TrainingPlan } from "@trihards/core";
+import type { TrainingPlan } from "@trihards/core";
 import { getWeekStart } from "@trihards/core";
-import type { CustomWorkout } from "@/lib/workouts";
+import type { PlanEdits } from "./usePlanEdits";
 
 interface Props {
   activities: StravaActivity[];
@@ -30,6 +30,13 @@ interface Props {
    * nothing is filled in from a shared default.
    */
   plan: TrainingPlan | null;
+  /**
+   * Moved/hidden sessions and the custom workouts added in the calendar (a
+   * separate table, so they have to be merged in explicitly). Owned by the
+   * dashboard shell and seeded from the server render, so the week list is
+   * complete on the first paint rather than filling in after a fetch.
+   */
+  edits: PlanEdits;
 }
 
 const STATUS_STYLES: Record<SessionWithStatus["status"], { label: string; cls: string }> = {
@@ -62,22 +69,8 @@ function formatWeekRange(weekStart: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-export function PlannedVsActual({ activities, plan }: Props) {
-  const [overrides, setOverrides] = useState<PlanOverrideMap>({});
-  const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
-
-  useEffect(() => {
-    fetch("/api/plan-overrides")
-      .then((res) => (res.ok ? res.json() : {}))
-      .then(setOverrides)
-      .catch(() => {});
-    // Custom workouts added/edited in the calendar live in a separate table, so
-    // fetch them too and merge them in — otherwise they never surface here.
-    fetch("/api/workouts")
-      .then((res) => (res.ok ? res.json() : []))
-      .then(setWorkouts)
-      .catch(() => {});
-  }, []);
+export function PlannedVsActual({ activities, plan, edits }: Props) {
+  const { overrides, workouts } = edits;
 
   const weeks = useMemo(
     () => plannedVsActualByWeek(plan, activities, overrides, undefined, workouts),
@@ -95,10 +88,10 @@ export function PlannedVsActual({ activities, plan }: Props) {
   );
 
   // The selection is stored as a week start, not an index. The week list is
-  // empty on first paint (overrides and workouts are fetched client-side) and
-  // is replaced wholesale when the athlete uploads a new plan; an index would
-  // survive both and end up pointing at the wrong week, or off the end of the
-  // list. A week that no longer exists simply falls back to the current one.
+  // replaced wholesale when the athlete uploads a new plan, and is empty until
+  // then for an athlete with no plan; an index would survive that and end up
+  // pointing at the wrong week, or off the end of the list. A week that no
+  // longer exists simply falls back to the current one.
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const foundIdx = selectedWeek
     ? weeks.findIndex((w) => w.weekStart === selectedWeek)
