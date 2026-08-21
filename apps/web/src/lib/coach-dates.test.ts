@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StravaActivity } from "@trihards/core";
-import { localDateOf, resolveToday } from "./coach-dates";
+import { epochOfDate, localDateOf, resolveToday, yearStartOf } from "./coach-dates";
 
 // Only start_date / start_date_local are read by these helpers.
 function activity(start_date: string, start_date_local: string): StravaActivity {
@@ -42,5 +42,32 @@ describe("localDateOf", () => {
   it("falls back to UTC when no offset can be derived", () => {
     const ts = Math.floor(Date.parse("2026-06-23T12:00:00Z") / 1000);
     expect(localDateOf(ts, [])).toBe("2026-06-23");
+  });
+});
+
+describe("yearStartOf", () => {
+  it("returns Jan 1 of the year the date falls in", () => {
+    expect(yearStartOf("2026-08-21")).toBe("2026-01-01");
+    expect(yearStartOf("2026-01-01")).toBe("2026-01-01");
+    expect(yearStartOf("2025-12-31")).toBe("2025-01-01");
+  });
+
+  it("orders lexically against ISO dates, so it works as a YTD filter", () => {
+    const yearStart = yearStartOf("2026-08-21");
+    expect("2026-08-02" >= yearStart).toBe(true);
+    expect("2026-01-01" >= yearStart).toBe(true);
+    expect("2025-12-31" >= yearStart).toBe(false);
+  });
+});
+
+describe("epochOfDate", () => {
+  it("is midnight UTC of the given day", () => {
+    expect(epochOfDate("2026-01-01")).toBe(Date.parse("2026-01-01T00:00:00Z") / 1000);
+  });
+
+  it("places an activity from earlier that year before the boundary", () => {
+    const boundary = epochOfDate("2026-01-01");
+    expect(Date.parse("2025-11-04T09:00:00Z") / 1000).toBeLessThan(boundary);
+    expect(Date.parse("2026-03-04T09:00:00Z") / 1000).toBeGreaterThan(boundary);
   });
 });
