@@ -33,8 +33,7 @@ RUN pnpm --filter @trihards/web build
 FROM node:22-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
-    PORT=3000 \
-    HOSTNAME=0.0.0.0
+    PORT=3000
 RUN useradd --create-home --shell /usr/sbin/nologin nextjs
 
 # outputFileTracingRoot is the monorepo root, so the standalone tree mirrors the
@@ -46,4 +45,8 @@ COPY --from=builder --chown=nextjs:nextjs /app/apps/web/public ./apps/web/public
 
 USER nextjs
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+# Next's standalone server binds to $HOSTNAME. Container runtimes inject their
+# own HOSTNAME (the instance's name), which an ENV default cannot outrank -- the
+# server then listens on one interface while the platform health-checks another.
+# Setting it in the exec line wins over anything the runtime provides.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node apps/web/server.js"]
