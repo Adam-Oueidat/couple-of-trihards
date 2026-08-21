@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StravaActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
 import {
@@ -102,6 +102,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragFadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editWorkoutForm, setEditWorkoutForm] = useState<EditWorkoutFormState | null>(null);
   const [editWorkoutSaving, setEditWorkoutSaving] = useState(false);
   const [editWorkoutError, setEditWorkoutError] = useState<string | null>(null);
@@ -202,15 +203,47 @@ export function CalendarTab({ activities, plan, edits }: Props) {
   function onDragStart(e: React.DragEvent, payload: DragPayload) {
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(payload));
     e.dataTransfer.effectAllowed = "move";
-    setDraggingId(
-      payload.kind === "plan" ? `plan:${payload.sessionId}` : `custom:${payload.id}`
-    );
+    const id =
+      payload.kind === "plan" ? `plan:${payload.sessionId}` : `custom:${payload.id}`;
+    // Fade the source chip on the next tick rather than right now. `dragstart`
+    // is a discrete event, so React flushes this update synchronously inside
+    // the event dispatch — which finishes before the browser snapshots the
+    // element to build the drag image. Setting `opacity-30` here bakes the
+    // fade into that snapshot, so the chip under the cursor is greyed out for
+    // the whole drag and stays greyed through the browser's drop animation.
+    // A timeout (not requestAnimationFrame — browsers throttle rAF while a
+    // native drag holds the main thread) runs after the snapshot is taken, so
+    // the chip you drag stays solid and only the one left behind fades.
+    dragFadeTimer.current = setTimeout(() => {
+      dragFadeTimer.current = null;
+      setDraggingId(id);
+    }, 0);
   }
 
-  function onDragEnd() {
+  function endDrag() {
+    if (dragFadeTimer.current !== null) {
+      clearTimeout(dragFadeTimer.current);
+      dragFadeTimer.current = null;
+    }
     setDraggingId(null);
     setDragOverDate(null);
   }
+
+  // Safety net for the fade: a successful drop re-renders the chip into a
+  // different day cell, unmounting the node being dragged, and browsers never
+  // fire `dragend` on a node that has left the DOM. Watching the window clears
+  // the drag state however the drag ended — including drags whose chip
+  // disappears for reasons this component did not initiate.
+  useEffect(() => {
+    if (!draggingId) return;
+    const clear = () => endDrag();
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+    };
+  }, [draggingId]);
 
   function onDayDragOver(e: React.DragEvent, dateStr: string) {
     if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
@@ -225,7 +258,13 @@ export function CalendarTab({ activities, plan, edits }: Props) {
 
   async function onDayDrop(e: React.DragEvent, dateStr: string) {
     e.preventDefault();
-    setDragOverDate(null);
+    // Clear the drag state here rather than leaving it to onDragEnd: a
+    // successful drop re-renders the chip into a different day cell, which
+    // unmounts the element being dragged, and the browser never fires
+    // `dragend` on a node that has left the DOM. Without this the chip stayed
+    // stuck at opacity-30 — looking greyed out — until a later drag that
+    // ended without a move let `dragend` through again.
+    endDrag();
     const raw = e.dataTransfer.getData(DRAG_MIME);
     if (!raw) return;
     let payload: DragPayload;
@@ -526,7 +565,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                               currentDate: s.date,
                             })
                           }
-                          onDragEnd={onDragEnd}
+                          onDragEnd={endDrag}
                           title={
                             `${s.name} (${s.km}km, ${s.type})` +
                             (moved ? ` — moved from ${s.movedFrom}` : "") +
@@ -586,7 +625,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                               currentDate: w.date,
                             })
                           }
-                          onDragEnd={onDragEnd}
+                          onDragEnd={endDrag}
                           title={`${w.name}${w.notes ? ` — ${w.notes}` : ""} (added by ${w.addedBy})\nClick to edit · Drag to reschedule`}
                           className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
                             DISCIPLINE_PILL[w.discipline]
