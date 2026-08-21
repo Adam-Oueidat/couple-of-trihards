@@ -226,6 +226,13 @@ export function CalendarTab({ activities, plan, edits }: Props) {
   async function onDayDrop(e: React.DragEvent, dateStr: string) {
     e.preventDefault();
     setDragOverDate(null);
+    // Clear the drag state here rather than leaving it to onDragEnd: a
+    // successful drop re-renders the chip into a different day cell, which
+    // unmounts the element being dragged, and the browser never fires
+    // `dragend` on a node that has left the DOM. Without this the chip stayed
+    // stuck at opacity-30 — looking greyed out — until a later drag that
+    // ended without a move let `dragend` through again.
+    setDraggingId(null);
     const raw = e.dataTransfer.getData(DRAG_MIME);
     if (!raw) return;
     let payload: DragPayload;
