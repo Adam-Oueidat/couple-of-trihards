@@ -4,7 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
-import { TrainingLoadPoint } from "@trihards/core";
+import { TrainingLoadPoint, type TrainingPlan } from "@trihards/core";
+import type { PlanSummary } from "@/lib/training-plans";
 import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
 import { TrainingLoadChart } from "./TrainingLoadChart";
 import { ActivityList } from "./ActivityList";
@@ -14,6 +15,7 @@ import { LogoutButton } from "./LogoutButton";
 import { CoachChat } from "./CoachChat";
 import { PlannedVsActual } from "./PlannedVsActual";
 import { CalendarTab } from "./CalendarTab";
+import { PlanSourceCard } from "./PlanSourceCard";
 import { GoalsCard } from "./GoalsCard";
 import { FitnessProfile } from "./FitnessProfile";
 import { ThemeToggle } from "./ThemeToggle";
@@ -27,6 +29,9 @@ interface Props {
   trainingLoad: TrainingLoadPoint[];
   /** Unix-millis of the last real Strava sync; null before any data is cached. */
   syncedAt: number | null;
+  /** This athlete's active plan, or null when they have not uploaded one. */
+  trainingPlan: TrainingPlan | null;
+  planSummary: PlanSummary | null;
   isAdmin: boolean;
 }
 
@@ -47,11 +52,20 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, trainingPlan, planSummary, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pending, startTransition] = useTransition();
+
+  // Seeded from the server render, then swapped in place when the athlete
+  // uploads or removes a plan, so the plan and calendar tabs update without a
+  // round trip through the server component. Both are null when this athlete
+  // has no plan of their own.
+  const [plan, setPlan] = useState<{
+    plan: TrainingPlan | null;
+    summary: PlanSummary | null;
+  }>(() => ({ plan: trainingPlan, summary: planSummary }));
 
   // Client-only "Synced …" clock, driven by the real last-sync timestamp
   // (syncedAt) rather than mount time — so a plain refresh keeps counting up
@@ -217,9 +231,17 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             </div>
           </div>
         ) : tab === "plan" ? (
-          <PlannedVsActual activities={activities} />
+          <div className="space-y-6">
+            <PlanSourceCard
+              plan={plan.plan}
+              summary={plan.summary}
+              onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
+            />
+
+            <PlannedVsActual activities={activities} plan={plan.plan} />
+          </div>
         ) : tab === "calendar" ? (
-          <CalendarTab activities={activities} />
+          <CalendarTab activities={activities} plan={plan.plan} />
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">

@@ -10,11 +10,11 @@ import {
   groupByWeek,
   calcTrainingLoad,
   formatPace,
-  plan,
   matchSessions,
   daysUntilRace,
 } from "@trihards/core";
 import { getWorkouts } from "./workouts";
+import { getActiveTrainingPlan } from "./training-plans";
 import { getOverrides } from "./plan-overrides";
 import { getGoals } from "./goals";
 import { getRecentAnalyses } from "./analyses";
@@ -39,8 +39,8 @@ Guidelines:
 - When FTP and weight are available, use W/kg for ride intensity calls.
 - Pay attention to CTL (fitness), ATL (fatigue), and TSB (form). Negative TSB means accumulated fatigue; very negative (< -20) suggests overreaching. Positive TSB means freshness.
 - Watch for imbalances between swim/bike/run relative to typical triathlon preparation.
-- The athlete is following a structured Runna running plan (provided below) toward a goal race. Help them integrate it with their swim and bike training without overloading.
-- When discussing the plan, consider adherence so far (completed/missed sessions) and how swim/bike load interacts with key run sessions.
+- The "Training plan" section below is this athlete's own plan, or says NONE. Every plan, race, date, and session name you mention must come from that section — if it says NONE, this athlete has no plan and no goal race, and you must not name one.
+- When the athlete does have a plan, help them integrate it with their other disciplines without overloading, and consider adherence so far (completed/missed sessions) and how the other disciplines' load interacts with its key sessions.
 - Flag injury-risk patterns: sudden volume spikes (>30% week over week), no rest days, high fatigue.
 - If asked about topics requiring medical expertise, recommend seeing a professional.
 - Use metric units.
@@ -50,7 +50,7 @@ Guidelines:
 - When the athlete refers to "my session", "my workout", "today's effort" or similar without naming one, assume they mean the most recent / newly-synced activity (see "New since we last spoke" when present), and confirm which one if it's ambiguous.
 
 Plan moves:
-- The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original Runna-plan dates.
+- The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original plan dates.
 - When the athlete tells you they had to move a session, acknowledge the change and adapt advice (e.g. a long run pushed by a day means the easy day around it should shift too). If they're stacking hard sessions back-to-back due to a move, flag the risk.
 
 Adding workouts:
@@ -210,15 +210,21 @@ ${newActivities.slice(0, 10).map(activityLine).join("\n")}\n`
 ${opts.priorSummary}\n`
     : "";
 
-  const [overrides, goals, pbs, workouts, recentAnalyses] = await Promise.all([
-    getOverrides(userId),
-    getGoals(userId),
-    getPersonalBests(userId),
-    getWorkouts(userId),
-    getRecentAnalyses(userId, 3),
-  ]);
+  const [overrides, goals, pbs, workouts, recentAnalyses, activePlan] =
+    await Promise.all([
+      getOverrides(userId),
+      getGoals(userId),
+      getPersonalBests(userId),
+      getWorkouts(userId),
+      getRecentAnalyses(userId, 3),
+      getActiveTrainingPlan(userId),
+    ]);
 
-  const sessions = matchSessions(activities, overrides, today);
+  // The coach reasons about this athlete's own plan, or about no plan at all.
+  // There is no shared fallback: serving one is what let a plan the athlete
+  // had never seen be described to them as theirs.
+  const plan = activePlan?.plan ?? null;
+  const sessions = matchSessions(plan, activities, overrides, today);
 
   const pastSessions = sessions.filter((s) => s.date <= today).slice(-10);
   const upcomingSessions = sessions
@@ -230,6 +236,37 @@ ${opts.priorSummary}\n`
       s.actualKm !== undefined ? ` (actual: ${s.actualKm}km)` : "";
     return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}`;
   };
+
+  // An athlete with no plan gets a section that says so in as many words. The
+  // alternative — omitting the section — reads as "the plan just wasn't
+  // included", which is exactly the gap the model filled in by inventing plan
+  // details. Nothing here is rendered from a default plan.
+  const planSection = plan
+    ? `# Training plan: ${plan.name} (${plan.source}, ${plan.discipline})
+Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace(plan, today)} days away)
+Plan span: ${plan.startDate} to ${plan.raceDate}
+
+## Recent plan sessions (with adherence)
+${pastSessions.map(sessionLine).join("\n") || "None yet"}
+
+## Upcoming plan sessions (next 7)
+${upcomingSessions.map(sessionLine).join("\n") || "None"}
+
+## Plan moves (sessions the athlete rescheduled from their original plan dates)
+${
+  Object.values(overrides)
+    .sort((a, b) => a.newDate.localeCompare(b.newDate))
+    .map((o) => {
+      const session = plan.sessions.find((s) => s.id === o.sessionId);
+      const label = session ? session.name : o.sessionId;
+      return `- "${label}": ${o.originalDate} → ${o.newDate}${o.reason ? ` (reason: ${o.reason})` : ""}`;
+    })
+    .join("\n") || "None — athlete is following original plan dates"
+}`
+    : `# Training plan: NONE
+This athlete has not uploaded a training plan. They have no prescribed sessions, no goal race, and no race date.
+
+Do not name a plan, a race, a race date, or a prescribed session — you have not been given any, and none exist for this athlete. Never describe a session by name unless it appears in their activities or custom workouts above. Coach from their actual training data and stated goals alone, and if a plan would help, invite them to upload one on the Plan tab.`;
 
   const [athleteResult, zonesResult, statsResult] = await Promise.allSettled([
     getAthleteDetail(),
@@ -272,27 +309,7 @@ ${weeklyLines || "No activities"}
 ## Recent activities (latest 20)
 ${recentLines || "No activities"}
 ${newSinceSection}
-# Running plan: ${plan.name} (${plan.source})
-Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace(today)} days away)
-Plan span: ${plan.startDate} to ${plan.raceDate}
-
-## Recent plan sessions (with adherence)
-${pastSessions.map(sessionLine).join("\n") || "None yet"}
-
-## Upcoming plan sessions (next 7)
-${upcomingSessions.map(sessionLine).join("\n") || "None"}
-
-## Plan moves (sessions the athlete rescheduled from their original plan dates)
-${
-  Object.values(overrides)
-    .sort((a, b) => a.newDate.localeCompare(b.newDate))
-    .map((o) => {
-      const session = plan.sessions.find((s) => s.id === o.sessionId);
-      const label = session ? session.name : o.sessionId;
-      return `- "${label}": ${o.originalDate} → ${o.newDate}${o.reason ? ` (reason: ${o.reason})` : ""}`;
-    })
-    .join("\n") || "None — athlete is following original plan dates"
-}
+${planSection}
 
 ## Custom workouts on the calendar (added by athlete or you)
 ${

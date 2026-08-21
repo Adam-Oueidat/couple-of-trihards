@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getDiscipline, plan, type StravaActivity } from "../src";
+import { getDiscipline, SEED_PLAN, type StravaActivity } from "../src";
 
 describe("@trihards/core smoke", () => {
   it("classifies disciplines", () => {
@@ -7,7 +7,7 @@ describe("@trihards/core smoke", () => {
     expect(getDiscipline(stub)).toBe("run");
   });
 
-  it("loads the bundled training plan", () => {
-    expect(plan.sessions.length).toBeGreaterThan(0);
+  it("loads the bundled seed plan used by the one-time backfill", () => {
+    expect(SEED_PLAN.sessions.length).toBeGreaterThan(0);
   });
 });

@@ -13,6 +13,7 @@
     "db:migrate": "TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:$PWD/apps/web/.data/local.db} pnpm --filter @trihards/db migrate",
     "db:import": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db run import-json",
     "db:bootstrap": "TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:$PWD/apps/web/.data/local.db} pnpm --filter @trihards/db bootstrap",
+    "db:backfill-seed-plan": "TURSO_DATABASE_URL=${TURSO_DATABASE_URL:-file:$PWD/apps/web/.data/local.db} pnpm --filter @trihards/db backfill-seed-plan",
     "db:pull-prod": "pnpm --filter @trihards/db pull-prod",
     "db:studio": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db studio"
   },

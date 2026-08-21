@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   matchSessions,
   plannedVsActualByWeek,
-  plan,
+  SEED_PLAN,
   getWeekStart,
   type CustomWorkoutInput,
   type PlanOverride,
@@ -27,22 +27,22 @@ function hide(sessionId: string, date: string): PlanOverrideMap {
 
 describe("hidden sessions", () => {
   it("drops a hidden session from matchSessions", () => {
-    const s = plan.sessions[0];
-    const visible = matchSessions([], undefined, s.date);
+    const s = SEED_PLAN.sessions[0];
+    const visible = matchSessions(SEED_PLAN, [], undefined, s.date);
     expect(visible.some((r) => r.id === s.id)).toBe(true);
 
-    const hidden = matchSessions([], hide(s.id, s.date), s.date);
+    const hidden = matchSessions(SEED_PLAN, [], hide(s.id, s.date), s.date);
     expect(hidden.some((r) => r.id === s.id)).toBe(false);
   });
 
   it("excludes hidden km from the weekly planned total", () => {
-    const s = plan.sessions[0];
+    const s = SEED_PLAN.sessions[0];
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
 
-    const before = plannedVsActualByWeek([], undefined, s.date).find(
+    const before = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date).find(
       (w) => w.weekStart === week,
     )!;
-    const after = plannedVsActualByWeek([], hide(s.id, s.date), s.date).find(
+    const after = plannedVsActualByWeek(SEED_PLAN, [], hide(s.id, s.date), s.date).find(
       (w) => w.weekStart === week,
     );
 
@@ -54,7 +54,7 @@ describe("hidden sessions", () => {
 });
 
 describe("custom workouts", () => {
-  const s = plan.sessions[0];
+  const s = SEED_PLAN.sessions[0];
   const week = getWeekStart(new Date(s.date + "T12:00:00"));
   const swim: CustomWorkoutInput = {
     id: "custom-1",
@@ -65,7 +65,7 @@ describe("custom workouts", () => {
   };
 
   it("surfaces a custom workout in the session list with its discipline", () => {
-    const result = matchSessions([], undefined, s.date, [swim]);
+    const result = matchSessions(SEED_PLAN, [], undefined, s.date, [swim]);
     const row = result.find((r) => r.id === "custom-1");
     expect(row).toBeDefined();
     expect(row!.isCustom).toBe(true);
@@ -75,10 +75,10 @@ describe("custom workouts", () => {
   });
 
   it("adds custom-workout km to the weekly planned total", () => {
-    const base = plannedVsActualByWeek([], undefined, s.date).find(
+    const base = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date).find(
       (w) => w.weekStart === week,
     )!;
-    const withSwim = plannedVsActualByWeek([], undefined, s.date, [swim]).find(
+    const withSwim = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date, [swim]).find(
       (w) => w.weekStart === week,
     )!;
     expect(withSwim.plannedKm).toBeCloseTo(base.plannedKm + 2, 1);
