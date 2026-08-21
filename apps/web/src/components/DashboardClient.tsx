@@ -6,6 +6,9 @@ import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import { TrainingLoadPoint, type TrainingPlan } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
+import type { PlanOverrideMap } from "@trihards/core";
+import type { CustomWorkout } from "@/lib/workouts";
+import { usePlanEdits } from "./usePlanEdits";
 import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
 import { TrainingLoadChart } from "./TrainingLoadChart";
 import { ActivityList } from "./ActivityList";
@@ -32,6 +35,10 @@ interface Props {
   /** This athlete's active plan, or null when they have not uploaded one. */
   trainingPlan: TrainingPlan | null;
   planSummary: PlanSummary | null;
+  /** Moved/hidden plan sessions, keyed by session id. Seeds the client state. */
+  planOverrides: PlanOverrideMap;
+  /** Workouts the athlete (or the coach) added outside the plan. */
+  customWorkouts: CustomWorkout[];
   isAdmin: boolean;
 }
 
@@ -52,7 +59,7 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, trainingPlan, planSummary, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -66,6 +73,19 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
     plan: TrainingPlan | null;
     summary: PlanSummary | null;
   }>(() => ({ plan: trainingPlan, summary: planSummary }));
+
+  // Session moves and custom workouts live here rather than inside the tabs
+  // that render them. Both tabs unmount when the athlete switches away, so
+  // tab-local state was refetched from scratch on every visit — the calendar
+  // remounted with no overrides, painted the plan on its original dates, then
+  // jumped everything into place when the fetch landed. Held here (and seeded
+  // by the server render) the data is already there on the first frame.
+  // Revalidated when the athlete opens a tab that shows it, or hits Sync, so
+  // workouts the coach wrote from chat still appear without a page reload.
+  const edits = usePlanEdits(
+    { overrides: planOverrides, workouts: customWorkouts },
+    tab === "calendar" || tab === "plan" ? `${tab}:${refreshKey}` : null,
+  );
 
   // Client-only "Synced …" clock, driven by the real last-sync timestamp
   // (syncedAt) rather than mount time — so a plain refresh keeps counting up
@@ -238,10 +258,10 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
               onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
             />
 
-            <PlannedVsActual activities={activities} plan={plan.plan} />
+            <PlannedVsActual activities={activities} plan={plan.plan} edits={edits} />
           </div>
         ) : tab === "calendar" ? (
-          <CalendarTab activities={activities} plan={plan.plan} />
+          <CalendarTab activities={activities} plan={plan.plan} edits={edits} />
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">

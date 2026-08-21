@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StravaActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
 import {
@@ -9,8 +9,8 @@ import {
   type SessionType,
   type TrainingPlan,
 } from "@trihards/core";
-import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
+import type { PlanEdits } from "./usePlanEdits";
 import { DISCIPLINE_PILL, DisciplineGlyph } from "./DisciplineGlyph";
 
 interface Props {
@@ -21,6 +21,13 @@ interface Props {
    * borrows a plan from anywhere else.
    */
   plan: TrainingPlan | null;
+  /**
+   * Moved/hidden sessions and custom workouts, owned by the dashboard shell so
+   * they outlive this component — the calendar unmounts on every tab switch,
+   * and fetching them here on mount meant each visit painted the plan on its
+   * original dates before snapping the moved sessions into place.
+   */
+  edits: PlanEdits;
 }
 
 const DRAG_MIME = "application/x-trihard";
@@ -80,10 +87,16 @@ interface EditSessionFormState {
   km: number;
 }
 
-export function CalendarTab({ activities, plan }: Props) {
+export function CalendarTab({ activities, plan, edits }: Props) {
+  const {
+    overrides,
+    workouts,
+    setOverrides,
+    setWorkouts,
+    reloadOverrides: loadOverrides,
+    reloadWorkouts: loadWorkouts,
+  } = edits;
   const [viewDate, setViewDate] = useState(() => new Date());
-  const [workouts, setWorkouts] = useState<CustomWorkout[]>([]);
-  const [overrides, setOverrides] = useState<PlanOverrideMap>({});
   const [form, setForm] = useState<AddFormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,30 +108,6 @@ export function CalendarTab({ activities, plan }: Props) {
   const [editSessionForm, setEditSessionForm] = useState<EditSessionFormState | null>(null);
   const [editSessionSaving, setEditSessionSaving] = useState(false);
   const [editSessionError, setEditSessionError] = useState<string | null>(null);
-
-  const loadWorkouts = useCallback(async () => {
-    try {
-      const res = await fetch("/api/workouts");
-      if (res.ok) setWorkouts(await res.json());
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
-  const loadOverrides = useCallback(async () => {
-    try {
-      const res = await fetch("/api/plan-overrides");
-      if (res.ok) setOverrides(await res.json());
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
-  useEffect(() => {
-    void (async () => {
-      await Promise.all([loadWorkouts(), loadOverrides()]);
-    })();
-  }, [loadWorkouts, loadOverrides]);
 
   // Close any open modal on Escape.
   useEffect(() => {

@@ -12,6 +12,8 @@ import {
 import { DashboardClient } from "@/components/DashboardClient";
 import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
 import { getActiveTrainingPlan } from "@/lib/training-plans";
+import { getOverrides } from "@/lib/plan-overrides";
+import { getWorkouts } from "@/lib/workouts";
 
 // What the activity lists, calendar, and plan tabs render. The full year of
 // history backs the training-load calculation only — we slice down to this
@@ -36,10 +38,18 @@ export default async function DashboardPage() {
   // not uploaded one — there is no shared plan to fall back to. Fetched
   // alongside the activity history so the plan and calendar tabs render from
   // this athlete's plan and nobody else's.
-  const [{ activities: history, fetchedAt }, activePlan] = await Promise.all([
-    getActivitiesWithDailySync(session.tokens.athlete_id, TRAINING_HISTORY_WEEKS),
-    getActiveTrainingPlan(resolved.userId),
-  ]);
+  // The athlete's edits on that plan — moved/hidden sessions and their own
+  // added workouts — come down with it. The calendar and plan tabs need them to
+  // place anything at all, so fetching them here rather than from the client on
+  // mount is what lets those tabs paint their final layout on the first frame
+  // instead of showing the un-moved plan and snapping a moment later.
+  const [{ activities: history, fetchedAt }, activePlan, planOverrides, customWorkouts] =
+    await Promise.all([
+      getActivitiesWithDailySync(session.tokens.athlete_id, TRAINING_HISTORY_WEEKS),
+      getActiveTrainingPlan(resolved.userId),
+      getOverrides(resolved.userId),
+      getWorkouts(resolved.userId),
+    ]);
 
   // This is a server component, so a bare `new Date()` is the server's UTC clock
   // — which has already rolled to tomorrow during the athlete's evening in any
@@ -99,6 +109,8 @@ export default async function DashboardPage() {
       trainingLoad={trainingLoad}
       trainingPlan={activePlan?.plan ?? null}
       planSummary={activePlan?.summary ?? null}
+      planOverrides={planOverrides}
+      customWorkouts={customWorkouts}
       isAdmin={isAdminAthlete(resolved.stravaAthleteId)}
     />
   );
