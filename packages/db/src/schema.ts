@@ -236,6 +236,23 @@ export const personalBests = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.effortName] })],
 );
 
+// Resume cursor for the year-to-date personal-best backfill. Strava only returns
+// `best_efforts` on the per-activity detail endpoint, so covering a whole year
+// costs one API call per run — far past the 100-reads/15-min budget for a single
+// request. The backfill therefore runs in bounded batches and records how far it
+// got here: `syncedThrough` is the `start_date` (Unix seconds) of the last
+// activity it processed, so the next batch resumes after it and a re-run of an
+// already-synced year is free.
+export const pbSyncState = sqliteTable("pb_sync_state", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  syncedThrough: integer("synced_through").notNull(),
+  updatedAt: integer("updated_at")
+    .notNull()
+    .$defaultFn(() => Math.floor(Date.now() / 1000)),
+});
+
 // Durable cache for Strava API responses that back the dashboard render path
 // (recent activities + the Fitness Profile's athlete detail/zones/stats). Stored
 // in the database — not an in-memory Map — so it survives server restarts and is
@@ -266,6 +283,7 @@ export type PlanOverride = typeof planOverrides.$inferSelect;
 export type TrainingPlanRow = typeof trainingPlans.$inferSelect;
 export type NewTrainingPlanRow = typeof trainingPlans.$inferInsert;
 export type PersonalBest = typeof personalBests.$inferSelect;
+export type PbSyncState = typeof pbSyncState.$inferSelect;
 export type Analysis = typeof analyses.$inferSelect;
 export type Conversation = typeof conversations.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;

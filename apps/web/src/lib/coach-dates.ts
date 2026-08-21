@@ -42,3 +42,17 @@ export function localDateOf(
   const offset = athleteOffsetMs(activities) ?? 0;
   return new Date(unixSeconds * 1000 + offset).toISOString().split("T")[0];
 }
+
+// Jan 1 of the year an ISO `YYYY-MM-DD` date falls in. The lower bound for
+// "year to date": personal bests are scoped to the current calendar year, so
+// this is what both the read filter and the backfill window compare against.
+export function yearStartOf(today: string): string {
+  return `${today.slice(0, 4)}-01-01`;
+}
+
+// Unix-seconds instant of an ISO `YYYY-MM-DD` date at midnight UTC. Strava's
+// `start_date` is true UTC, so this is the comparable form of a year boundary
+// when filtering activities.
+export function epochOfDate(date: string): number {
+  return Math.floor(Date.parse(`${date}T00:00:00Z`) / 1000);
+}

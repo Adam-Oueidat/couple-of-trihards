@@ -6,7 +6,7 @@ import {
   AthleteStats,
   AthleteZones,
 } from "@trihards/core";
-import type { PersonalBest } from "@/lib/personal-bests";
+import type { PbSyncResult, PersonalBest } from "@/lib/personal-bests";
 import { DisciplineGlyph } from "./DisciplineGlyph";
 import type { Discipline } from "@trihards/core";
 import { SectionLabel } from "./SectionLabel";
@@ -82,6 +82,9 @@ function formatPbRange(bests: PersonalBest[]): string | null {
 export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
   const [data, setData] = useState<FitnessData | null>(null);
   const [error, setError] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+  const currentYear = new Date().getFullYear();
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +103,46 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
       cancelled = true;
     };
   }, [refreshKey]);
+
+  // Walks the year in batches: Strava exposes best efforts only per activity, so
+  // one request can't cover a whole season's runs without blowing the API's
+  // rate limit. The route reports how much is left and resumes from a stored
+  // cursor, so this just keeps posting until it says done.
+  async function syncYear() {
+    setSyncing(true);
+    setSyncNote(null);
+    let scanned = 0;
+    try {
+      for (;;) {
+        const res = await fetch("/api/personal-bests/sync", { method: "POST" });
+        if (!res.ok) throw new Error("sync failed");
+        const batch = (await res.json()) as PbSyncResult;
+        scanned += batch.processed;
+
+        if (batch.rateLimited) {
+          setSyncNote(
+            `Strava's rate limit paused the scan after ${scanned} runs. Run it again in ~15 minutes to carry on from here.`,
+          );
+          break;
+        }
+        if (batch.done) {
+          setSyncNote(scanned === 0 ? "Already up to date." : `Scanned ${scanned} runs.`);
+          break;
+        }
+        // Defensive: a batch that reports neither progress nor completion would
+        // otherwise spin this loop forever.
+        if (batch.processed === 0) break;
+        setSyncNote(`Scanned ${scanned} runs, ${batch.remaining} to go...`);
+      }
+
+      const fresh = await fetch("/api/fitness");
+      if (fresh.ok) setData(await fresh.json());
+    } catch {
+      setSyncNote("Scan failed. Try again.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   if (error) {
     return (
@@ -196,17 +239,31 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
       )}
 
       <div>
-        <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-          Personal Bests
-        </h3>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <h3 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+            Personal Bests
+            <span className="px-1.5 py-px rounded-full border border-gray-700 bg-gray-950/60 text-gray-400 tracking-normal">
+              {currentYear}
+            </span>
+          </h3>
+          <button
+            type="button"
+            onClick={syncYear}
+            disabled={syncing}
+            className="px-2 py-0.5 rounded-full border border-gray-700 bg-gray-950/60 text-[10px] text-gray-400 hover:text-white hover:border-gray-600 disabled:opacity-50 disabled:cursor-default cursor-pointer transition-colors"
+          >
+            {syncing ? "Scanning..." : "Scan year"}
+          </button>
+        </div>
         {personalBests.length === 0 ? (
           <p className="text-gray-600 text-[11px] leading-snug">
-            PBs are tracked from activities you open or analyze — not all-time.
+            No bests recorded for {currentYear} yet. Scan the year to read best
+            efforts from every run you&apos;ve logged since January.
           </p>
         ) : (
           <>
             <p className="text-gray-500 text-[11px] leading-snug mb-1.5">
-              From activities you&apos;ve opened or analyzed, not all-time.
+              Your best efforts so far in {currentYear}.
               {(() => {
                 const range = formatPbRange(personalBests);
                 return range ? <span className="block">{range}</span> : null;
@@ -225,6 +282,9 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
               ))}
             </div>
           </>
+        )}
+        {syncNote && (
+          <p className="text-gray-600 text-[11px] leading-snug mt-1.5">{syncNote}</p>
         )}
       </div>
     </div>
