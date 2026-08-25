@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { DetailedActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
-import { buildLapPoints, formatLapDistance, formatSplitPace, formatTime, tooltipStyle } from "./format";
+import { buildLapPoints, formatSplitPace, tooltipStyle } from "./format";
 
 export function LapChart({
   laps,

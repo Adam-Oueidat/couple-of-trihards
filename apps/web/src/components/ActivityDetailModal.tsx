@@ -85,9 +85,6 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
 
   const detail = data?.activity;
   const points = data?.streams ? buildChartPoints(data.streams, isRide) : [];
-  const hasHr = points.some((p) => p.hr !== undefined);
-  const hasPace = points.some((p) => p.pace !== undefined);
-  const hasAlt = points.some((p) => p.alt !== undefined);
 
   const laps = detail?.laps ?? [];
   const hasLaps = laps.length > 1;
