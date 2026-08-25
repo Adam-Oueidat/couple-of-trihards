@@ -9,6 +9,7 @@ import { TrainingLoadPoint, type TrainingPlan } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
+import { mutate } from "swr";
 import { usePlanEdits } from "./usePlanEdits";
 
 // recharts pulls in d3-scale/d3-shape/victory-vendor and roughly doubles the
@@ -42,8 +43,8 @@ const PlannedVsActual = dynamic(
 );
 import { CalendarTab } from "./CalendarTab";
 import { PlanSourceCard } from "./PlanSourceCard";
-import { GoalsCard } from "./GoalsCard";
-import { FitnessProfile } from "./FitnessProfile";
+import { GoalsCard, GOALS_KEY } from "./GoalsCard";
+import { FitnessProfile, FITNESS_KEY } from "./FitnessProfile";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
@@ -134,8 +135,11 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
     startTransition(async () => {
       try {
         await refreshDashboard();
-        // Server Component data updates via revalidatePath; bump the key so the
-        // client-fetched cards (Goals, Fitness) refetch too.
+        // Server Component data updates via revalidatePath. The client-fetched
+        // cards revalidate through SWR's cache instead of a counter threaded
+        // down as a prop: Goals and Fitness own their own keys, and bumping
+        // refreshKey still re-keys the plan-edits hook.
+        await Promise.all([mutate(GOALS_KEY), mutate(FITNESS_KEY)]);
         setRefreshKey((k) => k + 1);
       } catch {
         // Refresh failed (e.g. expired session); keep the current data rather
@@ -328,14 +332,14 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
               </div>
             </div>
 
-            <GoalsCard refreshKey={refreshKey} />
+            <GoalsCard />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <SectionLabel>Recent Activities</SectionLabel>
                 <ActivityList activities={activities.slice(0, 5)} />
               </div>
-              <FitnessProfile refreshKey={refreshKey} />
+              <FitnessProfile />
             </div>
           </div>
         ) : tab === "plan" ? (

@@ -1,28 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import useSWR from "swr";
 import type { Goal } from "@/lib/goals";
+import { fetcher } from "@/lib/fetcher";
 import { SectionLabel } from "./SectionLabel";
 
-export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
-  const [goals, setGoals] = useState<Goal[]>([]);
+export const GOALS_KEY = "/api/goals";
+
+export function GoalsCard() {
+  // No refreshKey prop any more: Sync revalidates this key directly.
+  const { data, mutate } = useSWR<Goal[]>(GOALS_KEY, fetcher, {
+    revalidateOnFocus: false,
+  });
+  const goals = data ?? [];
   const [input, setInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/goals");
-      if (res.ok) setGoals(await res.json());
-    } catch {
-      // non-fatal
-    }
-  }, []);
+    await mutate();
+  }, [mutate]);
 
-  useEffect(() => {
-    void (async () => {
-      await load();
-    })();
-  }, [load, refreshKey]);
 
   async function add() {
     const text = input.trim();

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 import {
   LineChart,
   Line,
@@ -263,16 +265,24 @@ const tooltipStyle = {
 };
 
 export function ActivityDetailModal({ activity, onClose }: Props) {
-  const [data, setData] = useState<DetailResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<string | null>(null);
+  const { data, error: loadError } = useSWR<DetailResponse>(
+    `/api/activities/${activity.id}`,
+    fetcher,
+    { revalidateOnFocus: false },
+  );
+  const error = loadError ? "Could not load activity details." : null;
+  // A saved analysis arrives with the detail payload; a streaming one replaces
+  // it the moment runAnalysis starts. Deriving rather than seeding state in an
+  // effect keeps the streaming value winning without an ordering dance.
+  const [streamedAnalysis, setStreamedAnalysis] = useState<string | null>(null);
+  const analysis = streamedAnalysis ?? data?.analysis?.text ?? null;
   const [analyzing, setAnalyzing] = useState(false);
   const [lapsOpen, setLapsOpen] = useState(false);
 
   async function runAnalysis() {
     if (analyzing) return;
     setAnalyzing(true);
-    setAnalysis("");
+    setStreamedAnalysis("");
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
@@ -288,10 +298,10 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
         const { done, value } = await reader.read();
         if (done) break;
         text += decoder.decode(value, { stream: true });
-        setAnalysis(text);
+        setStreamedAnalysis(text);
       }
     } catch {
-      setAnalysis("Analysis failed. Check that your Anthropic API key is configured, then try again.");
+      setStreamedAnalysis("Analysis failed. Check that your Anthropic API key is configured, then try again.");
     } finally {
       setAnalyzing(false);
     }
@@ -299,25 +309,6 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const discipline = getDiscipline(activity);
   const isRide = discipline === "ride";
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/activities/${activity.id}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed (${res.status})`);
-        return res.json();
-      })
-      .then((d: DetailResponse) => {
-        if (cancelled) return;
-        setData(d);
-        if (d.analysis) setAnalysis(d.analysis.text);
-      })
-      .catch(() => {
-        if (!cancelled) setError("Could not load activity details.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activity.id]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => e.key === "Escape" && onClose();
