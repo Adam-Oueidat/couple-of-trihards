@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const weeks = parseInt(new URL(request.url).searchParams.get("weeks") ?? "12", 10);
 
   try {
-    const activities = await getRecentActivities(weeks);
+    const activities = await getRecentActivities(auth, weeks);
     return NextResponse.json(activities);
   } catch (err) {
     log.error("failed to fetch activities", err);

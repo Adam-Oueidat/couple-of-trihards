@@ -16,9 +16,9 @@ export async function GET() {
   if (limited) return limited;
 
   const [athlete, zones, stats, personalBests] = await Promise.all([
-    getAthleteDetail().catch(() => null),
-    getAthleteZones().catch(() => null),
-    getAthleteStats().catch(() => null),
+    getAthleteDetail(auth).catch(() => null),
+    getAthleteZones(auth).catch(() => null),
+    getAthleteStats(auth).catch(() => null),
     getPersonalBests(auth.userId),
   ]);
 
