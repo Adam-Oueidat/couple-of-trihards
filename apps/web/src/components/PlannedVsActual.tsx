@@ -52,12 +52,17 @@ function formatWeekLabel(weekStart: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const SESSION_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
+
 function formatSessionDate(date: string): string {
-  return new Date(date + "T12:00:00").toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return SESSION_DATE_FMT.format(new Date(date + "T12:00:00"));
 }
 
 function formatWeekRange(weekStart: string): string {
@@ -222,6 +227,7 @@ export function PlannedVsActual({ activities, plan, edits }: Props) {
               type="button"
               onClick={() => selectWeek(Math.max(0, selectedIdx - 1))}
               disabled={selectedIdx === 0}
+              aria-label="Previous week"
               className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 text-sm transition-colors cursor-pointer"
             >
               ←
@@ -241,6 +247,7 @@ export function PlannedVsActual({ activities, plan, edits }: Props) {
                 selectWeek(Math.min(weeks.length - 1, selectedIdx + 1))
               }
               disabled={selectedIdx === weeks.length - 1}
+              aria-label="Next week"
               className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 disabled:opacity-30 disabled:cursor-not-allowed text-gray-300 text-sm transition-colors cursor-pointer"
             >
               →

@@ -15,6 +15,15 @@ import {
 import { DetailedActivity, StravaActivity, StreamSet } from "@trihards/core";
 import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
 
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const DETAIL_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+});
+
 interface Props {
   activity: StravaActivity;
   onClose: () => void;
@@ -369,11 +378,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
               {activity.name}
             </h2>
             <p className="text-gray-500 text-xs mt-0.5">
-              {activityDay(activity.start_date_local).toLocaleDateString("en-US", {
-                weekday: "long",
-                month: "long",
-                day: "numeric",
-              })}
+              {DETAIL_DATE_FMT.format(activityDay(activity.start_date_local))}
               {detail?.device_name ? ` · ${detail.device_name}` : ""}
             </p>
           </div>

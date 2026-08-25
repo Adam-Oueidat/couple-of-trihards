@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import type { Discipline, TrainingPlan } from "@trihards/core";
 import { daysUntilRace } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
-import { DISCIPLINE_PILL, DisciplineGlyph } from "./DisciplineGlyph";
+import { DisciplineGlyph } from "./DisciplineGlyph";
+import { DISCIPLINE_PILL } from "./discipline-pill";
 import { SectionLabel } from "./SectionLabel";
 
 interface Props {
@@ -17,12 +18,17 @@ interface Props {
 
 const ACCEPT = ".pdf,.md,.txt,application/pdf,text/markdown,text/plain";
 
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const PLAN_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 function formatDate(date: string): string {
-  return new Date(date + "T12:00:00").toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return PLAN_DATE_FMT.format(new Date(date + "T12:00:00"));
 }
 
 function Pill({

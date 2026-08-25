@@ -109,6 +109,10 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
   // rate limit. The route reports how much is left and resumes from a stored
   // cursor, so this just keeps posting until it says done.
   async function syncYear() {
+    // The button is disabled while syncing, but `disabled` only takes effect on
+    // the render after setSyncing — a double-click inside one tick would start
+    // two scan loops racing on the same server-side cursor.
+    if (syncing) return;
     setSyncing(true);
     setSyncNote(null);
     let scanned = 0;
