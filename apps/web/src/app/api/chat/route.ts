@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
+  const activities = await getRecentActivities(auth, TRAINING_HISTORY_WEEKS);
   // The browser sends its local date so the coach reasons in the athlete's
   // timezone rather than the server's UTC clock.
   const clientToday =
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
   });
 
   const { identity, context: trainingContext } = await buildTrainingContext(
-    userId,
+    auth,
     activities,
     clientToday,
     { priorSummary, sinceTs },

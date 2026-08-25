@@ -10,8 +10,7 @@ import {
 } from "@trihards/core";
 import { and, eq } from "drizzle-orm";
 import { getDb, stravaCache } from "@trihards/db";
-import { getSession } from "./session";
-import { refreshStravaTokens, tokensNeedRefresh } from "./strava-auth";
+import { getValidAccessToken } from "./strava-tokens";
 import { localDateOf, resolveToday } from "./coach-dates";
 
 const log = createLogger("strava");
@@ -81,11 +80,18 @@ export async function getCacheFetchedAt(
   return hit?.fetchedAt ?? null;
 }
 
-async function requireAthleteId(): Promise<number> {
-  const session = await getSession();
-  const id = session.tokens?.athlete_id;
-  if (!id) throw new Error("Not authenticated");
-  return id;
+/**
+ * The caller whose Strava data we are fetching.
+ *
+ * Both ids travel together deliberately: `userId` selects the credentials and
+ * every database row, `athleteId` keys the response cache. They used to be
+ * resolved from two different places — `auth.userId` for our tables and the
+ * session cookie for Strava — which meant a request could read one user's plan
+ * while fetching another user's activities.
+ */
+export interface StravaIdentity {
+  userId: string;
+  stravaAthleteId: number;
 }
 
 // Drops every cached Strava response for one athlete so the next render
@@ -107,11 +113,12 @@ export async function invalidateAthleteCache(athleteId: number): Promise<void> {
 // costs exactly one live refetch. Returns the (possibly refreshed) activities
 // and last-sync timestamp (Unix seconds; null before any row exists).
 export async function getActivitiesWithDailySync(
-  athleteId: number,
+  identity: StravaIdentity,
   weeks = 12,
 ): Promise<{ activities: StravaActivity[]; fetchedAt: number | null }> {
+  const { stravaAthleteId: athleteId } = identity;
   const key = `activities:${weeks}`;
-  let activities = await getRecentActivities(weeks);
+  let activities = await getRecentActivities(identity, weeks);
   let fetchedAt = await getCacheFetchedAt(athleteId, key);
 
   // Server render has no client-sent date, so "today" is derived from the
@@ -119,7 +126,7 @@ export async function getActivitiesWithDailySync(
   const today = resolveToday(undefined, activities);
   if (fetchedAt != null && localDateOf(fetchedAt, activities) !== today) {
     await invalidateAthleteCache(athleteId);
-    activities = await getRecentActivities(weeks);
+    activities = await getRecentActivities(identity, weeks);
     fetchedAt = await getCacheFetchedAt(athleteId, key);
   }
 
@@ -171,36 +178,12 @@ export async function exchangeCodeForTokens(code: string): Promise<StravaTokens>
   };
 }
 
-// Returns a valid access token, refreshing if needed.
-// Token refresh is normally handled by src/proxy.ts (Server Components
-// cannot write cookies); this is a fallback for paths the proxy misses.
-export async function getValidAccessToken(): Promise<string> {
-  const session = await getSession();
-  if (!session.tokens) throw new Error("Not authenticated");
-
-  if (tokensNeedRefresh(session.tokens.expires_at)) {
-    log.info("refreshing Strava token", {
-      athleteId: session.tokens.athlete_id,
-      expiresAt: session.tokens.expires_at,
-    });
-    const refreshed = await refreshStravaTokens(session.tokens.refresh_token);
-    session.tokens = { ...session.tokens, ...refreshed };
-    try {
-      await session.save();
-    } catch {
-      // Called during a Server Component render, where cookies can't be
-      // written. The refreshed token is still used for this request; the
-      // proxy will persist new tokens on the next request.
-      log.debug("token refresh saved in-memory only (server component)");
-    }
-    return refreshed.access_token;
-  }
-
-  return session.tokens.access_token;
-}
-
-async function stravaFetch<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const token = await getValidAccessToken();
+async function stravaFetch<T>(
+  userId: string,
+  path: string,
+  params?: Record<string, string>,
+): Promise<T> {
+  const token = await getValidAccessToken(userId);
   const url = new URL(`${STRAVA_API}${path}`);
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -254,6 +237,7 @@ function toStravaActivity(a: StravaActivity): StravaActivity {
 }
 
 async function getActivities(
+  userId: string,
   page = 1,
   perPage = 50,
   after?: number
@@ -263,13 +247,21 @@ async function getActivities(
     per_page: String(perPage),
   };
   if (after) params.after = String(after);
-  const raw = await stravaFetch<StravaActivity[]>("/athlete/activities", params);
+  const raw = await stravaFetch<StravaActivity[]>(userId, "/athlete/activities", params);
   return raw.map(toStravaActivity);
 }
 
-export async function getActivityDetail(id: number): Promise<DetailedActivity> {
-  return cached(`detail:${id}`, 60 * 60_000, async () => {
-    return stravaFetch<DetailedActivity>(`/activities/${id}`);
+export async function getActivityDetail(
+  { userId, stravaAthleteId: athleteId }: StravaIdentity,
+  id: number,
+): Promise<DetailedActivity> {
+  // Keyed by athlete as well as activity. Strava would reject one athlete's
+  // token for another athlete's private activity, but a cache hit never reaches
+  // Strava — an unkeyed `detail:${id}` serves athlete A's private payload to
+  // athlete B for the full TTL. Callers must still authorize the id itself
+  // (see lib/activity-access.ts); this only stops the cache from leaking.
+  return cached(`detail:${athleteId}:${id}`, 60 * 60_000, async () => {
+    return stravaFetch<DetailedActivity>(userId, `/activities/${id}`);
   });
 }
 
@@ -277,27 +269,41 @@ export async function getActivityDetail(id: number): Promise<DetailedActivity> {
 // re-fetched on every dashboard load. Cache persistently (sync only on login or
 // the "Sync" button) for the same reason as getRecentActivities — a plain
 // refresh must not hit Strava. invalidateAthleteCache drops these rows.
-export async function getAthleteDetail(): Promise<AthleteDetail> {
-  const id = await requireAthleteId();
-  return dbCached(id, "athlete-detail", () => stravaFetch<AthleteDetail>("/athlete"));
-}
-
-export async function getAthleteZones(): Promise<AthleteZones> {
-  const id = await requireAthleteId();
-  return dbCached(id, "athlete-zones", () => stravaFetch<AthleteZones>("/athlete/zones"));
-}
-
-export async function getAthleteStats(): Promise<AthleteStats> {
-  const id = await requireAthleteId();
-  return dbCached(id, "athlete-stats", () =>
-    stravaFetch<AthleteStats>(`/athletes/${id}/stats`)
+export async function getAthleteDetail({
+  userId,
+  stravaAthleteId: athleteId,
+}: StravaIdentity): Promise<AthleteDetail> {
+  return dbCached(athleteId, "athlete-detail", () =>
+    stravaFetch<AthleteDetail>(userId, "/athlete"),
   );
 }
 
-export async function getActivityStreams(id: number): Promise<StreamSet | null> {
-  return cached(`streams:${id}`, 60 * 60_000, async () => {
+export async function getAthleteZones({
+  userId,
+  stravaAthleteId: athleteId,
+}: StravaIdentity): Promise<AthleteZones> {
+  return dbCached(athleteId, "athlete-zones", () =>
+    stravaFetch<AthleteZones>(userId, "/athlete/zones"),
+  );
+}
+
+export async function getAthleteStats({
+  userId,
+  stravaAthleteId: athleteId,
+}: StravaIdentity): Promise<AthleteStats> {
+  return dbCached(athleteId, "athlete-stats", () =>
+    stravaFetch<AthleteStats>(userId, `/athletes/${athleteId}/stats`),
+  );
+}
+
+export async function getActivityStreams(
+  { userId, stravaAthleteId: athleteId }: StravaIdentity,
+  id: number,
+): Promise<StreamSet | null> {
+  // Athlete-scoped for the same reason as getActivityDetail above.
+  return cached(`streams:${athleteId}:${id}`, 60 * 60_000, async () => {
     try {
-      return await stravaFetch<StreamSet>(`/activities/${id}/streams`, {
+      return await stravaFetch<StreamSet>(userId, `/activities/${id}/streams`, {
         keys: "time,distance,heartrate,velocity_smooth,altitude,watts",
         key_by_type: "true",
       });
@@ -315,16 +321,17 @@ export async function getActivityStreams(id: number): Promise<StreamSet | null> 
 // see the auth callback, which invalidates this athlete's cache), or (b) the
 // user presses the dashboard "Sync" button (refreshDashboard ->
 // invalidateAthleteCache). This keeps plain refreshes off Strava's rate limit.
-export async function getRecentActivities(weeks = 12): Promise<StravaActivity[]> {
-  const athleteId = await requireAthleteId();
-
+export async function getRecentActivities(
+  { userId, stravaAthleteId: athleteId }: StravaIdentity,
+  weeks = 12,
+): Promise<StravaActivity[]> {
   return dbCached(athleteId, `activities:${weeks}`, async () => {
     const after = Math.floor(Date.now() / 1000) - weeks * 7 * 24 * 3600;
     const all: StravaActivity[] = [];
     let page = 1;
 
     while (true) {
-      const batch = await getActivities(page, 100, after);
+      const batch = await getActivities(userId, page, 100, after);
       all.push(...batch);
       if (batch.length < 100) break;
       page++;

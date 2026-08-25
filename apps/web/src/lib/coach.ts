@@ -18,7 +18,12 @@ import { getActiveTrainingPlan } from "./training-plans";
 import { getOverrides } from "./plan-overrides";
 import { getGoals } from "./goals";
 import { getRecentAnalyses } from "./analyses";
-import { getAthleteDetail, getAthleteStats, getAthleteZones } from "./strava";
+import {
+  getAthleteDetail,
+  getAthleteStats,
+  getAthleteZones,
+  type StravaIdentity,
+} from "./strava";
 import { getPersonalBests, type PersonalBest } from "./personal-bests";
 import { resolveToday } from "./coach-dates";
 
@@ -187,11 +192,12 @@ function formatAthleteIdentity(athlete: AthleteDetail | null): string {
 }
 
 export async function buildTrainingContext(
-  userId: string,
+  identity: StravaIdentity,
   activities: StravaActivity[],
   clientToday?: string,
   opts: TrainingContextOpts = {},
 ): Promise<{ identity: string; context: string }> {
+  const { userId } = identity;
   const today = resolveToday(clientToday, activities);
   const weekly = groupByWeek(activities);
   // Use the athlete-local today so Form (TSB) decays to now, not to the last
@@ -303,9 +309,9 @@ This athlete has not uploaded a training plan. They have no prescribed sessions,
 Do not name a plan, a race, a race date, or a prescribed session — you have not been given any, and none exist for this athlete. Never describe a session by name unless it appears in their activities or custom workouts above. Coach from their actual training data and stated goals alone, and if a plan would help, invite them to upload one on the Plan tab.`;
 
   const [athleteResult, zonesResult, statsResult] = await Promise.allSettled([
-    getAthleteDetail(),
-    getAthleteZones(),
-    getAthleteStats(),
+    getAthleteDetail(identity),
+    getAthleteZones(identity),
+    getAthleteStats(identity),
   ]);
   if (athleteResult.status === "rejected")
     log.warn("athlete detail unavailable", { reason: String(athleteResult.reason) });
@@ -317,7 +323,7 @@ Do not name a plan, a race, a race date, or a prescribed session — you have no
   const zones = zonesResult.status === "fulfilled" ? zonesResult.value : null;
   const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
 
-  const identity = formatAthleteIdentity(athlete);
+  const athleteIdentity = formatAthleteIdentity(athlete);
 
   const context = `# Today is ${today} (the athlete's current local date — treat this as "now")
 ${memorySection}
@@ -376,7 +382,7 @@ ${
     .join("\n\n") || "None yet"
 }`;
 
-  return { identity, context };
+  return { identity: athleteIdentity, context };
 }
 
 function formatPaceFromSpeed(metersPerSecond: number): string {

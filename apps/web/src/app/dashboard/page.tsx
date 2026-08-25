@@ -45,7 +45,7 @@ export default async function DashboardPage() {
   // instead of showing the un-moved plan and snapping a moment later.
   const [{ activities: history, fetchedAt }, activePlan, planOverrides, customWorkouts] =
     await Promise.all([
-      getActivitiesWithDailySync(session.tokens.athlete_id, TRAINING_HISTORY_WEEKS),
+      getActivitiesWithDailySync(resolved, TRAINING_HISTORY_WEEKS),
       getActiveTrainingPlan(resolved.userId),
       getOverrides(resolved.userId),
       getWorkouts(resolved.userId),
