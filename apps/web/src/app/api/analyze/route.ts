@@ -45,18 +45,28 @@ export async function POST(request: NextRequest) {
 
   const detail = await getActivityDetail(auth, activityId);
   await updatePersonalBests(userId, detail);
-  const trainingContext = await buildTrainingContext(auth, activities);
+  const { identity, context: trainingContext } = await buildTrainingContext(
+    auth,
+    activities,
+  );
 
   const stream = anthropic.messages.stream({
     model: "claude-sonnet-4-6",
     max_tokens: 1200,
+    // Stable → volatile, with the breakpoints on the two repeating blocks.
+    // See the same construction in app/api/chat/route.ts for the reasoning.
     system: [
-      { type: "text", text: COACH_SYSTEM_PROMPT },
       {
         type: "text",
-        text: trainingContext,
+        text: COACH_SYSTEM_PROMPT,
         cache_control: { type: "ephemeral" },
       },
+      {
+        type: "text",
+        text: identity,
+        cache_control: { type: "ephemeral" },
+      },
+      { type: "text", text: trainingContext },
     ],
     messages: [{ role: "user", content: buildActivityAnalysisRequest(detail) }],
   });

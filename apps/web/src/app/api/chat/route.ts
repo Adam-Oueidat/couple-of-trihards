@@ -151,20 +151,32 @@ export async function POST(request: NextRequest) {
     messageLen: body.messages[body.messages.length - 1].content.length,
   });
 
-  const trainingContext = await buildTrainingContext(
+  const { identity, context: trainingContext } = await buildTrainingContext(
     auth,
     activities,
     clientToday,
     { priorSummary, sinceTs },
   );
 
+  // Ordered stable → volatile, because caching is a strict prefix match and
+  // anything after a breakpoint is re-read at full price. The breakpoints sit
+  // on the two blocks that actually repeat: COACH_SYSTEM_PROMPT (identical for
+  // every athlete) and the identity block (stable for the life of an account).
+  // The training context deliberately carries no breakpoint — it holds today's
+  // date, live CTL/ATL/TSB and the latest activities, so caching it would pay
+  // the ~1.25x write premium on every turn and read back nothing.
   const system: Anthropic.TextBlockParam[] = [
-    { type: "text", text: COACH_SYSTEM_PROMPT },
     {
       type: "text",
-      text: trainingContext,
+      text: COACH_SYSTEM_PROMPT,
       cache_control: { type: "ephemeral" },
     },
+    {
+      type: "text",
+      text: identity,
+      cache_control: { type: "ephemeral" },
+    },
+    { type: "text", text: trainingContext },
   ];
 
   // Pull the latest user turn — that's the one we'll persist.
