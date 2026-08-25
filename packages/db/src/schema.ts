@@ -174,6 +174,13 @@ export const planOverrides = sqliteTable(
     movedAt: integer("moved_at").notNull(),
     reason: text("reason"),
     hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    // Athlete edits to the session's own fields. Null means "unchanged, use
+    // whatever the plan says", which is what keeps a re-upload of the same plan
+    // from silently discarding edits — the override layers on top rather than
+    // replacing the stored session.
+    name: text("name"),
+    type: text("type"),
+    km: real("km"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );

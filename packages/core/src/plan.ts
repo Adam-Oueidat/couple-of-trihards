@@ -63,6 +63,13 @@ export interface PlanOverride {
   movedAt: string;
   reason?: string;
   hidden?: boolean;
+  // Athlete edits to the session's own fields. Undefined means "unchanged".
+  // The session id is derived from the STORED plan's (date, name) in
+  // buildTrainingPlan, before overrides are applied, so renaming here can
+  // never re-derive the id and orphan the override row.
+  name?: string;
+  type?: SessionType;
+  km?: number;
 }
 
 export type PlanOverrideMap = Record<string, PlanOverride>;
@@ -136,6 +143,9 @@ export function applyPlanOverrides(
       movedFrom: override.newDate !== s.originalDate ? s.originalDate : undefined,
       moveReason: override.reason,
       hidden: override.hidden,
+      name: override.name ?? s.name,
+      type: override.type ?? s.type,
+      km: override.km ?? s.km,
     };
   });
 }
