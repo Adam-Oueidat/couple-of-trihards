@@ -121,6 +121,22 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
     });
   }
 
+  // Phone-only overflow menu. The four tabs stay on screen — they are the
+  // primary navigation and hiding them behind a tap would be a downgrade —
+  // but Admin, the theme toggle and Sign out together take ~190px of a
+  // 428px-wide row, squeezing the tabs until their labels overflow. They
+  // live in here instead. Never opens above `sm`: the trigger is `sm:hidden`.
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   const recentWeeks = weeklyVolume.slice(-8);
   const recentLoad = trainingLoad.slice(-60);
 
@@ -154,14 +170,42 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             </div>
           </div>
 
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-menu"
+            aria-label={menuOpen ? "Close menu" : "Open menu"}
+            className="sm:hidden flex flex-col items-center justify-center gap-[3px] w-10 h-10 -mr-1 rounded-lg border border-gray-800 cursor-pointer"
+          >
+            <span
+              className={`block w-4 h-px bg-gray-300 transition-transform ${
+                menuOpen ? "translate-y-[4px] rotate-45" : ""
+              }`}
+            />
+            <span
+              className={`block w-4 h-px bg-gray-300 transition-opacity ${
+                menuOpen ? "opacity-0" : ""
+              }`}
+            />
+            <span
+              className={`block w-4 h-px bg-gray-300 transition-transform ${
+                menuOpen ? "-translate-y-[4px] -rotate-45" : ""
+              }`}
+            />
+          </button>
+
           <div className="flex items-center gap-4 max-sm:w-full max-sm:gap-2">
             <nav className="flex gap-1 bg-gray-800 rounded-lg p-1 max-sm:flex-1">
               {(["overview", "plan", "calendar", "activities"] as Tab[]).map((t) => (
                 <button
                   type="button"
                   key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors max-sm:flex-1 max-sm:px-1.5 max-sm:py-2.5 max-sm:text-[11px] ${
+                  onClick={() => {
+                    setTab(t);
+                    setMenuOpen(false);
+                  }}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors max-sm:flex-1 max-sm:px-2 max-sm:py-2.5 max-sm:text-xs ${
                     tab === t
                       ? "bg-orange-500 text-white"
                       : "text-gray-400 hover:text-white"
@@ -174,14 +218,35 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             {isAdmin && (
               <Link
                 href="/admin/licenses"
-                className="px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-medium transition-colors cursor-pointer max-sm:px-2 max-sm:text-[11px]"
+                className="px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-medium transition-colors cursor-pointer max-sm:hidden"
               >
                 Admin
               </Link>
             )}
-            <ThemeToggle />
-            <LogoutButton />
+            <div className="max-sm:hidden sm:contents">
+              <ThemeToggle />
+              <LogoutButton />
+            </div>
           </div>
+
+          {menuOpen && (
+            <div
+              id="mobile-menu"
+              className="sm:hidden w-full flex items-center justify-end gap-3 pt-3 border-t border-gray-800"
+            >
+              {isAdmin && (
+                <Link
+                  href="/admin/licenses"
+                  onClick={() => setMenuOpen(false)}
+                  className="mr-auto px-3 py-2 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 text-sm font-medium cursor-pointer"
+                >
+                  Admin
+                </Link>
+              )}
+              <ThemeToggle />
+              <LogoutButton />
+            </div>
+          )}
         </div>
       </header>
 
