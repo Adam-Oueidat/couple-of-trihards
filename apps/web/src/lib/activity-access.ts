@@ -1,5 +1,5 @@
 import { StravaActivity, TRAINING_HISTORY_WEEKS } from "@trihards/core";
-import { getRecentActivities } from "./strava";
+import { getRecentActivities, type StravaIdentity } from "./strava";
 
 /**
  * Authorization for per-activity endpoints.
@@ -20,7 +20,10 @@ export function ownsActivityIn(
   return activities.some((a) => a.id === activityId);
 }
 
-export async function ownsActivity(activityId: number): Promise<boolean> {
-  const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
+export async function ownsActivity(
+  identity: StravaIdentity,
+  activityId: number,
+): Promise<boolean> {
+  const activities = await getRecentActivities(identity, TRAINING_HISTORY_WEEKS);
   return ownsActivityIn(activities, activityId);
 }

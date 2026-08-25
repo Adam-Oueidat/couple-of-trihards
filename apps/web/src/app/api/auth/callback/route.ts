@@ -6,6 +6,7 @@ import { exchangeCodeForTokens, invalidateAthleteCache } from "@/lib/strava";
 import { getSession } from "@/lib/session";
 import { resolveSession } from "@/lib/auth";
 import { mintMobileToken } from "@/lib/mobile-tokens";
+import { saveStravaTokens } from "@/lib/strava-tokens";
 import { decodeState, OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 import { appOrigin } from "@/lib/api";
 
@@ -79,6 +80,14 @@ export async function GET(request: NextRequest) {
         userId = created.id;
       }
 
+      // Mobile clients never carry a cookie, so the database row is the only
+      // place their Strava credentials can live.
+      await saveStravaTokens(userId, {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_at,
+      });
+
       const token = await mintMobileToken(userId);
 
       const [activeLicense] = await db
@@ -114,6 +123,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     const resolved = await resolveSession();
+    if (resolved) {
+      await saveStravaTokens(resolved.userId, {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_at,
+      });
+    }
     const destination = resolved?.license ? "/dashboard" : "/activate";
     log.info("web sign-in", {
       athleteId: tokens.athlete_id,

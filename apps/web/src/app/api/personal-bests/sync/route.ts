@@ -21,11 +21,11 @@ export async function POST() {
   try {
     // Reuses the dashboard's cached activity list, so listing costs no extra
     // Strava calls — only the per-run detail fetches inside the sync do.
-    const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
+    const activities = await getRecentActivities(auth, TRAINING_HISTORY_WEEKS);
     const result = await syncYtdPersonalBests(
       auth.userId,
       activities,
-      getActivityDetail,
+      (id) => getActivityDetail(auth, id),
     );
     return NextResponse.json(result);
   } catch (err) {

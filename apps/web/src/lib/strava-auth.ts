@@ -1,4 +1,5 @@
-// Token refresh without next/headers imports so the proxy can use it.
+// Token refresh kept free of next/headers imports so it can be called from any
+// runtime — the token store (lib/strava-tokens.ts) is its only caller today.
 
 export interface RefreshedTokens {
   access_token: string;
