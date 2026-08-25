@@ -268,7 +268,13 @@ async function getActivities(
 }
 
 export async function getActivityDetail(id: number): Promise<DetailedActivity> {
-  return cached(`detail:${id}`, 60 * 60_000, async () => {
+  // Keyed by athlete as well as activity. Strava would reject one athlete's
+  // token for another athlete's private activity, but a cache hit never reaches
+  // Strava — an unkeyed `detail:${id}` serves athlete A's private payload to
+  // athlete B for the full TTL. Callers must still authorize the id itself
+  // (see lib/activity-access.ts); this only stops the cache from leaking.
+  const athleteId = await requireAthleteId();
+  return cached(`detail:${athleteId}:${id}`, 60 * 60_000, async () => {
     return stravaFetch<DetailedActivity>(`/activities/${id}`);
   });
 }
@@ -295,7 +301,9 @@ export async function getAthleteStats(): Promise<AthleteStats> {
 }
 
 export async function getActivityStreams(id: number): Promise<StreamSet | null> {
-  return cached(`streams:${id}`, 60 * 60_000, async () => {
+  // Athlete-scoped for the same reason as getActivityDetail above.
+  const athleteId = await requireAthleteId();
+  return cached(`streams:${athleteId}:${id}`, 60 * 60_000, async () => {
     try {
       return await stravaFetch<StreamSet>(`/activities/${id}/streams`, {
         keys: "time,distance,heartrate,velocity_smooth,altitude,watts",

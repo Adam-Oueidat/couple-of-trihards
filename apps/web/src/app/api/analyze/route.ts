@@ -6,6 +6,7 @@ import { withLimit } from "@/lib/api";
 
 const log = createLogger("api:analyze");
 import { getActivityDetail, getRecentActivities } from "@/lib/strava";
+import { ownsActivityIn } from "@/lib/activity-access";
 import {
   buildActivityAnalysisRequest,
   buildTrainingContext,
@@ -32,10 +33,17 @@ export async function POST(request: NextRequest) {
   }
 
   log.info("analyze start", { userId, activityId });
-  const [activities, detail] = await Promise.all([
-    getRecentActivities(TRAINING_HISTORY_WEEKS),
-    getActivityDetail(activityId),
-  ]);
+  // The caller's own activity list doubles as the authorization check: an id
+  // that isn't in it isn't theirs to analyze. Checking before fetching the
+  // detail also avoids spending a Strava read on a request we will reject.
+  // 404 rather than 403 — a 403 would confirm the activity exists.
+  const activities = await getRecentActivities(TRAINING_HISTORY_WEEKS);
+  if (!ownsActivityIn(activities, activityId)) {
+    log.warn("rejected activity not owned by caller", { userId, activityId });
+    return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
+  }
+
+  const detail = await getActivityDetail(activityId);
   await updatePersonalBests(userId, detail);
   const trainingContext = await buildTrainingContext(userId, activities);
 

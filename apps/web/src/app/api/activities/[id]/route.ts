@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createLogger, defaultLimiter } from "@trihards/core";
 import { getActivityDetail, getActivityStreams } from "@/lib/strava";
+import { ownsActivity } from "@/lib/activity-access";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 import { getAnalysis } from "@/lib/analyses";
@@ -21,6 +22,14 @@ export async function GET(
   const activityId = Number(id);
   if (!Number.isInteger(activityId) || activityId <= 0) {
     return NextResponse.json({ error: "Invalid activity id" }, { status: 400 });
+  }
+
+  // Activity ids are global and guessable, so proving who the caller is does
+  // not establish that this activity is theirs. 404 rather than 403 — a 403
+  // would confirm the activity exists.
+  if (!(await ownsActivity(activityId))) {
+    log.warn("rejected activity not owned by caller", { userId: auth.userId, activityId });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {
