@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+
+interface ChatHistory {
+  conversationId?: string | null;
+  lastMessageAt?: number | null;
+  messages?: ChatMessage[];
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -32,30 +40,36 @@ export function CoachChat() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Load the latest conversation on mount — but only resume it if it's from
-    // today. A thread from a prior calendar day is stale (its replayed turns
-    // carry old dates and confuse the coach), so we leave the panel fresh and
-    // let the next message open a new thread. The browser clock is the
-    // athlete's real timezone, so it's the most accurate day-boundary signal.
-    (async () => {
-      try {
-        const res = await fetch("/api/chat/history");
-        if (!res.ok) return;
-        const data = await res.json();
-        const sameDay =
-          typeof data.lastMessageAt === "number" &&
-          new Date(data.lastMessageAt * 1000).toDateString() ===
-            new Date().toDateString();
-        if (sameDay && data.conversationId) {
-          conversationIdRef.current = data.conversationId;
-          if (Array.isArray(data.messages)) setMessages(data.messages);
-        }
-      } catch {
-        // best-effort; user can still chat without history
-      }
-    })();
-  }, []);
+  // History is read through SWR rather than an effect. The old effect awaited
+  // twice and then called setMessages with no cancellation flag and no cleanup,
+  // so a panel unmounted mid-flight still wrote to state.
+  //
+  // Resume the thread only if it is from today: a thread from a prior calendar
+  // day is stale (its replayed turns carry old dates and confuse the coach), so
+  // we leave the panel fresh and let the next message open a new one. The
+  // browser clock is the athlete's real timezone, so it is the most accurate
+  // day-boundary signal.
+  useSWR<ChatHistory>("/api/chat/history", fetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false,
+    // Seeded from onSuccess rather than an effect that mirrors `data` into
+    // state: the panel owns `messages` (every turn appends to it), so this is a
+    // one-time hydration, not derived state. Doing it in an effect would also
+    // be a setState-in-effect cascade.
+    onSuccess: (data) => {
+      const sameDay =
+        typeof data.lastMessageAt === "number" &&
+        new Date(data.lastMessageAt * 1000).toDateString() ===
+          new Date().toDateString();
+      if (!sameDay || !data.conversationId) return;
+      // Never clobber a thread the athlete has already started typing into.
+      if (conversationIdRef.current !== null) return;
+      conversationIdRef.current = data.conversationId;
+      if (Array.isArray(data.messages)) setMessages(data.messages);
+    },
+    // Best-effort: the athlete can still chat without history.
+    onError: () => {},
+  });
 
   // Begin a fresh thread. Non-destructive: the old conversation stays in the DB
   // and gets summarized server-side when the next message opens a new thread.

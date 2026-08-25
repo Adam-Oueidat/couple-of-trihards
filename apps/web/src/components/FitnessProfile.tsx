@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 import {
   AthleteDetail,
   AthleteStats,
@@ -79,30 +81,19 @@ function formatPbRange(bests: PersonalBest[]): string | null {
   return `Based on activities from ${formatPbDate(earliest)} – ${formatPbDate(latest)}`;
 }
 
-export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
-  const [data, setData] = useState<FitnessData | null>(null);
-  const [error, setError] = useState(false);
+export const FITNESS_KEY = "/api/fitness";
+
+export function FitnessProfile() {
+  // No refreshKey prop any more: Sync revalidates this key directly through
+  // SWR's cache, so the parent no longer threads a counter down to force a
+  // refetch.
+  const { data, error, mutate } = useSWR<FitnessData>(FITNESS_KEY, fetcher, {
+    revalidateOnFocus: false,
+  });
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const currentYear = new Date().getFullYear();
 
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/fitness")
-      .then((res) => (res.ok ? res.json() : Promise.reject()))
-      .then((d) => {
-        if (!cancelled) {
-          setError(false);
-          setData(d);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
 
   // Walks the year in batches: Strava exposes best efforts only per activity, so
   // one request can't cover a whole season's runs without blowing the API's
@@ -139,12 +130,12 @@ export function FitnessProfile({ refreshKey }: { refreshKey?: number }) {
         setSyncNote(`Scanned ${scanned} runs, ${batch.remaining} to go...`);
       }
 
-      const fresh = await fetch("/api/fitness");
-      if (fresh.ok) setData(await fresh.json());
     } catch {
       setSyncNote("Scan failed. Try again.");
     } finally {
       setSyncing(false);
+      // New PBs land in the same payload this card renders.
+      void mutate();
     }
   }
 
