@@ -11,7 +11,22 @@ import {
 } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import type { PlanEdits } from "./usePlanEdits";
-import { DISCIPLINE_PILL, DisciplineGlyph } from "./DisciplineGlyph";
+import { DisciplineGlyph } from "./DisciplineGlyph";
+import { DISCIPLINE_PILL } from "./discipline-pill";
+
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const MONTH_TITLE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  year: "numeric",
+});
+
+const AGENDA_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
 
 interface Props {
   activities: StravaActivity[];
@@ -492,16 +507,18 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           <button
             type="button"
             onClick={() => setViewDate(new Date(year, month - 1, 1))}
+            aria-label="Previous month"
             className="px-3 py-1.5 max-sm:py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
             ←
           </button>
           <span className="text-white font-semibold text-sm w-36 max-sm:w-auto max-sm:flex-1 text-center">
-            {viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+            {MONTH_TITLE_FMT.format(viewDate)}
           </span>
           <button
             type="button"
             onClick={() => setViewDate(new Date(year, month + 1, 1))}
+            aria-label="Next month"
             className="px-3 py-1.5 max-sm:py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
             →
@@ -742,11 +759,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                         isToday ? "text-orange-400" : "text-gray-500"
                       }`}
                     >
-                      {date.toLocaleDateString("en-US", {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                      })}
+                      {AGENDA_DATE_FMT.format(date)}
                       {isToday ? " · Today" : ""}
                     </span>
                     <button

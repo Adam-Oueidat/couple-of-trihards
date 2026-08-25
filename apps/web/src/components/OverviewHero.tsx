@@ -8,6 +8,14 @@ import {
 } from "@trihards/core";
 import { DisciplineGlyph } from "./DisciplineGlyph";
 
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const WEEK_START_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+});
+
 interface Props {
   currentWeek?: WeeklyVolume;
   /** Recent training-load series; the last point is "today". */
@@ -80,10 +88,7 @@ function weekLabel(weekStart?: string): string {
   if (!weekStart) return "";
   // Parse as a local date (append time) — `new Date("YYYY-MM-DD")` is UTC
   // midnight, which renders as the previous day in negative-offset timezones.
-  return new Date(`${weekStart}T00:00:00`).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return WEEK_START_FMT.format(new Date(`${weekStart}T00:00:00`));
 }
 
 export function OverviewHero({ currentWeek, trainingLoad }: Props) {

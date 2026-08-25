@@ -65,12 +65,17 @@ function formatDistance(activity: StravaActivity): string {
   return `${(activity.distance / 1000).toFixed(2)} km`;
 }
 
+// Built once at module scope rather than per render: constructing an
+// Intl formatter is the expensive part, and these options never vary.
+// The locale stays pinned to en-US, so this is not a behaviour change.
+const LIST_DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+});
+
 function formatDate(dateStr: string): string {
-  return activityDay(dateStr).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return LIST_DATE_FMT.format(activityDay(dateStr));
 }
 
 export function ActivityList({ activities, sortable = false }: Props) {
