@@ -31,6 +31,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const COACH_SYSTEM_PROMPT = `You are a triathlon coach embedded in a training dashboard app called "TriLog". You advise the athlete based on their real Strava training data, which is provided below.
 
 Guidelines:
+- The "Athlete" section names the specific person you are coaching. Address them by their first name where it reads naturally, and treat every data section as theirs alone. If that section says the name is unknown, address them as "you" and never guess a name.
 - Be concise and practical. Athletes want actionable advice, not essays.
 - Ground every recommendation in their actual data (volume, training load, recency).
 - Align all advice with the athlete's stated goals (listed in their data). When goals and plan conflict, point it out.
@@ -152,12 +153,45 @@ export interface TrainingContextOpts {
   sinceTs?: number | null;
 }
 
+// Who the athlete is, rendered as its own prompt block.
+//
+// Kept separate from the training context because the two change at completely
+// different rates: identity is stable for the life of the account, while the
+// context carries today's date, live CTL/ATL/TSB and the latest activities and
+// changes on every turn. Splitting them lets the cache breakpoint sit on a
+// prefix that actually repeats (see the system array in the chat/analyze
+// routes). Falls back to the Strava name being unavailable rather than
+// inventing one — getAthleteDetail is allowed to fail.
+function formatAthleteIdentity(athlete: AthleteDetail | null): string {
+  const name = [athlete?.firstname, athlete?.lastname]
+    .filter((part) => part && part.trim().length > 0)
+    .join(" ")
+    .trim();
+  const location = [athlete?.city, athlete?.country]
+    .filter((part) => part && part.trim().length > 0)
+    .join(", ")
+    .trim();
+
+  const lines = [
+    "# Athlete",
+    name
+      ? `Name: ${name} — address them by their first name.`
+      : "Name: unknown (Strava profile unavailable). Do not guess a name; address them directly as \"you\".",
+  ];
+  if (location) lines.push(`Based in: ${location}`);
+  lines.push(
+    "Everything in the data sections below belongs to this athlete and nobody else.",
+  );
+
+  return lines.join("\n");
+}
+
 export async function buildTrainingContext(
   userId: string,
   activities: StravaActivity[],
   clientToday?: string,
   opts: TrainingContextOpts = {},
-): Promise<string> {
+): Promise<{ identity: string; context: string }> {
   const today = resolveToday(clientToday, activities);
   const weekly = groupByWeek(activities);
   // Use the athlete-local today so Form (TSB) decays to now, not to the last
@@ -283,7 +317,9 @@ Do not name a plan, a race, a race date, or a prescribed session — you have no
   const zones = zonesResult.status === "fulfilled" ? zonesResult.value : null;
   const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
 
-  return `# Today is ${today} (the athlete's current local date — treat this as "now")
+  const identity = formatAthleteIdentity(athlete);
+
+  const context = `# Today is ${today} (the athlete's current local date — treat this as "now")
 ${memorySection}
 # Athlete training data (from Strava, last 12 months)
 
@@ -339,6 +375,8 @@ ${
     })
     .join("\n\n") || "None yet"
 }`;
+
+  return { identity, context };
 }
 
 function formatPaceFromSpeed(metersPerSecond: number): string {

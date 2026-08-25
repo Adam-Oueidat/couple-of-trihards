@@ -183,10 +183,16 @@ export async function saveMessage(
     role,
     content: JSON.stringify(content),
   });
+  // Scoped by userId like every other conversation query in this file. The id
+  // always arrives from an already-scoped lookup today, so this is not
+  // currently reachable — it closes the one gap in the invariant rather than a
+  // live hole.
   await db
     .update(conversations)
     .set({ lastMessageAt: Math.floor(Date.now() / 1000) })
-    .where(eq(conversations.id, conversationId));
+    .where(
+      and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
+    );
 }
 
 // For UI rendering: collapse complex content into a text string. Returns
