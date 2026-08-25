@@ -68,7 +68,7 @@ export function GoalsCard({ refreshKey }: { refreshKey?: number }) {
                 type="button"
                 onClick={() => remove(g.id)}
                 title="Remove goal"
-                className="text-gray-600 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
+                className="text-gray-600 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity cursor-pointer flex-shrink-0"
               >
                 ×
               </button>

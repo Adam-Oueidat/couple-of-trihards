@@ -217,7 +217,7 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
             {TRIAD.map((d, i) => (
               <div
                 key={d.label}
-                className={i === 0 ? "pr-4" : "px-4 last:pr-0"}
+                className={i === 0 ? "pr-4 max-sm:pr-2" : "px-4 max-sm:px-2 last:pr-0"}
               >
                 <div
                   className="flex items-center gap-1.5 text-[12px] font-medium"

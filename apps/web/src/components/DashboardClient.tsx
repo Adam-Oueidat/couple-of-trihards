@@ -128,7 +128,7 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
       <header className="border-b border-gray-800 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between max-sm:flex-wrap max-sm:gap-y-3">
           <div className="flex items-center gap-3">
             {athlete.profile && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -154,14 +154,14 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <nav className="flex gap-1 bg-gray-800 rounded-lg p-1">
+          <div className="flex items-center gap-4 max-sm:w-full max-sm:gap-2">
+            <nav className="flex gap-1 bg-gray-800 rounded-lg p-1 max-sm:flex-1">
               {(["overview", "plan", "calendar", "activities"] as Tab[]).map((t) => (
                 <button
                   type="button"
                   key={t}
                   onClick={() => setTab(t)}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors max-sm:flex-1 max-sm:px-1.5 max-sm:py-2.5 max-sm:text-[11px] ${
                     tab === t
                       ? "bg-orange-500 text-white"
                       : "text-gray-400 hover:text-white"
@@ -174,7 +174,7 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
             {isAdmin && (
               <Link
                 href="/admin/licenses"
-                className="px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-medium transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-medium transition-colors cursor-pointer max-sm:px-2 max-sm:text-[11px]"
               >
                 Admin
               </Link>

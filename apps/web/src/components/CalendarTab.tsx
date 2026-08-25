@@ -165,6 +165,34 @@ export function CalendarTab({ activities, plan, edits }: Props) {
     doneByDate.set(day, set);
   }
 
+  // Mobile agenda source: the viewed month's days that are worth listing —
+  // anything with a planned session or a custom workout, plus today so there
+  // is always somewhere to add one. Below `sm` this replaces the 7-column
+  // grid, which gives each day ~48px on a phone.
+  const agendaDays = weeks
+    .flat()
+    .filter((d) => d.getMonth() === month)
+    .map((d) => {
+      const dateStr = toDateStr(d);
+      return {
+        date: d,
+        dateStr,
+        sessions: planByDate.get(dateStr) ?? [],
+        custom: workoutsByDate.get(dateStr) ?? [],
+        done: doneByDate.get(dateStr),
+      };
+    })
+    .filter(
+      (d) => d.sessions.length > 0 || d.custom.length > 0 || d.dateStr === today
+    );
+
+  // Seed date for the mobile "add workout" button: today when it falls in the
+  // month on screen, otherwise the first of that month.
+  const agendaDefaultDate =
+    new Date().getFullYear() === year && new Date().getMonth() === month
+      ? today
+      : toDateStr(new Date(year, month, 1));
+
   async function submitWorkout() {
     if (!form || !form.name.trim()) return;
     setSaving(true);
@@ -355,6 +383,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: editWorkoutForm.id,
+          date: editWorkoutForm.date,
           discipline: editWorkoutForm.discipline,
           name: editWorkoutForm.name.trim(),
           distanceKm: editWorkoutForm.distanceKm ? Number(editWorkoutForm.distanceKm) : null,
@@ -454,8 +483,8 @@ export function CalendarTab({ activities, plan, edits }: Props) {
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 max-sm:p-3.5">
+      <div className="flex items-center justify-between mb-4 max-sm:flex-wrap max-sm:gap-y-2">
         <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
           Training Calendar
         </h2>
@@ -463,23 +492,26 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           <button
             type="button"
             onClick={() => setViewDate(new Date(year, month - 1, 1))}
-            className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
+            className="px-3 py-1.5 max-sm:py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
             ←
           </button>
-          <span className="text-white font-semibold text-sm w-36 text-center">
+          <span className="text-white font-semibold text-sm w-36 max-sm:w-auto max-sm:flex-1 text-center">
             {viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
           </span>
           <button
             type="button"
             onClick={() => setViewDate(new Date(year, month + 1, 1))}
-            className="px-3 py-1.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
+            className="px-3 py-1.5 max-sm:py-2.5 rounded-lg border border-gray-700 hover:border-gray-500 text-gray-300 text-sm transition-colors cursor-pointer"
           >
             →
           </button>
         </div>
       </div>
 
+      {/* Month grid — desktop only. Left exactly as it was; below `sm` it is
+          display:none and the agenda further down takes over. */}
+      <div className="hidden sm:block">
       <div className="grid grid-cols-7 gap-px text-center text-xs text-gray-500 mb-1">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
           <div key={d} className="py-1">
@@ -534,7 +566,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                         })
                       }
                       title="Add workout"
-                      className="text-gray-600 hover:text-orange-400 text-xs opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer px-1"
+                      className="text-gray-600 hover:text-orange-400 text-xs opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity cursor-pointer px-1"
                     >
                       +
                     </button>
@@ -595,7 +627,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                                 resetMove(s.id);
                               }}
                               title={`Reset to ${s.movedFrom}`}
-                              className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity cursor-pointer flex-shrink-0"
+                              className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-white transition-opacity cursor-pointer flex-shrink-0"
                             >
                               ↺
                             </button>
@@ -647,7 +679,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                               removeWorkout(w.id);
                             }}
                             title="Remove"
-                            className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity cursor-pointer flex-shrink-0"
+                            className="opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100 hover:text-white transition-opacity cursor-pointer flex-shrink-0"
                           >
                             ×
                           </button>
@@ -661,11 +693,174 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           </div>
         ))}
       </div>
+      </div>
 
-      <p className="text-gray-600 text-xs mt-3">
+      {/* Mobile agenda -----------------------------------------------------
+          Two things make the grid above unusable on a phone: each cell is
+          ~48px wide, and both of its affordances are pointer-only — HTML5
+          drag events have no touch equivalent, and Tailwind v4 gates `hover:`
+          behind `@media (hover: hover)`, so the hover-revealed add/remove
+          buttons never appear. This list shows the same data with explicit
+          tap targets, and every action routes through the same editors. */}
+      <div className="sm:hidden">
+        <button
+          type="button"
+          onClick={() =>
+            setForm({
+              date: agendaDefaultDate,
+              discipline: "swim",
+              name: "",
+              distanceKm: "",
+              durationMin: "",
+            })
+          }
+          className="w-full mb-2 py-2.5 rounded-lg border border-dashed border-gray-700 text-gray-400 text-xs font-semibold uppercase tracking-wider cursor-pointer"
+        >
+          + Add workout
+        </button>
+
+        {agendaDays.length === 0 ? (
+          <p className="text-gray-500 text-sm text-center py-8">
+            Nothing scheduled this month.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {agendaDays.map(({ date, dateStr, sessions, custom, done }) => {
+              const isToday = dateStr === today;
+              return (
+                <li
+                  key={dateStr}
+                  className={`rounded-lg border p-3 ${
+                    isToday
+                      ? "border-orange-500/60 bg-orange-500/5"
+                      : "border-gray-800 bg-gray-950/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span
+                      className={`text-xs font-semibold uppercase tracking-wider ${
+                        isToday ? "text-orange-400" : "text-gray-500"
+                      }`}
+                    >
+                      {date.toLocaleDateString("en-US", {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                      {isToday ? " · Today" : ""}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm({
+                          date: dateStr,
+                          discipline: "swim",
+                          name: "",
+                          distanceKm: "",
+                          durationMin: "",
+                        })
+                      }
+                      className="text-orange-400 text-xs font-semibold px-2 py-1.5 -mr-1 rounded-md cursor-pointer"
+                    >
+                      + Add
+                    </button>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {sessions.map((s) => {
+                      const moved = s.movedFrom !== undefined;
+                      return (
+                        <div key={s.id} className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openSessionEditor(s)}
+                            className={`flex-1 min-w-0 px-2.5 py-2 rounded-lg border text-xs leading-tight flex items-center gap-2 text-left cursor-pointer ${
+                              DISCIPLINE_PILL[planDiscipline]
+                            } ${
+                              done?.has(planDiscipline) && s.date <= today
+                                ? ""
+                                : s.date < today
+                                  ? "opacity-50 line-through"
+                                  : ""
+                            } ${moved ? "ring-1 ring-orange-500/40" : ""}`}
+                          >
+                            <DisciplineGlyph
+                              discipline={planDiscipline}
+                              size={12}
+                              className="flex-shrink-0 opacity-80"
+                            />
+                            <span className="truncate flex-1">
+                              {s.km}km {s.name}
+                            </span>
+                          </button>
+                          {moved && (
+                            <button
+                              type="button"
+                              onClick={() => resetMove(s.id)}
+                              aria-label={`Reset to ${s.movedFrom}`}
+                              className="flex-shrink-0 px-2.5 py-2 rounded-lg border border-gray-800 text-gray-400 text-xs cursor-pointer"
+                            >
+                              ↺
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {custom.map((w) => (
+                      <div key={w.id} className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openWorkoutEditor(w)}
+                          className={`flex-1 min-w-0 px-2.5 py-2 rounded-lg border text-xs leading-tight flex items-center gap-2 text-left cursor-pointer ${
+                            DISCIPLINE_PILL[w.discipline]
+                          }`}
+                        >
+                          <DisciplineGlyph
+                            discipline={w.discipline}
+                            size={12}
+                            className="flex-shrink-0 opacity-80"
+                          />
+                          <span className="truncate flex-1">
+                            {w.distanceKm
+                              ? `${w.distanceKm}km `
+                              : w.durationMin
+                                ? `${w.durationMin}min `
+                                : ""}
+                            {w.name}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeWorkout(w.id)}
+                          aria-label={`Remove ${w.name}`}
+                          className="flex-shrink-0 px-2.5 py-2 rounded-lg border border-gray-800 text-gray-400 text-xs cursor-pointer"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+
+                    {sessions.length === 0 && custom.length === 0 && (
+                      <p className="text-gray-600 text-xs">Rest day</p>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
+      <p className="text-gray-600 text-xs mt-3 hidden sm:block">
         Drag any session to a different day to reschedule. Moved sessions get an
         orange ring; hover and click ↺ to reset to the original plan date. The
         coach sees every move so it can adapt advice.
+      </p>
+      <p className="text-gray-600 text-xs mt-3 sm:hidden">
+        Tap a session to edit it or move it to another day. Moved sessions get an
+        orange ring; tap ↺ to reset to the original plan date. The coach sees
+        every move so it can adapt advice.
       </p>
 
       {form && (
@@ -703,6 +898,22 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                     {d}
                   </button>
                 ))}
+              </div>
+
+              {/* On desktop the date comes from the day cell you clicked; the
+                  agenda has no cell to click for an empty day, so phones get
+                  the field. Hidden at `sm` and up. */}
+              <div className="sm:hidden">
+                <label htmlFor="add-workout-date" className="block text-xs text-gray-500 mb-1">
+                  Date
+                </label>
+                <input
+                  id="add-workout-date"
+                  value={form.date}
+                  onChange={(e) => setForm({ ...form, date: e.target.value })}
+                  type="date"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 [color-scheme:dark]"
+                />
               </div>
 
               <input
@@ -814,6 +1025,24 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                     {d}
                   </button>
                 ))}
+              </div>
+
+              {/* Rescheduling a custom workout is a drag on desktop, and drag
+                  events never fire on touch — so phones get the date field
+                  instead. Hidden at `sm` and up, where the drag still works. */}
+              <div className="sm:hidden">
+                <label htmlFor="workout-date" className="block text-xs text-gray-500 mb-1">
+                  Date
+                </label>
+                <input
+                  id="workout-date"
+                  value={editWorkoutForm.date}
+                  onChange={(e) =>
+                    setEditWorkoutForm({ ...editWorkoutForm, date: e.target.value })
+                  }
+                  type="date"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 [color-scheme:dark]"
+                />
               </div>
 
               <input
