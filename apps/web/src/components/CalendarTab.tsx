@@ -5,6 +5,7 @@ import { StravaActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
 import {
   applyPlanOverrides,
+  SESSION_TYPES,
   type PlannedSession,
   type SessionType,
   type TrainingPlan,
@@ -100,6 +101,11 @@ interface EditSessionFormState {
   name: string;
   type: SessionType;
   km: number;
+  // What the plan itself prescribes, before any override. Kept so save can send
+  // only the fields the athlete actually changed: storing a value identical to
+  // the plan's would pin it, and a later re-upload that legitimately revises
+  // that session would silently have no effect.
+  base: { name: string; type: SessionType; km: number } | null;
 }
 
 export function CalendarTab({ activities, plan, edits }: Props) {
@@ -429,8 +435,16 @@ export function CalendarTab({ activities, plan, edits }: Props) {
     }
   }
 
+  // "Reset to plan" only means something when an override row exists for this
+  // session — otherwise it is already exactly what the plan prescribes.
+  const hasSessionEdits =
+    editSessionForm !== null && overrides[editSessionForm.sessionId] !== undefined;
+
   // Plan session edit modal
   function openSessionEditor(s: PlannedSession) {
+    // plan.sessions is the plan as stored, before applyPlanOverrides, so this
+    // is the prescription rather than the athlete's current view of it.
+    const planned = plan?.sessions.find((p) => p.id === s.id) ?? null;
     setEditSessionForm({
       sessionId: s.id,
       originalDate: s.originalDate,
@@ -438,22 +452,42 @@ export function CalendarTab({ activities, plan, edits }: Props) {
       name: s.name,
       type: s.type,
       km: s.km,
+      base: planned
+        ? { name: planned.name, type: planned.type, km: planned.km }
+        : null,
     });
     setEditSessionError(null);
   }
 
-  async function saveSessionDate() {
+  async function saveSessionEdits() {
     if (!editSessionForm) return;
+    const form = editSessionForm;
+    const name = form.name.trim();
+    if (name.length === 0) {
+      setEditSessionError("Name cannot be empty.");
+      return;
+    }
+    if (!Number.isFinite(form.km) || form.km < 0) {
+      setEditSessionError("Distance must be a non-negative number.");
+      return;
+    }
+
     setEditSessionSaving(true);
     setEditSessionError(null);
     try {
+      // Only send a field when it differs from the plan. Omitting it leaves the
+      // column null, which means "follow the plan".
+      const base = form.base;
       const res = await fetch("/api/plan-overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId: editSessionForm.sessionId,
-          originalDate: editSessionForm.originalDate,
-          newDate: editSessionForm.date,
+          sessionId: form.sessionId,
+          originalDate: form.originalDate,
+          newDate: form.date,
+          name: base && name === base.name ? undefined : name,
+          type: base && form.type === base.type ? undefined : form.type,
+          km: base && form.km === base.km ? undefined : form.km,
         }),
       });
       if (!res.ok) {
@@ -464,6 +498,19 @@ export function CalendarTab({ activities, plan, edits }: Props) {
       await loadOverrides();
     } catch (err) {
       setEditSessionError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setEditSessionSaving(false);
+    }
+  }
+
+  // Drops the whole override row, returning the session to exactly what the
+  // plan prescribes — date, name, type and distance together.
+  async function resetSessionToPlan() {
+    if (!editSessionForm) return;
+    setEditSessionSaving(true);
+    try {
+      await resetMove(editSessionForm.sessionId);
+      setEditSessionForm(null);
     } finally {
       setEditSessionSaving(false);
     }
@@ -1135,7 +1182,8 @@ export function CalendarTab({ activities, plan, edits }: Props) {
             </button>
             <h3 className="text-white font-bold mb-1 pr-8">Plan session</h3>
             <p className="text-gray-500 text-xs mb-5">
-              Prescribed by the training plan — name, type, and distance are fixed.
+              Adjust this session to what you actually intend to do. Your changes
+              layer on top of the plan, so reset puts it back.
             </p>
 
             <div className="space-y-4">
@@ -1145,14 +1193,74 @@ export function CalendarTab({ activities, plan, edits }: Props) {
                   size={14}
                   className="flex-shrink-0"
                 />
-                <span className="text-sm text-white flex-1 truncate">
-                  {editSessionForm.km}km {editSessionForm.name}
+                <span className="text-xs text-gray-500 flex-1 truncate">
+                  {editSessionForm.base
+                    ? `Plan: ${editSessionForm.base.km}km ${editSessionForm.base.name}`
+                    : "Plan session"}
                 </span>
                 <span
                   className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL[planDiscipline]}`}
                 >
                   {editSessionForm.type.replace("_", " ")}
                 </span>
+              </div>
+
+              <div>
+                <label htmlFor="session-name" className="block text-xs text-gray-500 mb-1">
+                  Name
+                </label>
+                <input
+                  id="session-name"
+                  value={editSessionForm.name}
+                  onChange={(e) =>
+                    setEditSessionForm({ ...editSessionForm, name: e.target.value })
+                  }
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="session-type" className="block text-xs text-gray-500 mb-1">
+                    Type
+                  </label>
+                  <select
+                    id="session-type"
+                    value={editSessionForm.type}
+                    onChange={(e) =>
+                      setEditSessionForm({
+                        ...editSessionForm,
+                        type: e.target.value as SessionType,
+                      })
+                    }
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 cursor-pointer"
+                  >
+                    {SESSION_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t.replace("_", " ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="session-km" className="block text-xs text-gray-500 mb-1">
+                    Distance (km)
+                  </label>
+                  <input
+                    id="session-km"
+                    value={editSessionForm.km}
+                    onChange={(e) =>
+                      setEditSessionForm({
+                        ...editSessionForm,
+                        km: e.target.value === "" ? 0 : Number(e.target.value),
+                      })
+                    }
+                    type="number"
+                    min={0}
+                    step="0.1"
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
+                  />
+                </div>
               </div>
 
               <div>
@@ -1172,18 +1280,30 @@ export function CalendarTab({ activities, plan, edits }: Props) {
 
               {editSessionError && <p className="text-red-400 text-xs">{editSessionError}</p>}
 
-              <div className="flex items-center justify-between pt-3">
+              <div className="flex items-center justify-between gap-3 pt-3">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={hideSession}
+                    disabled={editSessionSaving}
+                    className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Remove
+                  </button>
+                  {hasSessionEdits && (
+                    <button
+                      type="button"
+                      onClick={resetSessionToPlan}
+                      disabled={editSessionSaving}
+                      className="text-sm font-medium text-gray-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Reset to plan
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
-                  onClick={hideSession}
-                  disabled={editSessionSaving}
-                  className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Remove
-                </button>
-                <button
-                  type="button"
-                  onClick={saveSessionDate}
+                  onClick={saveSessionEdits}
                   disabled={editSessionSaving}
                   className="px-8 py-2.5 rounded-lg bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition-colors cursor-pointer"
                 >
