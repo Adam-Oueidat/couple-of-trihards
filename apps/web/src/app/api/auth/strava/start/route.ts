@@ -2,19 +2,11 @@ import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { anonLimiter, createLogger } from "@trihards/core";
 import { clientIp, withLimit } from "@/lib/api";
+import { isAllowedRedirect } from "@/lib/deep-link";
 import { encodeState, OAUTH_STATE_COOKIE } from "@/lib/oauth-state";
 import { getStravaAuthUrl } from "@/lib/strava";
 
 const log = createLogger("auth:start");
-
-function expectedScheme(): string {
-  return process.env.MOBILE_DEEP_LINK_SCHEME ?? "trihard";
-}
-
-function isAllowedRedirect(redirect: string): boolean {
-  // Allow only our mobile deep-link scheme — never an arbitrary URL.
-  return redirect.startsWith(`${expectedScheme()}://`);
-}
 
 export async function GET(request: NextRequest) {
   const limited = await withLimit(anonLimiter(), clientIp(request));
