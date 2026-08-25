@@ -1,9 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { StravaActivity } from "@trihards/core";
 import { getDiscipline, formatDuration, formatPace, activityDay } from "@trihards/core";
-import { ActivityDetailModal } from "./ActivityDetailModal";
+// Rendered only after a row is clicked, and it carries three recharts charts.
+// No loading placeholder: the modal is already conditional, so there is no
+// layout to shift.
+const ActivityDetailModal = dynamic(
+  () => import("./ActivityDetailModal").then((m) => m.ActivityDetailModal),
+  { ssr: false },
+);
 import { DisciplineGlyph } from "./DisciplineGlyph";
 
 interface Props {

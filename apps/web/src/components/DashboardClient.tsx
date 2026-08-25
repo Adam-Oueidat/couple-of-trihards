@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
@@ -9,14 +10,36 @@ import type { PlanSummary } from "@/lib/training-plans";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import { usePlanEdits } from "./usePlanEdits";
-import { WeeklyVolumeChart } from "./WeeklyVolumeChart";
-import { TrainingLoadChart } from "./TrainingLoadChart";
+
+// recharts pulls in d3-scale/d3-shape/victory-vendor and roughly doubles the
+// dashboard's first-load JS. Loading it on demand keeps it out of the initial
+// bundle. ssr: false because ResponsiveContainer measures a real DOM node —
+// server-rendering it produces a zero-width chart and a hydration mismatch.
+// The placeholders match each chart's ResponsiveContainer height (240px) so
+// deferring the load costs no layout shift.
+const ChartFallback = () => (
+  <div className="h-[240px] w-full animate-pulse rounded-lg bg-black/5 dark:bg-white/5" />
+);
+
+const WeeklyVolumeChart = dynamic(
+  () => import("./WeeklyVolumeChart").then((m) => m.WeeklyVolumeChart),
+  { ssr: false, loading: ChartFallback },
+);
+const TrainingLoadChart = dynamic(
+  () => import("./TrainingLoadChart").then((m) => m.TrainingLoadChart),
+  { ssr: false, loading: ChartFallback },
+);
 import { ActivityList } from "./ActivityList";
 import { OverviewHero } from "./OverviewHero";
 import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
 import { CoachChat } from "./CoachChat";
-import { PlannedVsActual } from "./PlannedVsActual";
+// Only ever rendered on the plan tab, so athletes who stay on Overview never
+// download it at all.
+const PlannedVsActual = dynamic(
+  () => import("./PlannedVsActual").then((m) => m.PlannedVsActual),
+  { ssr: false, loading: ChartFallback },
+);
 import { CalendarTab } from "./CalendarTab";
 import { PlanSourceCard } from "./PlanSourceCard";
 import { GoalsCard } from "./GoalsCard";
