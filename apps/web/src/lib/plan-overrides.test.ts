@@ -109,6 +109,84 @@ describe("base-field edits round-trip", () => {
   });
 });
 
+describe("skip round-trip", () => {
+  it("persists the skip and its reason", async () => {
+    await setOverride(userId, {
+      sessionId: "s-skip",
+      originalDate: DATE,
+      newDate: DATE,
+      skipped: true,
+      skipReason: "calf was tight",
+    });
+
+    const overrides = await getOverrides(userId);
+    expect(overrides["s-skip"].skipped).toBe(true);
+    expect(overrides["s-skip"].skipReason).toBe("calf was tight");
+    // A skip is not a removal — the session must stay in the plan.
+    expect(overrides["s-skip"].hidden).toBe(false);
+  });
+
+  it("keeps the skip separate from the move reason", async () => {
+    await setOverride(userId, {
+      sessionId: "s-skip-moved",
+      originalDate: DATE,
+      newDate: "2026-05-06",
+      reason: "work travel",
+      skipped: true,
+      skipReason: "never found the time",
+    });
+
+    const overrides = await getOverrides(userId);
+    expect(overrides["s-skip-moved"].reason).toBe("work travel");
+    expect(overrides["s-skip-moved"].skipReason).toBe("never found the time");
+  });
+
+  it("drops the row when the skip is the only thing on it and is undone", async () => {
+    await setOverride(userId, {
+      sessionId: "s-unskip",
+      originalDate: DATE,
+      newDate: DATE,
+      skipped: true,
+      skipReason: "sick",
+    });
+    expect((await getOverrides(userId))["s-unskip"]).toBeDefined();
+
+    const result = await setOverride(userId, {
+      sessionId: "s-unskip",
+      originalDate: DATE,
+      newDate: DATE,
+      skipped: false,
+    });
+
+    expect(result).toBeNull();
+    expect((await getOverrides(userId))["s-unskip"]).toBeUndefined();
+  });
+
+  it("keeps a row that still holds an edit after the skip is undone", async () => {
+    await setOverride(userId, {
+      sessionId: "s-unskip-edit",
+      originalDate: DATE,
+      newDate: DATE,
+      name: "Club run",
+      skipped: true,
+      skipReason: "sick",
+    });
+    await setOverride(userId, {
+      sessionId: "s-unskip-edit",
+      originalDate: DATE,
+      newDate: DATE,
+      name: "Club run",
+      skipped: false,
+    });
+
+    const row = (await getOverrides(userId))["s-unskip-edit"];
+    expect(row.name).toBe("Club run");
+    expect(row.skipped).toBe(false);
+    // The reason goes with the skip, so the next skip cannot inherit a stale one.
+    expect(row.skipReason).toBeUndefined();
+  });
+});
+
 describe("validateOverrideInput", () => {
   const base = { sessionId: "s", originalDate: DATE, newDate: DATE };
 
@@ -127,6 +205,25 @@ describe("validateOverrideInput", () => {
   it("rejects a type outside the session-type union", () => {
     expect(() => validateOverrideInput({ ...base, type: "brick" })).toThrow(/type/);
     expect(validateOverrideInput({ ...base, type: "intervals" }).type).toBe("intervals");
+  });
+
+  it("rejects a non-boolean skipped flag", () => {
+    expect(() => validateOverrideInput({ ...base, skipped: "yes" })).toThrow(/skipped/);
+    expect(validateOverrideInput({ ...base, skipped: true }).skipped).toBe(true);
+  });
+
+  it("trims a skip reason, drops a blank one, and caps its length", () => {
+    expect(
+      validateOverrideInput({ ...base, skipped: true, skipReason: "  calf tight  " })
+        .skipReason,
+    ).toBe("calf tight");
+    expect(
+      validateOverrideInput({ ...base, skipped: true, skipReason: "   " }).skipReason,
+    ).toBeUndefined();
+    expect(
+      validateOverrideInput({ ...base, skipped: true, skipReason: "x".repeat(500) })
+        .skipReason,
+    ).toHaveLength(300);
   });
 
   it("rejects a negative or non-finite distance but allows zero", () => {

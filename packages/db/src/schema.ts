@@ -174,6 +174,15 @@ export const planOverrides = sqliteTable(
     movedAt: integer("moved_at").notNull(),
     reason: text("reason"),
     hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+    // "I did not do this one, and here is why." Deliberately distinct from
+    // `hidden`: a hidden session is gone from the plan, while a skipped one
+    // stays on the calendar so the athlete — and the coach — can still see it
+    // was prescribed. `skipReason` is its own column rather than a second use
+    // of `reason` above, which carries the *move* reason: a session can be both
+    // moved and skipped, and collapsing the two would make "moved to Thursday
+    // because of work travel" indistinguishable from "not done at all".
+    skipped: integer("skipped", { mode: "boolean" }).notNull().default(false),
+    skipReason: text("skip_reason"),
     // Athlete edits to the session's own fields. Null means "unchanged, use
     // whatever the plan says", which is what keeps a re-upload of the same plan
     // from silently discarding edits — the override layers on top rather than

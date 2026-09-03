@@ -5,7 +5,7 @@ import type { PlannedSession } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
-import type { CalendarDayActions } from "./types";
+import { SKIPPED_BADGE, SKIPPED_CHIP, type CalendarDayActions } from "./types";
 
 export type DragPayload =
   | { kind: "plan"; sessionId: string; originalDate: string; currentDate: string }
@@ -119,6 +119,7 @@ export function MonthGrid({
                 <div className="space-y-1">
                   {sessions.map((s) => {
                     const moved = s.movedFrom !== undefined;
+                    const skipped = s.skipped === true;
                     const dragId = `plan:${s.id}`;
                     return (
                       <div
@@ -145,16 +146,21 @@ export function MonthGrid({
                         title={
                           `${s.name} (${s.km}km, ${s.type})` +
                           (moved ? ` — moved from ${s.movedFrom}` : "") +
+                          (skipped
+                            ? `\nSkipped${s.skipReason ? `: ${s.skipReason}` : " (no reason given)"}`
+                            : "") +
                           "\nClick to edit · Drag to reschedule"
                         }
                         className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
-                          DISCIPLINE_PILL[planDiscipline]
+                          skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[planDiscipline]
                         } ${
-                          done?.has(planDiscipline) && s.date <= today
-                            ? ""
-                            : s.date < today
-                              ? "opacity-50 line-through"
-                              : ""
+                          skipped
+                            ? "line-through"
+                            : done?.has(planDiscipline) && s.date <= today
+                              ? ""
+                              : s.date < today
+                                ? "opacity-50 line-through"
+                                : ""
                         } ${draggingId === dragId ? "opacity-30" : ""} ${
                           moved ? "ring-1 ring-orange-500/40" : ""
                         }`}
@@ -163,6 +169,11 @@ export function MonthGrid({
                         <span className="truncate flex-1">
                           {s.km}km {s.name}
                         </span>
+                        {skipped && (
+                          <span className={`${SKIPPED_BADGE} px-1 text-[8px] no-underline`}>
+                            Skipped
+                          </span>
+                        )}
                         {moved && (
                           <button
                             type="button"

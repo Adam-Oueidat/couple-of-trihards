@@ -46,7 +46,7 @@ Guidelines:
 - Pay attention to CTL (fitness), ATL (fatigue), and TSB (form). Negative TSB means accumulated fatigue; very negative (< -20) suggests overreaching. Positive TSB means freshness.
 - Watch for imbalances between swim/bike/run relative to typical triathlon preparation.
 - The "Training plan" section below is this athlete's own plan, or says NONE. Every plan, race, date, and session name you mention must come from that section — if it says NONE, this athlete has no plan and no goal race, and you must not name one.
-- When the athlete does have a plan, help them integrate it with their other disciplines without overloading, and consider adherence so far (completed/missed sessions) and how the other disciplines' load interacts with its key sessions.
+- When the athlete does have a plan, help them integrate it with their other disciplines without overloading, and consider adherence so far (completed/missed sessions, and skipped ones separately) and how the other disciplines' load interacts with its key sessions.
 - Flag injury-risk patterns: sudden volume spikes (>30% week over week), no rest days, high fatigue.
 - If asked about topics requiring medical expertise, recommend seeing a professional.
 - Use metric units.
@@ -58,6 +58,13 @@ Guidelines:
 Plan moves:
 - The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original plan dates.
 - When the athlete tells you they had to move a session, acknowledge the change and adapt advice (e.g. a long run pushed by a day means the easy day around it should shift too). If they're stacking hard sessions back-to-back due to a move, flag the risk.
+
+Skipped sessions:
+- The athlete can mark a planned session as skipped and write down why. Skipped sessions stay in the plan sections above with status [skipped] and their reason attached, and are gathered under "Skipped sessions".
+- A skip is a decision the athlete has already made and told you about. Acknowledge it and move on — never scold them for it, and never ask why a skipped session was missed when the reason is right there.
+- Treat the reason as real signal and adapt the load to it. A niggle or pain means backing off that discipline and checking whether it is recurring. Work, travel or family means reshaping the week rather than lowering what they are capable of. A swap ("did a swim instead") means the training happened, just not the prescribed session.
+- Read skips as a series, not one at a time. Repeated skips of the same discipline, the same session type, or the same complaint are the pattern worth naming, and the plan should change around it.
+- A skipped session is neither completed nor missed. Do not hold it against their adherence, but do not call the week fully done either — the prescribed distance still went unrun, so a real volume shortfall sits behind a deliberate choice.
 
 Adding workouts:
 - You have an add_workout tool to put swim/ride/run sessions on the athlete's calendar.
@@ -274,8 +281,31 @@ ${opts.priorSummary}\n`
   const sessionLine = (s: (typeof sessions)[number]) => {
     const actual =
       s.actualKm !== undefined ? ` (actual: ${s.actualKm}km)` : "";
-    return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}`;
+    // The reason rides along on the session's own line as well as in the block
+    // below, so the coach never has to cross-reference two lists to know why a
+    // session in the adherence window is marked skipped.
+    const skip =
+      s.status === "skipped"
+        ? ` — reason: ${s.skipReason ?? "none given"}`
+        : "";
+    return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}${skip}`;
   };
+
+  // Every skip in one place. The recent/upcoming windows above are capped, so a
+  // pattern worth acting on — three run sessions dropped for the same niggle —
+  // would otherwise be invisible the moment the earliest one scrolled out.
+  const skippedLines = plan
+    ? Object.values(overrides)
+        .filter((o) => o.skipped && !o.hidden)
+        .sort((a, b) => a.newDate.localeCompare(b.newDate))
+        .map((o) => {
+          const session = plan.sessions.find((s) => s.id === o.sessionId);
+          const label = session
+            ? `${session.name} (${session.type}, ${session.km}km)`
+            : o.sessionId;
+          return `- ${o.newDate} "${label}": ${o.skipReason ?? "no reason given"}`;
+        })
+    : [];
 
   // An athlete with no plan gets a section that says so in as many words. The
   // alternative — omitting the section — reads as "the plan just wasn't
@@ -292,9 +322,15 @@ ${pastSessions.map(sessionLine).join("\n") || "None yet"}
 ## Upcoming plan sessions (next 7)
 ${upcomingSessions.map(sessionLine).join("\n") || "None"}
 
+## Skipped sessions (the athlete marked these as not done, in their own words)
+${skippedLines.join("\n") || "None — no sessions skipped"}
+
 ## Plan moves (sessions the athlete rescheduled from their original plan dates)
 ${
   Object.values(overrides)
+    // Rows that only record an edit or a skip are not moves; listing them as
+    // "2026-05-04 → 2026-05-04" was noise the coach had to reason past.
+    .filter((o) => o.newDate !== o.originalDate)
     .sort((a, b) => a.newDate.localeCompare(b.newDate))
     .map((o) => {
       const session = plan.sessions.find((s) => s.id === o.sessionId);

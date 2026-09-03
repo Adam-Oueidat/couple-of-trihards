@@ -12,6 +12,8 @@ export interface EditSessionFormState {
   name: string;
   type: SessionType;
   km: number;
+  skipped: boolean;
+  skipReason: string;
   base: { name: string; type: SessionType; km: number } | null;
 }
 
@@ -27,7 +29,14 @@ interface Props {
   onResetToPlan: () => void;
 }
 
-/** "Plan session" dialog: move it, edit its base fields, hide it, or reset it. */
+/**
+ * "Plan session" dialog: move it, edit its base fields, skip it, remove it, or
+ * reset it. Skip and Remove are deliberately different doors — skipping keeps
+ * the session on the calendar with the athlete's reason attached, removing
+ * takes it out of the plan altogether — so skip lives in the form (it is a
+ * property of the session, saved with everything else) while Remove stays a
+ * destructive action off to the side.
+ */
 export function EditSessionModal({
   editSessionForm,
   setEditSessionForm,
@@ -152,6 +161,52 @@ export function EditSessionModal({
               type="date"
               className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500 [color-scheme:dark]"
             />
+          </div>
+
+          <div className="rounded-lg border border-dashed border-gray-700 bg-gray-950/40 p-3">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editSessionForm.skipped}
+                onChange={(e) =>
+                  setEditSessionForm({
+                    ...editSessionForm,
+                    skipped: e.target.checked,
+                  })
+                }
+                className="w-4 h-4 accent-orange-500 cursor-pointer"
+              />
+              <span className="text-sm text-gray-300">Skip this session</span>
+            </label>
+            <p className="text-gray-500 text-xs mt-1.5 ml-6">
+              It stays on your calendar, marked as skipped. Your coach reads the
+              reason and adapts the week around it.
+            </p>
+
+            {editSessionForm.skipped && (
+              <div className="mt-3">
+                <label
+                  htmlFor="session-skip-reason"
+                  className="block text-xs text-gray-500 mb-1"
+                >
+                  Reason (optional)
+                </label>
+                <textarea
+                  id="session-skip-reason"
+                  rows={2}
+                  maxLength={300}
+                  value={editSessionForm.skipReason}
+                  onChange={(e) =>
+                    setEditSessionForm({
+                      ...editSessionForm,
+                      skipReason: e.target.value,
+                    })
+                  }
+                  placeholder="Calf was tight, swapped for a swim, work travel..."
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:border-orange-500 resize-none"
+                />
+              </div>
+            )}
           </div>
 
           {editSessionError && <p className="text-red-400 text-xs">{editSessionError}</p>}
