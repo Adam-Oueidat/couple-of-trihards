@@ -30,6 +30,17 @@ function localToday(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+// The IANA zone name, sent alongside the date because the coach's
+// get_current_datetime tool reports a time as well: a real zone survives DST,
+// where a fixed offset guessed from an old activity does not.
+function localTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function CoachChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // The active conversation id is only sent with requests, never rendered — a
@@ -103,6 +114,7 @@ export function CoachChat() {
           messages: [{ role: "user", content }],
           conversationId: conversationIdRef.current,
           today: localToday(),
+          timezone: localTimeZone(),
         }),
       });
 
