@@ -29,6 +29,10 @@ export interface PlannedSession {
   movedFrom?: string;
   moveReason?: string;
   hidden?: boolean;
+  // "Planned, but I did not do it, because X." Unlike `hidden` the session
+  // stays in every view — skipping is training information, removing is not.
+  skipped?: boolean;
+  skipReason?: string;
 }
 
 export interface TrainingPlan {
@@ -61,8 +65,12 @@ export interface PlanOverride {
   originalDate: string;
   newDate: string;
   movedAt: string;
+  // Why the session was *moved*. The skip reason is separate below, because a
+  // session can be both rescheduled and then skipped.
   reason?: string;
   hidden?: boolean;
+  skipped?: boolean;
+  skipReason?: string;
   // Athlete edits to the session's own fields. Undefined means "unchanged".
   // The session id is derived from the STORED plan's (date, name) in
   // buildTrainingPlan, before overrides are applied, so renaming here can
@@ -143,6 +151,8 @@ export function applyPlanOverrides(
       movedFrom: override.newDate !== s.originalDate ? s.originalDate : undefined,
       moveReason: override.reason,
       hidden: override.hidden,
+      skipped: override.skipped,
+      skipReason: override.skipReason,
       name: override.name ?? s.name,
       type: override.type ?? s.type,
       km: override.km ?? s.km,
@@ -154,6 +164,7 @@ export type SessionStatus =
   | "completed"
   | "partial"
   | "missed"
+  | "skipped"
   | "upcoming"
   | "today";
 
@@ -201,6 +212,14 @@ export function matchSessions(
   }
 
   const planResults: SessionWithStatus[] = sessions.map((session) => {
+    // Skipped is decided before anything else, and deliberately outranks even
+    // `today`/`upcoming`: the athlete has stated they are not doing this one,
+    // which is a fact about the session, not a function of the date. Grading it
+    // against a same-day activity would also be wrong in both directions — a
+    // swap ("skipped the run, swam instead") is not a completed run, and an
+    // easy shakeout on the same day is not a half-finished interval session.
+    if (session.skipped) return { ...session, status: "skipped" as const };
+
     const runs = runsByDate.get(session.date) ?? [];
     const actualKm = runs.reduce((sum, r) => sum + r.distance / 1000, 0);
 
@@ -301,7 +320,11 @@ export function plannedVsActualByWeek(
   };
 
   for (const s of sessions) {
-    if (s.hidden) continue; // "Removed" in the calendar → drop from planned km
+    // "Removed" in the calendar → drop from planned km. Skipped sessions are
+    // NOT dropped: the plan did ask for that distance, and quietly deducting it
+    // would let a week of skips read as full adherence. The shortfall stays
+    // visible; the reason for it is what the coach gets alongside.
+    if (s.hidden) continue;
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
     plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + s.km);
     addDiscipline(week, planDiscipline);

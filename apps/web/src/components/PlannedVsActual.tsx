@@ -43,6 +43,12 @@ const STATUS_STYLES: Record<SessionWithStatus["status"], { label: string; cls: s
   completed: { label: "Done", cls: "bg-green-500/15 text-green-400 border-green-500/30" },
   partial: { label: "Partial", cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" },
   missed: { label: "Missed", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
+  // Dashed and grey, not red: the athlete chose this one, so it must not read
+  // like a failure sitting next to "Missed".
+  skipped: {
+    label: "Skipped",
+    cls: "bg-gray-500/10 text-gray-400 border-dashed border-gray-500/50",
+  },
   today: { label: "Today", cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
   upcoming: { label: "Upcoming", cls: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
 };
@@ -272,10 +278,20 @@ export function PlannedVsActual({ activities, plan, edits }: Props) {
                     {style.label}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{s.name}</p>
+                    <p
+                      className={`text-sm font-medium truncate ${
+                        s.status === "skipped"
+                          ? "text-gray-400 line-through"
+                          : "text-white"
+                      }`}
+                    >
+                      {s.name}
+                    </p>
                     <p className="text-gray-500 text-xs">
                       {formatSessionDate(s.date)} ·{" "}
                       {s.isCustom ? s.discipline : s.type.replace("_", " ")}
+                      {s.status === "skipped" &&
+                        ` · ${s.skipReason ?? "no reason given"}`}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">

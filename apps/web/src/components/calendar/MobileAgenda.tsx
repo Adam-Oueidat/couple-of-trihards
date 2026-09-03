@@ -4,7 +4,7 @@ import type { PlannedSession } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
-import type { CalendarDayActions } from "./types";
+import { SKIPPED_BADGE, SKIPPED_CHIP, type CalendarDayActions } from "./types";
 
 // Built once at module scope rather than per render: constructing an
 // Intl formatter is the expensive part, and these options never vary.
@@ -111,19 +111,22 @@ export function MobileAgenda({
                 <div className="space-y-1.5">
                   {sessions.map((s) => {
                     const moved = s.movedFrom !== undefined;
+                    const skipped = s.skipped === true;
                     return (
                       <div key={s.id} className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => openSessionEditor(s)}
                           className={`flex-1 min-w-0 px-2.5 py-2 rounded-lg border text-xs leading-tight flex items-center gap-2 text-left cursor-pointer ${
-                            DISCIPLINE_PILL[planDiscipline]
+                            skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[planDiscipline]
                           } ${
-                            done?.has(planDiscipline) && s.date <= today
+                            skipped
                               ? ""
-                              : s.date < today
-                                ? "opacity-50 line-through"
-                                : ""
+                              : done?.has(planDiscipline) && s.date <= today
+                                ? ""
+                                : s.date < today
+                                  ? "opacity-50 line-through"
+                                  : ""
                           } ${moved ? "ring-1 ring-orange-500/40" : ""}`}
                         >
                           <DisciplineGlyph
@@ -131,9 +134,27 @@ export function MobileAgenda({
                             size={12}
                             className="flex-shrink-0 opacity-80"
                           />
-                          <span className="truncate flex-1">
-                            {s.km}km {s.name}
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className={`block truncate ${skipped ? "line-through" : ""}`}
+                            >
+                              {s.km}km {s.name}
+                            </span>
+                            {/* The reason sits under the name rather than in a
+                                tooltip: there is no hover on a phone. */}
+                            {skipped && s.skipReason && (
+                              <span className="block truncate text-[10px] text-gray-500 mt-0.5">
+                                {s.skipReason}
+                              </span>
+                            )}
                           </span>
+                          {skipped && (
+                            <span
+                              className={`${SKIPPED_BADGE} px-1.5 text-[9px] font-semibold`}
+                            >
+                              Skipped
+                            </span>
+                          )}
                         </button>
                         {moved && (
                           <button

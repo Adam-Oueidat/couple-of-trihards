@@ -294,10 +294,15 @@ export function CalendarTab({ activities, plan, edits }: Props) {
     }
     if (payload.kind === "plan") {
       if (payload.currentDate === dateStr) return;
+      // The API replaces the whole override row, so a move has to re-send
+      // whatever else it already recorded — a rename, an edited distance, a
+      // skip and its reason. Sending only the date would quietly undo them.
+      const existing = overrides[payload.sessionId];
       // Optimistic update
       setOverrides((prev) => ({
         ...prev,
         [payload.sessionId]: {
+          ...existing,
           sessionId: payload.sessionId,
           originalDate: payload.originalDate,
           newDate: dateStr,
@@ -312,6 +317,12 @@ export function CalendarTab({ activities, plan, edits }: Props) {
             sessionId: payload.sessionId,
             originalDate: payload.originalDate,
             newDate: dateStr,
+            reason: existing?.reason,
+            name: existing?.name,
+            type: existing?.type,
+            km: existing?.km,
+            skipped: existing?.skipped,
+            skipReason: existing?.skipReason,
           }),
         });
         await loadOverrides();
@@ -422,6 +433,8 @@ export function CalendarTab({ activities, plan, edits }: Props) {
       name: s.name,
       type: s.type,
       km: s.km,
+      skipped: s.skipped === true,
+      skipReason: s.skipReason ?? "",
       base: planned
         ? { name: planned.name, type: planned.type, km: planned.km }
         : null,
@@ -458,6 +471,8 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           name: base && name === base.name ? undefined : name,
           type: base && form.type === base.type ? undefined : form.type,
           km: base && form.km === base.km ? undefined : form.km,
+          skipped: form.skipped,
+          skipReason: form.skipped ? form.skipReason : undefined,
         }),
       });
       if (!res.ok) {
@@ -589,13 +604,15 @@ export function CalendarTab({ activities, plan, edits }: Props) {
 
       <p className="text-gray-600 text-xs mt-3 hidden sm:block">
         Drag any session to a different day to reschedule. Moved sessions get an
-        orange ring; hover and click ↺ to reset to the original plan date. The
-        coach sees every move so it can adapt advice.
+        orange ring; hover and click ↺ to reset to the original plan date. Click a
+        session to skip it with a reason — it stays here, marked skipped. The
+        coach sees every move and every skip so it can adapt advice.
       </p>
       <p className="text-gray-600 text-xs mt-3 sm:hidden">
         Tap a session to edit it or move it to another day. Moved sessions get an
-        orange ring; tap ↺ to reset to the original plan date. The coach sees
-        every move so it can adapt advice.
+        orange ring; tap ↺ to reset to the original plan date. You can also mark a
+        session skipped with a reason. The coach sees every move and every skip
+        so it can adapt advice.
       </p>
 
       {form && (
