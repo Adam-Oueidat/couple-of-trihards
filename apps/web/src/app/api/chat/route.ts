@@ -13,6 +13,12 @@ import {
   resolveToday,
   summarizeConversation,
 } from "@/lib/coach";
+import {
+  dayOfWeekOf,
+  daysBetween,
+  formatResolvedNow,
+  resolveNow,
+} from "@/lib/coach-dates";
 import { addWorkout, validateWorkoutInput } from "@/lib/workouts";
 import {
   getCarryoverSummary,
@@ -30,13 +36,23 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const TOOLS: Anthropic.Tool[] = [
   {
+    name: "get_current_datetime",
+    description:
+      "Returns the authoritative current date, local time, day of week and timezone for this athlete, resolved server-side from their device clock. This is the ONLY valid source for the current moment. Call it at the start of every conversation, and again before any time-dependent reasoning: days until the race, what 'this week' or 'tomorrow' means, how recent an activity is, whether a plan session is still upcoming or already done, and before choosing the date for add_workout. Never state or calculate from a date or time you remember — earlier turns in this conversation, the earlier-coaching-context summary, and anything the athlete said previously all describe the past and may be days or months stale. Calling this tool is cheap; being wrong about the date is not.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
     name: "add_workout",
     description:
-      "Add a swim, ride, or run workout to the athlete's training calendar. Only call this after you have assessed that the workout is compatible with the surrounding plan sessions and training load, and the athlete has clearly expressed they want it added. The workout will appear on their calendar immediately.",
+      "Add a swim, ride, or run workout to the athlete's training calendar. Only call this after you have assessed that the workout is compatible with the surrounding plan sessions and training load, and the athlete has clearly expressed they want it added. Call get_current_datetime first if you have not already this conversation — the date is computed relative to today, so a remembered today puts the session on the wrong day. The workout will appear on their calendar immediately.",
     input_schema: {
       type: "object",
       properties: {
-        date: { type: "string", description: "Date in YYYY-MM-DD format" },
+        date: {
+          type: "string",
+          description:
+            "Date in YYYY-MM-DD format, computed from the date get_current_datetime returned",
+        },
         discipline: { type: "string", enum: ["swim", "ride", "run"] },
         name: {
           type: "string",
@@ -96,7 +112,12 @@ export async function POST(request: NextRequest) {
     typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.today)
       ? body.today
       : undefined;
-  const today = resolveToday(clientToday, activities);
+  // ...and its IANA timezone, which is what lets us report a *time* rather than
+  // just a date. Callers that send neither (the planned mobile app, scripts)
+  // still fall through to the activity-derived offset and then to server UTC.
+  const clientTimezone =
+    typeof body.timezone === "string" ? body.timezone : undefined;
+  const today = resolveToday(clientToday, activities, clientTimezone);
 
   // When was the athlete last in any conversation? Read it before we touch the
   // DB so newly-logged activities can be flagged "new since we last spoke".
@@ -151,10 +172,13 @@ export async function POST(request: NextRequest) {
     messageLen: body.messages[body.messages.length - 1].content.length,
   });
 
+  // Pass the already-resolved date, not the raw client one: it is the same
+  // value the get_current_datetime tool will report, so the "Today is ..." line
+  // in the context can never contradict the tool.
   const { identity, context: trainingContext } = await buildTrainingContext(
     auth,
     activities,
-    clientToday,
+    today,
     { priorSummary, sinceTs },
   );
 
@@ -233,7 +257,17 @@ export async function POST(request: NextRequest) {
           const toolResults: Anthropic.ToolResultBlockParam[] = await Promise.all(
             toolUses.map(async (block) => {
               let result: string;
-              if (block.name === "add_workout") {
+              if (block.name === "get_current_datetime") {
+                // Resolved at call time, not at request time: a long tool loop
+                // can outlive the minute the request arrived in.
+                result = formatResolvedNow(
+                  resolveNow({
+                    activities,
+                    timezone: clientTimezone,
+                    clientToday,
+                  }),
+                );
+              } else if (block.name === "add_workout") {
                 try {
                   const input = validateWorkoutInput(block.input);
                   const workout = await addWorkout(userId, input, "coach");
@@ -243,7 +277,17 @@ export async function POST(request: NextRequest) {
                     date: workout.date,
                     discipline: workout.discipline,
                   });
-                  result = `Added to calendar: ${workout.name} (${workout.discipline}) on ${workout.date}`;
+                  // Echo the day back relative to today so an off-by-one from a
+                  // remembered date is visible to the coach (and correctable in
+                  // the same turn) instead of silently landing on the calendar.
+                  const offsetDays = daysBetween(today, workout.date);
+                  const when =
+                    offsetDays === 0
+                      ? "today"
+                      : offsetDays > 0
+                        ? `${offsetDays} day(s) from today (${today})`
+                        : `${-offsetDays} day(s) in the past — today is ${today}`;
+                  result = `Added to calendar: ${workout.name} (${workout.discipline}) on ${workout.date} (${dayOfWeekOf(workout.date)}), ${when}`;
                 } catch (err) {
                   log.warn("add_workout tool failed", {
                     userId,
