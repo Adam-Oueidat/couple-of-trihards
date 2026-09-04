@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   createLogger,
   parseRawTrainingPlan,
+  PLAN_PARSE_MODEL,
   TRAINING_PLAN_JSON_SCHEMA,
   type RawTrainingPlan,
 } from "@trihards/core";
@@ -116,7 +117,7 @@ export async function parsePlanDocument(
   // Streamed because a full plan plus adaptive thinking can run well past the
   // point where a non-streaming request risks an HTTP timeout.
   const stream = anthropic.messages.stream({
-    model: "claude-opus-5",
+    model: PLAN_PARSE_MODEL,
     max_tokens: 32000,
     system: SYSTEM_PROMPT,
     output_config: {

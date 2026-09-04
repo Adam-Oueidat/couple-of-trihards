@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
-import { analyzeLimiter, createLogger, TRAINING_HISTORY_WEEKS } from "@trihards/core";
+import {
+  analyzeLimiter,
+  ANALYSIS_MODEL,
+  createLogger,
+  TRAINING_HISTORY_WEEKS,
+} from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 
@@ -51,8 +56,14 @@ export async function POST(request: NextRequest) {
   );
 
   const stream = anthropic.messages.stream({
-    model: "claude-sonnet-4-6",
-    max_tokens: 1200,
+    model: ANALYSIS_MODEL,
+    // Thinking and visible text share this budget. Streamed, so headroom is free
+    // until it is used.
+    max_tokens: 4000,
+    thinking: { type: "adaptive" },
+    // Unlike the chat, this is one-shot and nobody is waiting mid-sentence, so
+    // it can afford to think harder about splits, laps and HR drift.
+    output_config: { effort: "high" },
     // Stable → volatile, with the breakpoints on the two repeating blocks.
     // See the same construction in app/api/chat/route.ts for the reasoning.
     system: [
@@ -85,7 +96,26 @@ export async function POST(request: NextRequest) {
             controller.enqueue(encoder.encode(event.delta.text));
           }
         }
-        if (fullText.length > 0) {
+        // Saved analyses are replayed into every later coach prompt by
+        // getRecentAnalyses ("stay consistent with it"), so a truncated or
+        // refused one would become permanent context. Only a finished analysis
+        // is worth keeping.
+        const final = await stream.finalMessage();
+        if (final.stop_reason !== "end_turn") {
+          log.warn("analysis not saved", {
+            userId,
+            activityId,
+            stopReason: final.stop_reason,
+            category: final.stop_details?.category,
+          });
+          controller.enqueue(
+            encoder.encode(
+              final.stop_reason === "refusal"
+                ? "\n\n[This activity could not be analysed.]"
+                : "\n\n[Analysis cut short — try again.]",
+            ),
+          );
+        } else if (fullText.length > 0) {
           await saveAnalysis(userId, activityId, fullText);
           log.info("analysis saved", { userId, activityId, length: fullText.length });
         }
