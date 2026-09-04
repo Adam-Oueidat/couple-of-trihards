@@ -12,6 +12,7 @@ import {
   formatPace,
   matchSessions,
   daysUntilRace,
+  SUMMARY_MODEL,
 } from "@trihards/core";
 import { getWorkouts } from "./workouts";
 import { getActiveTrainingPlan } from "./training-plans";
@@ -145,7 +146,7 @@ export async function summarizeConversation(
     .trim();
   if (!transcript) return null;
   const res = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
+    model: SUMMARY_MODEL,
     max_tokens: 400,
     system:
       "You summarize a triathlon coaching conversation for the coach's own future reference. Write 3-5 sentences in plain past tense. Capture: the topics discussed, the advice or decisions given, any injuries, concerns, or goals the athlete raised, and any workouts added. Do not include specific calendar dates unless they refer to a fixed event like a race. No preamble, no headings, plain text only.",
