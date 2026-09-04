@@ -1,6 +1,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
-import { chatLimiter, createLogger, TRAINING_HISTORY_WEEKS } from "@trihards/core";
+import {
+  chatLimiter,
+  COACH_MODEL,
+  createLogger,
+  TRAINING_HISTORY_WEEKS,
+} from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 
@@ -226,8 +231,18 @@ export async function POST(request: NextRequest) {
       try {
         for (let round = 0; round < 5; round++) {
           const stream = anthropic.messages.stream({
-            model: "claude-sonnet-4-6",
-            max_tokens: 1500,
+            model: COACH_MODEL,
+            // Thinking and visible text share this budget, so it sits well clear
+            // of a long reply. The response is streamed, so a high ceiling costs
+            // nothing until it is actually used.
+            max_tokens: 8000,
+            // The coach weighs TSB against planned load, skip patterns and
+            // proximity to key sessions before it will call add_workout. That is
+            // the multi-factor judgment adaptive thinking exists for.
+            thinking: { type: "adaptive" },
+            // Adaptive thinking already scales depth to the question, so medium
+            // effort keeps an interactive chat responsive on the easy ones.
+            output_config: { effort: "medium" },
             system,
             tools: TOOLS,
             messages: conversation,
@@ -243,7 +258,47 @@ export async function POST(request: NextRequest) {
           }
 
           const final = await stream.finalMessage();
-          // Persist the full assistant turn (text + tool_use blocks).
+
+          // A turn that ran out of room or was refused is caught *before* it is
+          // persisted. Either can leave a half-built tool_use block behind, and
+          // storing one verbatim puts a tool_use with no matching tool_result
+          // into the history — which the API then rejects on every later turn of
+          // this conversation. Keep the text, drop the plumbing.
+          if (
+            final.stop_reason === "max_tokens" ||
+            final.stop_reason === "refusal"
+          ) {
+            const textOnly = final.content.filter(
+              (block): block is Anthropic.TextBlock => block.type === "text",
+            );
+            if (textOnly.length > 0) {
+              await saveMessage(userId, conversationId, "assistant", textOnly);
+            }
+            if (final.stop_reason === "refusal") {
+              // stop_details is populated only on a refusal — it is null for
+              // every other stop reason.
+              log.warn("coach turn refused", {
+                userId,
+                conversationId,
+                category: final.stop_details?.category,
+              });
+              controller.enqueue(
+                encoder.encode(
+                  "\n\n[I can't help with that one — try asking a different way.]",
+                ),
+              );
+            } else {
+              log.warn("coach reply truncated", { userId, conversationId });
+              controller.enqueue(
+                encoder.encode("\n\n[Reply cut short — ask me to carry on.]"),
+              );
+            }
+            break;
+          }
+
+          // Persist the full assistant turn (text + thinking + tool_use blocks).
+          // Verbatim matters: thinking blocks have to round-trip unchanged when
+          // the conversation continues on the same model.
           await saveMessage(userId, conversationId, "assistant", final.content);
 
           if (final.stop_reason !== "tool_use") break;
