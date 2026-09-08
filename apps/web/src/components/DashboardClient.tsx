@@ -18,27 +18,39 @@ import { usePlanEdits } from "./usePlanEdits";
 // server-rendering it produces a zero-width chart and a hydration mismatch.
 // The placeholders match each chart's ResponsiveContainer height (240px) so
 // deferring the load costs no layout shift.
+//
+// All three go through "./charts" rather than their own modules on purpose:
+// same specifier, same chunk, one copy of recharts between them. Importing
+// them from their own files brings a private copy of the library each. See the
+// header comment in charts.tsx.
 const ChartFallback = () => (
   <div className="h-[240px] w-full animate-pulse rounded-lg bg-black/5 dark:bg-white/5" />
 );
 
 const WeeklyVolumeChart = dynamic(
-  () => import("./WeeklyVolumeChart").then((m) => m.WeeklyVolumeChart),
+  () => import("./charts").then((m) => m.WeeklyVolumeChart),
   { ssr: false, loading: ChartFallback },
 );
 const TrainingLoadChart = dynamic(
-  () => import("./TrainingLoadChart").then((m) => m.TrainingLoadChart),
+  () => import("./charts").then((m) => m.TrainingLoadChart),
   { ssr: false, loading: ChartFallback },
 );
 import { ActivityList } from "./ActivityList";
 import { OverviewHero } from "./OverviewHero";
 import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
-import { CoachChat } from "./CoachChat";
-// Only ever rendered on the plan tab, so athletes who stay on Overview never
-// download it at all.
+// The coach panel is behind a button and nobody sees it on first paint, but it
+// used to be imported statically AND mounted on every load — so its JS sat in
+// the initial bundle and its history fetch (/api/chat/history) ran on every
+// dashboard render for a panel that was still hidden. Deferred on both counts:
+// the code arrives with the first open, and so does the request.
+const CoachChat = dynamic(() => import("./CoachChat").then((m) => m.CoachChat), {
+  ssr: false,
+});
+// Only ever rendered on the plan tab. It shares the charts chunk with the two
+// above, so an athlete who has been on Overview already has it.
 const PlannedVsActual = dynamic(
-  () => import("./PlannedVsActual").then((m) => m.PlannedVsActual),
+  () => import("./charts").then((m) => m.PlannedVsActual),
   { ssr: false, loading: ChartFallback },
 );
 import { CalendarTab } from "./CalendarTab";
@@ -86,6 +98,11 @@ function formatAgo(syncedAt: number): string {
 export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
+  // Latches on the first open and never clears: the panel still has to survive
+  // tab switches and being closed again, so once mounted it stays mounted and
+  // only its visibility changes — exactly as before. All that has moved is when
+  // that first mount happens.
+  const [coachMounted, setCoachMounted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pending, startTransition] = useTransition();
 
@@ -364,21 +381,27 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
         )}
       </main>
 
-      {/* Coach panel: always mounted so the conversation survives tab
-          switches and panel toggles; only its visibility changes. */}
-      <div
-        className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[420px] p-4 pl-0 pb-20 ${
-          coachOpen ? "" : "hidden"
-        }`}
-      >
-        <div className="h-full shadow-2xl shadow-black/60">
-          <CoachChat />
+      {/* Coach panel: mounted on the first open, and kept mounted from then on
+          so the conversation survives tab switches and panel toggles; after
+          that only its visibility changes. */}
+      {coachMounted && (
+        <div
+          className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[420px] p-4 pl-0 pb-20 ${
+            coachOpen ? "" : "hidden"
+          }`}
+        >
+          <div className="h-full shadow-2xl shadow-black/60">
+            <CoachChat />
+          </div>
         </div>
-      </div>
+      )}
 
       <button
         type="button"
-        onClick={() => setCoachOpen((o) => !o)}
+        onClick={() => {
+          setCoachMounted(true);
+          setCoachOpen((o) => !o);
+        }}
         className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-full text-sm font-bold shadow-xl transition-colors cursor-pointer ${
           coachOpen
             ? "bg-gray-700 hover:bg-gray-600 text-white"
