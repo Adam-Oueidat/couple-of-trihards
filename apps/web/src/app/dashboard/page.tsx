@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { isAdminAthlete, resolveSession } from "@/lib/auth";
+import { isAdminAthlete, resolveSession, type ResolvedSession } from "@/lib/auth";
 import { getSession } from "@/lib/session";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
 import { getActivitiesWithDailySync } from "@/lib/strava";
 import {
   groupByWeek,
@@ -20,6 +22,16 @@ import { getWorkouts } from "@/lib/workouts";
 // window for display so the UI stays lean.
 const DISPLAY_WEEKS = 12;
 
+/**
+ * Auth only — deliberately nothing slow.
+ *
+ * The three redirects below decide whether this athlete may see the dashboard
+ * at all, and they have to resolve before any HTML is committed or a logged-out
+ * visitor would get a flash of skeleton before being bounced. Reading the
+ * session cookie costs no I/O and resolveSession is one query, so this is a few
+ * milliseconds; everything expensive lives in DashboardData, behind the
+ * Suspense boundary, and streams in after the shell has already painted.
+ */
 export default async function DashboardPage() {
   const session = await getSession();
   if (!session.tokens) redirect("/");
@@ -28,6 +40,25 @@ export default async function DashboardPage() {
   if (!resolved) redirect("/");
   if (!resolved.license) redirect("/activate");
 
+  const athlete = {
+    firstname: session.tokens.athlete_firstname,
+    lastname: session.tokens.athlete_lastname,
+    profile: session.tokens.athlete_profile,
+  };
+
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardData resolved={resolved} athlete={athlete} />
+    </Suspense>
+  );
+}
+
+interface DashboardDataProps {
+  resolved: ResolvedSession;
+  athlete: { firstname: string; lastname: string; profile: string };
+}
+
+async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   // One fetch of the full year (cached). The training-load curve uses all of it
   // so CTL/ATL are warmed up and Form decays through today; the UI gets only the
   // recent slice to avoid rendering a year of activities. This also auto-syncs
@@ -64,9 +95,8 @@ export default async function DashboardPage() {
   // Real last-sync time for the "Synced …" label: the timestamp on the cached
   // activities row, which only changes on an actual Strava fetch (login / Sync
   // button / daily auto-sync above), not on a plain refresh. Stored in Unix
-  // seconds; null on first load before any row exists. Converted to millis for
-  // the client clock.
-  const syncedAt = fetchedAt != null ? fetchedAt * 1000 : null;
+  // seconds, converted to millis for the client clock.
+  const syncedAt = fetchedAt * 1000;
 
   // Athlete-local "now" so the display window and current-week cutoff agree,
   // and so render stays free of repeated impure clock reads.
@@ -99,11 +129,7 @@ export default async function DashboardPage() {
     <DashboardClient
       currentWeek={currentWeek}
       syncedAt={syncedAt}
-      athlete={{
-        firstname: session.tokens.athlete_firstname,
-        lastname: session.tokens.athlete_lastname,
-        profile: session.tokens.athlete_profile,
-      }}
+      athlete={athlete}
       activities={activities}
       weeklyVolume={weeklyVolume}
       trainingLoad={trainingLoad}

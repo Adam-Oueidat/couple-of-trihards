@@ -25,20 +25,44 @@ async function resolveBearer(): Promise<{ userId: string; stravaAthleteId: numbe
   return { userId: user.id, stravaAthleteId: user.stravaAthleteId };
 }
 
-async function resolveCookie(): Promise<
-  { userId: string; stravaAthleteId: number } | null
-> {
+/** The athlete's unrevoked licence, or null if they hold none. */
+async function activeLicense(userId: string): Promise<License | null> {
+  const db = getDb();
+  const [license] = await db
+    .select()
+    .from(licenses)
+    .where(and(eq(licenses.boundUserId, userId), isNull(licenses.revokedAt)));
+  return license ?? null;
+}
+
+// The user row and their licence in ONE query. Every request on the site goes
+// through here before it can do anything else, so the two round trips this used
+// to take (SELECT users, then SELECT licenses on the id it returned) sat
+// serialized at the head of the critical path — measurably the largest single
+// term in a dashboard render. The left join means an athlete with no licence
+// still resolves, with `license: null`, exactly as the second query did.
+async function resolveCookie(): Promise<ResolvedSession | null> {
   const session = await getSession();
   const athleteId = session.tokens?.athlete_id;
   if (!athleteId) return null;
 
   const db = getDb();
   const [existing] = await db
-    .select({ id: users.id })
+    .select({ userId: users.id, license: licenses })
     .from(users)
+    .leftJoin(
+      licenses,
+      and(eq(licenses.boundUserId, users.id), isNull(licenses.revokedAt)),
+    )
     .where(eq(users.stravaAthleteId, athleteId));
 
-  if (existing) return { userId: existing.id, stravaAthleteId: athleteId };
+  if (existing) {
+    return {
+      userId: existing.userId,
+      stravaAthleteId: athleteId,
+      license: existing.license,
+    };
+  }
 
   const displayName =
     [session.tokens?.athlete_firstname, session.tokens?.athlete_lastname]
@@ -53,24 +77,18 @@ async function resolveCookie(): Promise<
     athleteId,
     displayName,
   });
-  return { userId: created.id, stravaAthleteId: athleteId };
+  // A user that did not exist a moment ago cannot have a licence bound to it,
+  // so there is nothing to look up.
+  return { userId: created.id, stravaAthleteId: athleteId, license: null };
 }
 
 export async function resolveSession(): Promise<ResolvedSession | null> {
-  const base = (await resolveBearer()) ?? (await resolveCookie());
-  if (!base) return null;
+  // The bearer path (mobile) still costs a second query: its token lookup keys
+  // off the token, not the athlete id, so there is no single row to join from.
+  const bearer = await resolveBearer();
+  if (bearer) return { ...bearer, license: await activeLicense(bearer.userId) };
 
-  const db = getDb();
-  const [license] = await db
-    .select()
-    .from(licenses)
-    .where(and(eq(licenses.boundUserId, base.userId), isNull(licenses.revokedAt)));
-
-  return {
-    userId: base.userId,
-    stravaAthleteId: base.stravaAthleteId,
-    license: license ?? null,
-  };
+  return resolveCookie();
 }
 
 function adminAthleteIds(): Set<number> {
