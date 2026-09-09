@@ -39,17 +39,26 @@ async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Prom
 // budget (100 reads / 15 min). A new Strava fetch happens only when there is no
 // row yet (first load after a server restart, or right after invalidation) or
 // after invalidateAthleteCache drops the athlete's rows.
-async function dbCached<T>(
+// The cached payload together with the Unix-seconds stamp of the Strava fetch
+// that produced it. Both come out of the one row, so callers that need the
+// timestamp (the dashboard's "Synced …" label, the daily-sync check) read it
+// from the same query rather than going back for a second look.
+interface CacheEntry<T> {
+  data: T;
+  fetchedAt: number;
+}
+
+async function dbCachedEntry<T>(
   athleteId: number,
   cacheKey: string,
   fn: () => Promise<T>
-): Promise<T> {
+): Promise<CacheEntry<T>> {
   const db = getDb();
   const [hit] = await db
-    .select({ data: stravaCache.data })
+    .select({ data: stravaCache.data, fetchedAt: stravaCache.fetchedAt })
     .from(stravaCache)
     .where(and(eq(stravaCache.athleteId, athleteId), eq(stravaCache.cacheKey, cacheKey)));
-  if (hit) return JSON.parse(hit.data) as T;
+  if (hit) return { data: JSON.parse(hit.data) as T, fetchedAt: hit.fetchedAt };
 
   const data = await fn();
   const now = Math.floor(Date.now() / 1000);
@@ -61,23 +70,15 @@ async function dbCached<T>(
       target: [stravaCache.athleteId, stravaCache.cacheKey],
       set: { data: serialized, fetchedAt: now },
     });
-  return data;
+  return { data, fetchedAt: now };
 }
 
-// Unix-seconds timestamp of when an athlete's cached row was last fetched from
-// Strava, or null if there is no cached row yet. Drives the dashboard's "Synced
-// …" label so it reflects the real last sync (login / Sync button) and stays put
-// across plain browser refreshes, which re-serve the cache without refetching.
-export async function getCacheFetchedAt(
+async function dbCached<T>(
   athleteId: number,
-  cacheKey: string
-): Promise<number | null> {
-  const db = getDb();
-  const [hit] = await db
-    .select({ fetchedAt: stravaCache.fetchedAt })
-    .from(stravaCache)
-    .where(and(eq(stravaCache.athleteId, athleteId), eq(stravaCache.cacheKey, cacheKey)));
-  return hit?.fetchedAt ?? null;
+  cacheKey: string,
+  fn: () => Promise<T>
+): Promise<T> {
+  return (await dbCachedEntry(athleteId, cacheKey, fn)).data;
 }
 
 /**
@@ -115,22 +116,23 @@ export async function invalidateAthleteCache(athleteId: number): Promise<void> {
 export async function getActivitiesWithDailySync(
   identity: StravaIdentity,
   weeks = 12,
-): Promise<{ activities: StravaActivity[]; fetchedAt: number | null }> {
+): Promise<{ activities: StravaActivity[]; fetchedAt: number }> {
   const { stravaAthleteId: athleteId } = identity;
-  const key = `activities:${weeks}`;
-  let activities = await getRecentActivities(identity, weeks);
-  let fetchedAt = await getCacheFetchedAt(athleteId, key);
+  // One query, not two: the activities and the stamp of the sync that produced
+  // them live in the same row. Reading them separately meant a second round
+  // trip that re-scanned the largest row we store just to pick one integer off
+  // it — and it sat on the dashboard's critical path.
+  let entry = await recentActivitiesEntry(identity, weeks);
 
   // Server render has no client-sent date, so "today" is derived from the
   // athlete's activity-based UTC offset (same as the rest of the dashboard).
-  const today = resolveToday(undefined, activities);
-  if (fetchedAt != null && localDateOf(fetchedAt, activities) !== today) {
+  const today = resolveToday(undefined, entry.data);
+  if (localDateOf(entry.fetchedAt, entry.data) !== today) {
     await invalidateAthleteCache(athleteId);
-    activities = await getRecentActivities(identity, weeks);
-    fetchedAt = await getCacheFetchedAt(athleteId, key);
+    entry = await recentActivitiesEntry(identity, weeks);
   }
 
-  return { activities, fetchedAt };
+  return { activities: entry.data, fetchedAt: entry.fetchedAt };
 }
 
 export function getStravaAuthUrl(state?: string): string {
@@ -322,10 +324,18 @@ export async function getActivityStreams(
 // user presses the dashboard "Sync" button (refreshDashboard ->
 // invalidateAthleteCache). This keeps plain refreshes off Strava's rate limit.
 export async function getRecentActivities(
-  { userId, stravaAthleteId: athleteId }: StravaIdentity,
+  identity: StravaIdentity,
   weeks = 12,
 ): Promise<StravaActivity[]> {
-  return dbCached(athleteId, `activities:${weeks}`, async () => {
+  return (await recentActivitiesEntry(identity, weeks)).data;
+}
+
+/** As getRecentActivities, but also reports when the cached row was synced. */
+async function recentActivitiesEntry(
+  { userId, stravaAthleteId: athleteId }: StravaIdentity,
+  weeks: number,
+): Promise<CacheEntry<StravaActivity[]>> {
+  return dbCachedEntry(athleteId, `activities:${weeks}`, async () => {
     const after = Math.floor(Date.now() / 1000) - weeks * 7 * 24 * 3600;
     const all: StravaActivity[] = [];
     let page = 1;

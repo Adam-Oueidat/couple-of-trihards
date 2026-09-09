@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import { StravaActivity } from "@trihards/core";
@@ -27,9 +28,16 @@ import {
 } from "./activity-detail/format";
 import { AnalysisPanel } from "./activity-detail/AnalysisPanel";
 import { SummaryStats } from "./activity-detail/SummaryStats";
-import { StreamCharts } from "./activity-detail/StreamCharts";
 import { LapsSection } from "./activity-detail/LapsSection";
 import { SplitsSection } from "./activity-detail/SplitsSection";
+
+// Imported through the shared charts chunk rather than directly, so the modal
+// reuses the recharts copy the dashboard already loaded instead of pulling a
+// second one into its own chunk. Resolves instantly for anyone who has been on
+// the Overview tab; the modal is waiting on its own fetch either way.
+const StreamCharts = dynamic(() => import("./charts").then((m) => m.StreamCharts), {
+  ssr: false,
+});
 
 
 export function ActivityDetailModal({ activity, onClose }: Props) {
