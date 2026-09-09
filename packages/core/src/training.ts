@@ -176,9 +176,24 @@ export function calcTrainingLoad(
   return points;
 }
 
+// Round to whole seconds BEFORE splitting into minutes, so the carry lands in
+// the minutes. Flooring the minutes first and rounding the leftover seconds
+// separately lets the two halves disagree: 299.6 s/km floors to 4 min, and the
+// remaining 59.6 s rounds to 60, with nothing to carry it — printing "4:60/km"
+// for what is really 5:00/km. Every m:ss in the app goes through here.
+export function formatSecondsAsClock(seconds: number): string {
+  const total = Math.round(seconds);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${min}:${sec.toString().padStart(2, "0")}`;
+}
+
 export function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+  // Same carry rule as formatSecondsAsClock, in h/m: 119.6 min is 2h 0m, not
+  // "1h 60m".
+  const total = Math.round(minutes);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
@@ -187,9 +202,7 @@ export function formatPace(activity: StravaActivity): string {
   const discipline = getDiscipline(activity);
   if (discipline === "run") {
     const secPerKm = activity.moving_time / (activity.distance / 1000);
-    const min = Math.floor(secPerKm / 60);
-    const sec = Math.round(secPerKm % 60);
-    return `${min}:${sec.toString().padStart(2, "0")}/km`;
+    return `${formatSecondsAsClock(secPerKm)}/km`;
   }
   if (discipline === "ride") {
     const kmh = (activity.distance / 1000) / (activity.moving_time / 3600);
@@ -197,9 +210,7 @@ export function formatPace(activity: StravaActivity): string {
   }
   if (discipline === "swim") {
     const secPer100m = activity.moving_time / (activity.distance / 100);
-    const min = Math.floor(secPer100m / 60);
-    const sec = Math.round(secPer100m % 60);
-    return `${min}:${sec.toString().padStart(2, "0")}/100m`;
+    return `${formatSecondsAsClock(secPer100m)}/100m`;
   }
   return "-";
 }

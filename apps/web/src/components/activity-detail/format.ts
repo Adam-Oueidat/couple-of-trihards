@@ -1,5 +1,5 @@
 import { DetailedActivity, StreamSet } from "@trihards/core";
-import { getDiscipline } from "@trihards/core";
+import { getDiscipline, formatSecondsAsClock } from "@trihards/core";
 
 export interface DetailResponse {
   activity: DetailedActivity;
@@ -61,15 +61,11 @@ export function buildChartPoints(streams: StreamSet, isRide: boolean): ChartPoin
 }
 
 export function formatPaceValue(minPerKm: number): string {
-  const min = Math.floor(minPerKm);
-  const sec = Math.round((minPerKm - min) * 60);
-  return `${min}:${sec.toString().padStart(2, "0")}`;
+  return formatSecondsAsClock(minPerKm * 60);
 }
 
 export function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
+  return formatSecondsAsClock(seconds);
 }
 
 // Discipline-aware pace/speed for a recorded lap. Swims read per-100m, rides
