@@ -74,7 +74,7 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   // place anything at all, so fetching them here rather than from the client on
   // mount is what lets those tabs paint their final layout on the first frame
   // instead of showing the un-moved plan and snapping a moment later.
-  const [{ activities: history, fetchedAt }, activePlan, planOverrides, customWorkouts] =
+  const [{ activities: history, fetchedAt, stale: staleSync }, activePlan, planOverrides, customWorkouts] =
     await Promise.all([
       getActivitiesWithDailySync(resolved, TRAINING_HISTORY_WEEKS),
       getActiveTrainingPlan(resolved.userId),
@@ -129,6 +129,7 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
     <DashboardClient
       currentWeek={currentWeek}
       syncedAt={syncedAt}
+      staleSync={staleSync}
       athlete={athlete}
       activities={activities}
       weeklyVolume={weeklyVolume}
