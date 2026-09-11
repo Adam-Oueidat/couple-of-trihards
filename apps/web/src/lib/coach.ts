@@ -10,6 +10,7 @@ import {
   groupByWeek,
   calcTrainingLoad,
   formatPace,
+  formatSecondsAsClock,
   matchSessions,
   daysUntilRace,
   SUMMARY_MODEL,
@@ -426,10 +427,7 @@ ${
 
 function formatPaceFromSpeed(metersPerSecond: number): string {
   if (metersPerSecond <= 0) return "-";
-  const secPerKm = 1000 / metersPerSecond;
-  const min = Math.floor(secPerKm / 60);
-  const sec = Math.round(secPerKm % 60);
-  return `${min}:${sec.toString().padStart(2, "0")}/km`;
+  return `${formatSecondsAsClock(1000 / metersPerSecond)}/km`;
 }
 
 export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
