@@ -18,6 +18,35 @@ const log = createLogger("strava");
 const STRAVA_API = "https://www.strava.com/api/v3";
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 
+// Strava returns a branded HTML outage page (~8KB) on 5xx, which used to be
+// logged whole and buried every other line in CloudWatch. Nothing past the
+// first line is diagnostic — the status code is the signal.
+const MAX_LOGGED_BODY = 300;
+
+function truncate(body: string): string {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  return oneLine.length > MAX_LOGGED_BODY
+    ? `${oneLine.slice(0, MAX_LOGGED_BODY)}… (${oneLine.length} chars)`
+    : oneLine;
+}
+
+// Two retries, ~1.2s of total added latency in the worst case. Strava's 5xx
+// blips are typically seconds long, so this hides most of them entirely.
+//
+// 429 is deliberately NOT retried: Strava's limit is 100 reads per 15 minutes,
+// so a retry seconds later cannot succeed and only spends more of the budget.
+// It fails fast and surfaces instead.
+const RETRYABLE_ATTEMPTS = 2;
+const RETRY_BACKOFF_MS = [300, 900];
+
+function isRetryable(status: number): boolean {
+  return status >= 500 && status < 600;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // In-memory TTL cache for per-activity responses (detail, streams) that are
 // triggered by opening an activity, not by a page refresh. Cleared on server
 // restart, which is fine. The dashboard render-path responses use the durable
@@ -60,7 +89,19 @@ async function dbCachedEntry<T>(
     .where(and(eq(stravaCache.athleteId, athleteId), eq(stravaCache.cacheKey, cacheKey)));
   if (hit) return { data: JSON.parse(hit.data) as T, fetchedAt: hit.fetchedAt };
 
-  const data = await fn();
+  return writeCacheEntry(athleteId, cacheKey, await fn());
+}
+
+// Upsert one cache row and report the stamp written. Split out of
+// dbCachedEntry so a refresh can overwrite a row in place: the old row stays
+// readable until the replacement is in hand, which is what lets an upstream
+// outage fall back to it (see getActivitiesWithDailySync).
+async function writeCacheEntry<T>(
+  athleteId: number,
+  cacheKey: string,
+  data: T,
+): Promise<CacheEntry<T>> {
+  const db = getDb();
   const now = Math.floor(Date.now() / 1000);
   const serialized = JSON.stringify(data);
   await db
@@ -116,23 +157,36 @@ export async function invalidateAthleteCache(athleteId: number): Promise<void> {
 export async function getActivitiesWithDailySync(
   identity: StravaIdentity,
   weeks = 12,
-): Promise<{ activities: StravaActivity[]; fetchedAt: number }> {
+): Promise<{ activities: StravaActivity[]; fetchedAt: number; stale: boolean }> {
   const { stravaAthleteId: athleteId } = identity;
   // One query, not two: the activities and the stamp of the sync that produced
   // them live in the same row. Reading them separately meant a second round
   // trip that re-scanned the largest row we store just to pick one integer off
   // it — and it sat on the dashboard's critical path.
-  let entry = await recentActivitiesEntry(identity, weeks);
+  const entry = await recentActivitiesEntry(identity, weeks);
 
   // Server render has no client-sent date, so "today" is derived from the
   // athlete's activity-based UTC offset (same as the rest of the dashboard).
   const today = resolveToday(undefined, entry.data);
-  if (localDateOf(entry.fetchedAt, entry.data) !== today) {
-    await invalidateAthleteCache(athleteId);
-    entry = await recentActivitiesEntry(identity, weeks);
+  if (localDateOf(entry.fetchedAt, entry.data) === today) {
+    return { activities: entry.data, fetchedAt: entry.fetchedAt, stale: false };
   }
 
-  return { activities: entry.data, fetchedAt: entry.fetchedAt };
+  // A new day: try to refresh. If Strava is unreachable this is NOT fatal —
+  // yesterday's activities are still a correct, complete answer, just one sync
+  // behind, so we serve them and flag the page as stale rather than throwing
+  // the whole dashboard away over an upstream blip.
+  try {
+    const fresh = await refreshActivitiesCache(identity, weeks);
+    return { activities: fresh.data, fetchedAt: fresh.fetchedAt, stale: false };
+  } catch (err) {
+    log.warn("daily sync failed, serving cached activities", {
+      athleteId,
+      cachedAt: entry.fetchedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { activities: entry.data, fetchedAt: entry.fetchedAt, stale: true };
+  }
 }
 
 export function getStravaAuthUrl(state?: string): string {
@@ -191,19 +245,46 @@ async function stravaFetch<T>(
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-    next: { revalidate: 0 },
-  });
+  let lastError: Error | undefined;
 
-  if (!res.ok) {
+  for (let attempt = 0; attempt <= RETRYABLE_ATTEMPTS; attempt++) {
+    if (attempt > 0) await sleep(RETRY_BACKOFF_MS[attempt - 1]);
+
+    let res: Response;
+    try {
+      res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+        next: { revalidate: 0 },
+      });
+    } catch (err) {
+      // DNS/TCP/TLS failure — no response at all. Worth another try.
+      lastError = err instanceof Error ? err : new Error(String(err));
+      log.warn("strava fetch failed", { path, attempt, error: lastError.message });
+      continue;
+    }
+
+    if (res.ok) {
+      log.debug("strava fetch ok", { path, status: res.status, attempt });
+      return res.json();
+    }
+
     const err = await res.text();
-    log.error("strava API error", { path, status: res.status, body: err });
-    throw new Error(`Strava API error ${res.status}: ${err}`);
+    lastError = new Error(`Strava API error ${res.status}: ${truncate(err)}`);
+
+    if (!isRetryable(res.status) || attempt === RETRYABLE_ATTEMPTS) {
+      log.error("strava API error", {
+        path,
+        status: res.status,
+        attempt,
+        body: truncate(err),
+      });
+      throw lastError;
+    }
+
+    log.warn("strava API error, retrying", { path, status: res.status, attempt });
   }
 
-  log.debug("strava fetch ok", { path, status: res.status });
-  return res.json();
+  throw lastError ?? new Error(`Strava request to ${path} failed`);
 }
 
 // Strava's summary-activity payload carries ~58 fields per activity (map
@@ -335,21 +416,56 @@ async function recentActivitiesEntry(
   { userId, stravaAthleteId: athleteId }: StravaIdentity,
   weeks: number,
 ): Promise<CacheEntry<StravaActivity[]>> {
-  return dbCachedEntry(athleteId, `activities:${weeks}`, async () => {
-    const after = Math.floor(Date.now() / 1000) - weeks * 7 * 24 * 3600;
-    const all: StravaActivity[] = [];
-    let page = 1;
+  return dbCachedEntry(athleteId, `activities:${weeks}`, () =>
+    fetchActivitiesLive(userId, weeks),
+  );
+}
 
-    while (true) {
-      const batch = await getActivities(userId, page, 100, after);
-      all.push(...batch);
-      if (batch.length < 100) break;
-      page++;
-    }
+/** Every page of the athlete's last N weeks, straight from Strava. Throws if
+ *  Strava is unreachable — callers decide whether that is fatal. */
+async function fetchActivitiesLive(
+  userId: string,
+  weeks: number,
+): Promise<StravaActivity[]> {
+  const after = Math.floor(Date.now() / 1000) - weeks * 7 * 24 * 3600;
+  const all: StravaActivity[] = [];
+  let page = 1;
 
-    // Strava returns oldest-first when filtering with `after`; normalize to newest-first
-    return all.sort(
-      (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
-    );
-  });
+  while (true) {
+    const batch = await getActivities(userId, page, 100, after);
+    all.push(...batch);
+    if (batch.length < 100) break;
+    page++;
+  }
+
+  // Strava returns oldest-first when filtering with `after`; normalize to newest-first
+  return all.sort(
+    (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+  );
+}
+
+/**
+ * Refetch this athlete's activities and replace the cached row — fetch first,
+ * write second, and never delete in between.
+ *
+ * The ordering is the whole point. The previous row is the only copy of this
+ * athlete's history we hold, so dropping it before the network call means a
+ * Strava outage leaves us with nothing to render and every subsequent reload
+ * re-attempts the same failing fetch. Fetching first makes an outage a no-op:
+ * the throw propagates, the old row is untouched, and the caller keeps serving
+ * it. Throws when Strava is unreachable.
+ */
+export async function refreshActivitiesCache(
+  identity: StravaIdentity,
+  weeks: number,
+): Promise<CacheEntry<StravaActivity[]>> {
+  const fresh = await fetchActivitiesLive(identity.userId, weeks);
+  // Only now is it safe to drop the athlete's other derived rows (stats,
+  // zones): we already hold the replacement for the row that matters.
+  await invalidateAthleteCache(identity.stravaAthleteId);
+  return writeCacheEntry(
+    identity.stravaAthleteId,
+    `activities:${weeks}`,
+    fresh,
+  );
 }

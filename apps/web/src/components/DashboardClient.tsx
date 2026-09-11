@@ -68,6 +68,9 @@ interface Props {
   trainingLoad: TrainingLoadPoint[];
   /** Unix-millis of the last real Strava sync; null before any data is cached. */
   syncedAt: number | null;
+  /** True when today's auto-sync could not reach Strava and the figures below
+   *  are the previous sync's. The data is complete and correct, just behind. */
+  staleSync: boolean;
   /** This athlete's active plan, or null when they have not uploaded one. */
   trainingPlan: TrainingPlan | null;
   planSummary: PlanSummary | null;
@@ -95,7 +98,7 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, staleSync, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   const [coachOpen, setCoachOpen] = useState(false);
   // Latches on the first open and never clears: the panel still has to survive
@@ -305,6 +308,14 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
                 aria-hidden="true"
               />
               Synced {agoLabel}
+            </span>
+          )}
+          {staleSync && (
+            <span
+              className="inline-flex items-center rounded-full bg-orange-500/10 px-3 py-1 font-medium uppercase tracking-wider text-orange-400"
+              title="Strava could not be reached for today's sync. These are your previous sync's activities."
+            >
+              Strava unreachable
             </span>
           )}
           <button
