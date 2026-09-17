@@ -10,6 +10,7 @@ import {
 } from "@trihards/core";
 import { and, eq } from "drizzle-orm";
 import { getDb, stravaCache } from "@trihards/db";
+import { after } from "next/server";
 import { getValidAccessToken } from "./strava-tokens";
 import { localDateOf, resolveToday } from "./coach-dates";
 
@@ -118,6 +119,21 @@ async function writeCacheEntry<T>(
   return { data, fetchedAt: now };
 }
 
+/** The cached row, or null when there is none. Unlike dbCachedEntry this never
+ *  falls through to Strava — callers that can degrade need to know whether a
+ *  row exists BEFORE deciding to spend a network round trip on the render. */
+async function readCacheEntry<T>(
+  athleteId: number,
+  cacheKey: string,
+): Promise<CacheEntry<T> | null> {
+  const db = getDb();
+  const [hit] = await db
+    .select({ data: stravaCache.data, fetchedAt: stravaCache.fetchedAt })
+    .from(stravaCache)
+    .where(and(eq(stravaCache.athleteId, athleteId), eq(stravaCache.cacheKey, cacheKey)));
+  return hit ? { data: JSON.parse(hit.data) as T, fetchedAt: hit.fetchedAt } : null;
+}
+
 async function dbCached<T>(
   athleteId: number,
   cacheKey: string,
@@ -161,36 +177,58 @@ export async function invalidateAthleteCache(athleteId: number): Promise<void> {
 export async function getActivitiesWithDailySync(
   identity: StravaIdentity,
   weeks = 12,
-): Promise<{ activities: StravaActivity[]; fetchedAt: number; stale: boolean }> {
+): Promise<{
+  activities: StravaActivity[];
+  fetchedAt: number;
+  syncState: SyncState;
+}> {
   const { stravaAthleteId: athleteId } = identity;
-  // One query, not two: the activities and the stamp of the sync that produced
-  // them live in the same row. Reading them separately meant a second round
-  // trip that re-scanned the largest row we store just to pick one integer off
-  // it — and it sat on the dashboard's critical path.
-  const entry = await recentActivitiesEntry(identity, weeks);
+  // Read-only: a cache miss must NOT turn into a Strava fetch here, because
+  // whether a row exists is exactly what decides if we can afford to skip the
+  // network on this render.
+  const entry = await readCacheEntry<StravaActivity[]>(
+    athleteId,
+    `activities:${weeks}`,
+  );
+
+  // First load ever (or right after a fresh OAuth): nothing to show, so this
+  // one render has to wait. Every later render has a row to fall back on.
+  if (!entry) {
+    const fresh = await refreshActivitiesCache(identity, weeks);
+    return {
+      activities: fresh.data,
+      fetchedAt: fresh.fetchedAt,
+      syncState: "fresh",
+    };
+  }
 
   // Server render has no client-sent date, so "today" is derived from the
   // athlete's activity-based UTC offset (same as the rest of the dashboard).
   const today = resolveToday(undefined, entry.data);
   if (localDateOf(entry.fetchedAt, entry.data) === today) {
-    return { activities: entry.data, fetchedAt: entry.fetchedAt, stale: false };
+    return {
+      activities: entry.data,
+      fetchedAt: entry.fetchedAt,
+      syncState: "fresh",
+    };
   }
 
-  // A new day: try to refresh. If Strava is unreachable this is NOT fatal —
-  // yesterday's activities are still a correct, complete answer, just one sync
-  // behind, so we serve them and flag the page as stale rather than throwing
-  // the whole dashboard away over an upstream blip.
-  try {
-    const fresh = await refreshActivitiesCache(identity, weeks);
-    return { activities: fresh.data, fetchedAt: fresh.fetchedAt, stale: false };
-  } catch (err) {
-    log.warn("daily sync failed, serving cached activities", {
-      athleteId,
-      cachedAt: entry.fetchedAt,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    return { activities: entry.data, fetchedAt: entry.fetchedAt, stale: true };
-  }
+  // A new day. The old code awaited the refresh here, which put a full
+  // four-page Strava walk on the critical path — the athlete stared at the
+  // skeleton for seconds before anything rendered, once per day and after
+  // every login.
+  //
+  // Yesterday's activities are a complete, correct answer that is merely one
+  // sync behind, so we serve them immediately and do the refresh after the
+  // response. The next render picks up the new data.
+  refreshAfterResponse(identity, weeks);
+  return {
+    activities: entry.data,
+    fetchedAt: entry.fetchedAt,
+    // "unreachable" only if the previous attempt actually failed; a refresh
+    // merely being in flight is normal and must not read as an error.
+    syncState: lastRefreshFailed.has(athleteId) ? "unreachable" : "refreshing",
+  };
 }
 
 export function getStravaAuthUrl(state?: string): string {
@@ -469,6 +507,84 @@ async function fetchActivitiesLive(
   return unique.sort(
     (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
   );
+}
+
+/**
+ * How current the activities handed to the dashboard are.
+ *
+ * - `fresh`       — synced today; nothing in flight.
+ * - `refreshing`  — from a previous day; a refresh is running after this
+ *                   response and the next render will have the new data.
+ * - `unreachable` — from a previous day and the last refresh attempt failed,
+ *                   so Strava is the thing that is wrong, not the data.
+ */
+export type SyncState = "fresh" | "refreshing" | "unreachable";
+
+// One refresh per athlete at a time. Two tabs, or a login landing at the same
+// moment as the daily sync, would otherwise each start a full four-page walk
+// and race to write the same row.
+const inFlightRefresh = new Map<number, Promise<void>>();
+
+// Best-effort, in-memory: whether the most recent background refresh failed.
+// Only drives a UI badge, so losing it on restart costs nothing — the next
+// refresh re-establishes the truth either way.
+const lastRefreshFailed = new Set<number>();
+
+/**
+ * Start (or join) this athlete's background refresh. Never rejects: a failure
+ * here must not surface as an unhandled rejection in whatever scheduled it.
+ */
+function startBackgroundRefresh(
+  identity: StravaIdentity,
+  weeks: number,
+): Promise<void> {
+  const { stravaAthleteId: athleteId } = identity;
+  const existing = inFlightRefresh.get(athleteId);
+  if (existing) return existing;
+
+  const work = (async () => {
+    try {
+      await refreshActivitiesCache(identity, weeks);
+      lastRefreshFailed.delete(athleteId);
+      log.info("background sync complete", { athleteId });
+    } catch (err) {
+      lastRefreshFailed.add(athleteId);
+      log.warn("background sync failed, cache left intact", {
+        athleteId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      inFlightRefresh.delete(athleteId);
+    }
+  })();
+
+  inFlightRefresh.set(athleteId, work);
+  return work;
+}
+
+/**
+ * Schedule a refresh to run once the response has been sent.
+ *
+ * `after` is the supported way to do this (it survives the render completing,
+ * and runs even when the route redirects), but it only exists inside a request
+ * scope. Outside one — unit tests, scripts — it throws, and running the work
+ * detached is the sensible fallback.
+ */
+export function refreshAfterResponse(
+  identity: StravaIdentity,
+  weeks: number,
+): void {
+  try {
+    after(() => startBackgroundRefresh(identity, weeks));
+  } catch {
+    void startBackgroundRefresh(identity, weeks);
+  }
+}
+
+/** The refresh currently running for this athlete, if any. Lets tests await
+ *  the background work instead of sleeping on it. */
+export function pendingRefresh(athleteId: number): Promise<void> | undefined {
+  return inFlightRefresh.get(athleteId);
 }
 
 /**
