@@ -79,6 +79,14 @@ async function cachedRowCount(): Promise<number> {
   return rows.length;
 }
 
+/** Attempts made for one specific page — deterministic regardless of how many
+ *  pages the window fires off concurrently. */
+function attemptsForPage(calls: string[], page: number): number {
+  return calls.filter(
+    (c) => (new URL(c).searchParams.get("page") ?? "1") === String(page),
+  ).length;
+}
+
 function stravaDown(status = 503) {
   const calls: string[] = [];
   vi.stubGlobal("fetch", async (url: string | URL) => {
@@ -152,12 +160,15 @@ describe("daily sync when Strava is down", () => {
 });
 
 describe("stravaFetch retries", () => {
-  it("retries a 5xx and succeeds on the second attempt", async () => {
+  it("retries a 5xx and succeeds on the retry", async () => {
     await seedCache(2);
-    let n = 0;
-    vi.stubGlobal("fetch", async () => {
-      n++;
-      if (n === 1) return new Response("<html>down</html>", { status: 503 });
+    const failedOnce = new Set<string>();
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const page = new URL(url.toString()).searchParams.get("page") ?? "1";
+      if (!failedOnce.has(page)) {
+        failedOnce.add(page);
+        return new Response("<html>down</html>", { status: 503 });
+      }
       return new Response(JSON.stringify([]), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -167,7 +178,7 @@ describe("stravaFetch retries", () => {
 
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
-    expect(n).toBe(2);
+    // Every page 503'd once and succeeded on its retry, so the sync completed.
     expect(result.stale).toBe(false);
   });
 
@@ -178,7 +189,10 @@ describe("stravaFetch retries", () => {
 
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
-    expect(calls).toHaveLength(3); // initial + 2 retries
+    // Per page: initial attempt + 2 retries. (A global count would be
+    // non-deterministic — Promise.all rejects on the first page to give up
+    // while its siblings are still in flight.)
+    expect(attemptsForPage(calls, 1)).toBe(3);
     expect(result.stale).toBe(true);
   });
 
@@ -189,7 +203,7 @@ describe("stravaFetch retries", () => {
 
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
-    expect(calls).toHaveLength(1);
+    expect(attemptsForPage(calls, 1)).toBe(1);
     expect(result.stale).toBe(true);
   });
 
@@ -200,7 +214,7 @@ describe("stravaFetch retries", () => {
 
     await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
-    expect(calls).toHaveLength(1);
+    expect(attemptsForPage(calls, 1)).toBe(1);
   });
 
   it("truncates the upstream body instead of carrying 8KB of HTML", async () => {
