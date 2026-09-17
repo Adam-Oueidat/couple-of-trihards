@@ -32,14 +32,17 @@ function activity(id: number): Record<string, unknown> {
   };
 }
 
-/** Serve `total` activities, 100 per page, recording when each call starts. */
+/** Serve `total` activities, 100 per page, tracking how many requests are in
+ *  flight at once. Peak concurrency is the structural fact this file is about;
+ *  wall-clock start times are load-dependent and make for a flaky assertion. */
 function stravaWith(total: number) {
-  const starts: number[] = [];
-  const t0 = Date.now();
+  const seen = { inFlight: 0, peak: 0 };
   vi.stubGlobal("fetch", async (url: string | URL) => {
-    starts.push(Date.now() - t0);
+    seen.inFlight++;
+    seen.peak = Math.max(seen.peak, seen.inFlight);
     const page = Number(new URL(url.toString()).searchParams.get("page") ?? "1");
     await new Promise((r) => setTimeout(r, LATENCY_MS));
+    seen.inFlight--;
     const from = (page - 1) * PAGE_SIZE;
     const slice = from >= total ? [] : Array.from(
       { length: Math.min(PAGE_SIZE, total - from) },
@@ -50,7 +53,7 @@ function stravaWith(total: number) {
       headers: { "Content-Type": "application/json" },
     });
   });
-  return starts;
+  return seen;
 }
 
 const MIGRATIONS_DIR = fileURLToPath(
@@ -84,20 +87,15 @@ beforeEach(async () => {
 
 describe("activity pagination", () => {
   it("fetches the window concurrently, not one page after another", async () => {
-    const starts = stravaWith(350);
+    const seen = stravaWith(350);
     const { getRecentActivities } = await import("./strava");
 
-    const began = Date.now();
     const activities = await getRecentActivities(IDENTITY, 52);
-    const elapsed = Date.now() - began;
 
     expect(activities).toHaveLength(350);
-
-    // The four pages must overlap: all start before the first one returns.
-    expect(starts.slice(0, 4).every((s) => s < LATENCY_MS)).toBe(true);
-
-    // Sequential would be >= 4 x LATENCY. Concurrent is ~1 x (plus overhead).
-    expect(elapsed).toBeLessThan(LATENCY_MS * 3);
+    // Four pages in flight at the same moment. Sequential paging — the bug
+    // this replaced — could never exceed 1.
+    expect(seen.peak).toBe(4);
   });
 
   it("returns every activity exactly once", async () => {

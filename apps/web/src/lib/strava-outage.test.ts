@@ -105,24 +105,28 @@ beforeEach(() => {
 });
 
 describe("daily sync when Strava is down", () => {
-  it("serves the cached activities instead of throwing", async () => {
+  it("serves the cached activities immediately, without waiting on Strava", async () => {
     await seedCache(2); // stale: last synced two days ago
     stravaDown();
-    const { getActivitiesWithDailySync } = await import("./strava");
+    const { getActivitiesWithDailySync, pendingRefresh } = await import("./strava");
 
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
+    // Returned before the refresh has even finished — that is the point.
     expect(result.activities).toHaveLength(1);
     expect(result.activities[0].name).toBe("Yesterday's run");
-    expect(result.stale).toBe(true);
+    expect(result.syncState).toBe("refreshing");
+
+    await pendingRefresh(ATHLETE); // let the background attempt fail
   });
 
-  it("leaves the cached row intact so the next reload still works", async () => {
+  it("leaves the cached row intact when the background refresh fails", async () => {
     await seedCache(2);
     stravaDown();
-    const { getActivitiesWithDailySync } = await import("./strava");
+    const { getActivitiesWithDailySync, pendingRefresh } = await import("./strava");
 
     await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    await pendingRefresh(ATHLETE);
 
     // The original bug: invalidate ran before the fetch, so a 503 left zero
     // rows and every subsequent render re-attempted the same failing call.
@@ -130,21 +134,52 @@ describe("daily sync when Strava is down", () => {
 
     const second = await getActivitiesWithDailySync(IDENTITY, WEEKS);
     expect(second.activities).toHaveLength(1);
-    expect(second.stale).toBe(true);
+    // The previous attempt failed, so this is Strava's fault and says so.
+    expect(second.syncState).toBe("unreachable");
+    await pendingRefresh(ATHLETE);
   });
 
-  it("reports fresh data as not stale when Strava answers", async () => {
+  it("picks up the refreshed data on the next render", async () => {
     await seedCache(2);
-    vi.stubGlobal("fetch", async () =>
-      new Response(JSON.stringify([]), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const page = Number(new URL(url.toString()).searchParams.get("page") ?? "1");
+      return new Response(JSON.stringify(page === 1 ? CACHED : []), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    });
+    const { getActivitiesWithDailySync, pendingRefresh } = await import("./strava");
+
+    // Not asserting the exact pre-state: whether it reads "refreshing" or
+    // "unreachable" depends on whether an earlier refresh failed, which is
+    // real behaviour (the flag persists until a refresh succeeds) but makes
+    // the value order-dependent. What matters is that it is not yet current...
+    const first = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    expect(first.syncState).not.toBe("fresh");
+
+    await pendingRefresh(ATHLETE);
+
+    // ...and that a successful background refresh both lands the new data and
+    // clears any previous failure.
+    const second = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    expect(second.syncState).toBe("fresh");
+  });
+
+  it("blocks on the very first load, when there is no cache to serve", async () => {
+    const { eq } = await import("drizzle-orm");
+    await db.delete(stravaCache).where(eq(stravaCache.athleteId, ATHLETE));
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      const page = Number(new URL(url.toString()).searchParams.get("page") ?? "1");
+      return new Response(JSON.stringify(page === 1 ? CACHED : []), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    });
     const { getActivitiesWithDailySync } = await import("./strava");
 
+    // Nothing cached means nothing to degrade to, so this render must wait
+    // and must come back with real data rather than an empty page.
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
-    expect(result.stale).toBe(false);
+    expect(result.activities).toHaveLength(1);
+    expect(result.syncState).toBe("fresh");
   });
 
   it("does not call Strava at all when the cache is from today", async () => {
@@ -155,7 +190,23 @@ describe("daily sync when Strava is down", () => {
     const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
 
     expect(calls).toHaveLength(0);
-    expect(result.stale).toBe(false);
+    expect(result.syncState).toBe("fresh");
+  });
+
+  it("runs only one refresh when two renders land together", async () => {
+    await seedCache(2);
+    const calls = stravaDown();
+    const { getActivitiesWithDailySync, pendingRefresh } = await import("./strava");
+
+    await Promise.all([
+      getActivitiesWithDailySync(IDENTITY, WEEKS),
+      getActivitiesWithDailySync(IDENTITY, WEEKS),
+      getActivitiesWithDailySync(IDENTITY, WEEKS),
+    ]);
+    await pendingRefresh(ATHLETE);
+
+    // Two tabs must not each start a full four-page walk.
+    expect(attemptsForPage(calls, 1)).toBe(3); // one refresh: 1 try + 2 retries
   });
 });
 
@@ -176,10 +227,14 @@ describe("stravaFetch retries", () => {
     });
     const { getActivitiesWithDailySync } = await import("./strava");
 
-    const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    const { pendingRefresh } = await import("./strava");
+    await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    await pendingRefresh(ATHLETE);
 
-    // Every page 503'd once and succeeded on its retry, so the sync completed.
-    expect(result.stale).toBe(false);
+    // Every page 503'd once and succeeded on its retry, so the refresh landed
+    // and the next render sees fresh data.
+    const next = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    expect(next.syncState).toBe("fresh");
   });
 
   it("gives up after the retry budget and falls back to cache", async () => {
@@ -187,13 +242,14 @@ describe("stravaFetch retries", () => {
     const calls = stravaDown();
     const { getActivitiesWithDailySync } = await import("./strava");
 
-    const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    const { pendingRefresh } = await import("./strava");
+    await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    await pendingRefresh(ATHLETE);
 
     // Per page: initial attempt + 2 retries. (A global count would be
     // non-deterministic — Promise.all rejects on the first page to give up
     // while its siblings are still in flight.)
     expect(attemptsForPage(calls, 1)).toBe(3);
-    expect(result.stale).toBe(true);
   });
 
   it("does not retry a 429 — the rate-limit window is far longer than a backoff", async () => {
@@ -201,10 +257,11 @@ describe("stravaFetch retries", () => {
     const calls = stravaDown(429);
     const { getActivitiesWithDailySync } = await import("./strava");
 
-    const result = await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    const { pendingRefresh } = await import("./strava");
+    await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    await pendingRefresh(ATHLETE);
 
     expect(attemptsForPage(calls, 1)).toBe(1);
-    expect(result.stale).toBe(true);
   });
 
   it("does not retry a 401 — a bad token will not fix itself", async () => {
@@ -212,7 +269,9 @@ describe("stravaFetch retries", () => {
     const calls = stravaDown(401);
     const { getActivitiesWithDailySync } = await import("./strava");
 
+    const { pendingRefresh } = await import("./strava");
     await getActivitiesWithDailySync(IDENTITY, WEEKS);
+    await pendingRefresh(ATHLETE);
 
     expect(attemptsForPage(calls, 1)).toBe(1);
   });

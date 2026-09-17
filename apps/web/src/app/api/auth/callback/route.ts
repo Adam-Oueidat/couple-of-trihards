@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import { createLogger } from "@trihards/core";
+import { createLogger, TRAINING_HISTORY_WEEKS } from "@trihards/core";
 import { getDb, licenses, users } from "@trihards/db";
-import { exchangeCodeForTokens, invalidateAthleteCache } from "@/lib/strava";
+import { exchangeCodeForTokens, refreshAfterResponse } from "@/lib/strava";
 import { getSession } from "@/lib/session";
 import { resolveSession } from "@/lib/auth";
 import { mintMobileToken } from "@/lib/mobile-tokens";
@@ -111,16 +111,7 @@ export async function GET(request: NextRequest) {
     const session = await getSession();
     session.tokens = tokens;
 
-    // Persist the cookie and drop this athlete's cached Strava rows in parallel
-    // — they're independent. A fresh login should always show live data:
-    // dashboard fetches are cached persistently (sync only on login or the
-    // "Sync" button), so invalidating here guarantees the first post-login
-    // render refetches, and also refreshes a returning user whose cache
-    // survived a prior session.
-    await Promise.all([
-      session.save(),
-      invalidateAthleteCache(tokens.athlete_id),
-    ]);
+    await session.save();
 
     const resolved = await resolveSession();
     if (resolved) {
@@ -129,6 +120,18 @@ export async function GET(request: NextRequest) {
         refreshToken: tokens.refresh_token,
         expiresAt: tokens.expires_at,
       });
+
+      // A fresh login should show live data — but it should not make the
+      // athlete WAIT for it. This used to drop every cached row here, which
+      // guaranteed the next dashboard render had nothing to serve and had to
+      // walk all of Strava before it could paint: seconds of skeleton after
+      // every single sign-in.
+      //
+      // Refreshing after the response gets the same freshness with none of the
+      // wait. The cached rows stay readable throughout, so the dashboard
+      // renders instantly from them and picks up the new data on the next
+      // render. Deduplicated against the dashboard's own daily sync.
+      refreshAfterResponse(resolved, TRAINING_HISTORY_WEEKS);
     }
     const destination = resolved?.license ? "/dashboard" : "/activate";
     log.info("web sign-in", {
