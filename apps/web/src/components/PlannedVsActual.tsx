@@ -18,12 +18,13 @@ import {
   matchSessions,
   planAdherence,
   isPlanComplete,
-  SessionWithStatus,
 } from "@trihards/core";
 import type { TrainingPlan } from "@trihards/core";
 import { getWeekStart } from "@trihards/core";
 import type { PlanEdits } from "./usePlanEdits";
-import { PlanCompleteCard } from "./PlanCompleteCard";
+import { PlanCompleteCard, type PlanDetailView } from "./PlanCompleteCard";
+import { MissedSessions } from "./MissedSessions";
+import { SessionRow } from "./SessionRow";
 
 interface Props {
   activities: StravaActivity[];
@@ -44,36 +45,9 @@ interface Props {
   onUploadNew?: () => void;
 }
 
-const STATUS_STYLES: Record<SessionWithStatus["status"], { label: string; cls: string }> = {
-  completed: { label: "Done", cls: "bg-green-500/15 text-green-400 border-green-500/30" },
-  partial: { label: "Partial", cls: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30" },
-  missed: { label: "Missed", cls: "bg-red-500/15 text-red-400 border-red-500/30" },
-  // Dashed and grey, not red: the athlete chose this one, so it must not read
-  // like a failure sitting next to "Missed".
-  skipped: {
-    label: "Skipped",
-    cls: "bg-gray-500/10 text-gray-400 border-dashed border-gray-500/50",
-  },
-  today: { label: "Today", cls: "bg-orange-500/15 text-orange-400 border-orange-500/30" },
-  upcoming: { label: "Upcoming", cls: "bg-gray-500/15 text-gray-400 border-gray-500/30" },
-};
-
 function formatWeekLabel(weekStart: string): string {
   const d = new Date(weekStart);
   return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-// Built once at module scope rather than per render: constructing an
-// Intl formatter is the expensive part, and these options never vary.
-// The locale stays pinned to en-US, so this is not a behaviour change.
-const SESSION_DATE_FMT = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-});
-
-function formatSessionDate(date: string): string {
-  return SESSION_DATE_FMT.format(new Date(date + "T12:00:00"));
 }
 
 function formatWeekRange(weekStart: string): string {
@@ -102,7 +76,7 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
     () => planAdherence(plan, activities, overrides, undefined, workouts),
     [plan, activities, overrides, workouts]
   );
-  const [showSessions, setShowSessions] = useState(false);
+  const [detailView, setDetailView] = useState<PlanDetailView>("none");
 
   const currentWeekStart = getWeekStart(new Date());
   const foundCurrent = weeks.findIndex((w) => w.weekStart === currentWeekStart);
@@ -166,16 +140,26 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
   // A finished plan leads with its outcome. The week chart and the session
   // rows are still one click away, but they stop being the first thing an
   // athlete sees after a race they have already run.
-  if (complete && plan && !showSessions) {
-    return (
+  if (complete && plan) {
+    const card = (
       <PlanCompleteCard
         plan={plan}
         adherence={adherence}
-        expanded={false}
-        onToggle={() => setShowSessions(true)}
+        view={detailView}
+        onViewChange={setDetailView}
         onUploadNew={onUploadNew}
       />
     );
+
+    if (detailView === "none") return card;
+    if (detailView === "notDone") {
+      return (
+        <div className="space-y-6">
+          {card}
+          <MissedSessions sessions={allSessions} />
+        </div>
+      );
+    }
   }
 
   return (
@@ -184,8 +168,8 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
         <PlanCompleteCard
           plan={plan}
           adherence={adherence}
-          expanded
-          onToggle={() => setShowSessions(false)}
+          view={detailView}
+          onViewChange={setDetailView}
           onUploadNew={onUploadNew}
         />
       )}
@@ -303,43 +287,9 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
           <p className="text-gray-500 text-sm">No planned sessions this week.</p>
         ) : (
           <div className="space-y-2">
-            {selectedSessions.map((s) => {
-              const style = STATUS_STYLES[s.status];
-              return (
-                <div
-                  key={s.id}
-                  className="flex items-center gap-4 p-3 rounded-lg border border-gray-800 bg-gray-950/50"
-                >
-                  <span
-                    className={`flex-shrink-0 w-20 py-1 text-center text-xs font-semibold rounded-full border ${style.cls}`}
-                  >
-                    {style.label}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-sm font-medium truncate ${
-                        s.status === "skipped"
-                          ? "text-gray-400 line-through"
-                          : "text-white"
-                      }`}
-                    >
-                      {s.name}
-                    </p>
-                    <p className="text-gray-500 text-xs">
-                      {formatSessionDate(s.date)} ·{" "}
-                      {s.isCustom ? s.discipline : s.type.replace("_", " ")}
-                      {s.status === "skipped" &&
-                        ` · ${s.skipReason ?? "no reason given"}`}
-                    </p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="text-white text-sm font-semibold">
-                      {s.actualKm !== undefined ? `${s.actualKm} / ${s.km} km` : `${s.km} km`}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
+            {selectedSessions.map((s) => (
+              <SessionRow key={s.id} session={s} />
+            ))}
           </div>
         )}
       </div>

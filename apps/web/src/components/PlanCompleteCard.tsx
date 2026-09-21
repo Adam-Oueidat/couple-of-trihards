@@ -14,11 +14,14 @@ function weeksBetween(start: string, end: string): number {
   return Math.max(1, Math.round(ms / (7 * 24 * 3600 * 1000)));
 }
 
+/** Which of the card's detail views is open, if any. */
+export type PlanDetailView = "none" | "all" | "notDone";
+
 interface Props {
   plan: TrainingPlan;
   adherence: PlanAdherence;
-  expanded: boolean;
-  onToggle: () => void;
+  view: PlanDetailView;
+  onViewChange: (view: PlanDetailView) => void;
   onUploadNew?: () => void;
 }
 
@@ -36,8 +39,8 @@ interface Props {
 export function PlanCompleteCard({
   plan,
   adherence,
-  expanded,
-  onToggle,
+  view,
+  onViewChange,
   onUploadNew,
 }: Props) {
   const phase = racePhase(plan);
@@ -52,6 +55,11 @@ export function PlanCompleteCard({
   // session", and the per-session rows carry the finer grading for anyone who
   // opens them.
   const done = adherence.completed + adherence.partial;
+  // Exactly what the list below renders — a miss or a deliberate skip — rather
+  // than `total - done`. On a finished plan the two are equal, but only
+  // because nothing is still pending; counting the same things the list counts
+  // means the button cannot promise a number the list then fails to show.
+  const notDone = adherence.missed + adherence.skipped;
   const weeks = weeksBetween(plan.startDate, plan.raceDate);
 
   return (
@@ -102,13 +110,23 @@ export function PlanCompleteCard({
       )}
 
       <div className="flex items-center gap-3 mt-6 flex-wrap">
+        {notDone > 0 && (
+          <button
+            type="button"
+            onClick={() => onViewChange(view === "notDone" ? "none" : "notDone")}
+            aria-expanded={view === "notDone"}
+            className="cursor-pointer rounded-full border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-red-300 transition-colors hover:border-red-500/70 hover:bg-red-500/20"
+          >
+            {view === "notDone" ? "Hide not done" : `Show ${notDone} not done`}
+          </button>
+        )}
         <button
           type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
+          onClick={() => onViewChange(view === "all" ? "none" : "all")}
+          aria-expanded={view === "all"}
           className="cursor-pointer rounded-full border border-gray-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
         >
-          {expanded ? "Hide sessions" : `Show all ${adherence.total} sessions`}
+          {view === "all" ? "Hide sessions" : `Show all ${adherence.total} sessions`}
         </button>
         {onUploadNew && (
           <button

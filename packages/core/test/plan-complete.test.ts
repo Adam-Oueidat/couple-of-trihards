@@ -118,6 +118,22 @@ describe("planAdherence", () => {
   });
 });
 
+describe("the not-done count the completion card shows", () => {
+  it("equals the headline's complement once the plan is over", () => {
+    const a = planAdherence(plan(), [run("2026-06-08", 5)], {}, "2026-09-21");
+    const done = a.completed + a.partial;
+    expect(a.missed + a.skipped).toBe(a.total - done);
+  });
+
+  it("counts only missed and skipped while sessions are still pending", () => {
+    // Mid-plan, `total - done` would sweep up everything still upcoming and
+    // promise a list far longer than the one that renders.
+    const a = planAdherence(plan(), [], {}, "2026-06-09");
+    expect(a.remaining).toBeGreaterThan(0);
+    expect(a.missed + a.skipped).toBeLessThan(a.total - (a.completed + a.partial));
+  });
+});
+
 describe("grading window", () => {
   it("grades a session as completed only when its activity is in range", () => {
     // Reproduces the dashboard bug: the Plan tab was handed a 12-week slice of
