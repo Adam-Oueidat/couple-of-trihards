@@ -8,12 +8,15 @@ import {
   groupByWeek,
   calcTrainingLoad,
   getWeekStart,
+  buildBlockRecap,
+  buildPlanRecap,
   TRAINING_HISTORY_WEEKS,
+  type PlanRecap,
   type WeeklyVolume,
 } from "@trihards/core";
 import { DashboardClient } from "@/components/DashboardClient";
 import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
-import { getActiveTrainingPlan } from "@/lib/training-plans";
+import { getActiveTrainingPlan, getLatestFinishedPlan } from "@/lib/training-plans";
 import { getOverrides } from "@/lib/plan-overrides";
 import { getWorkouts } from "@/lib/workouts";
 
@@ -92,6 +95,27 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   const athleteNow = new Date(new Date().getTime() + (athleteOffsetMs(history) ?? 0));
   const trainingLoad = calcTrainingLoad(history, today);
 
+  // The six-week recap and the plan retrospective are computed here rather than
+  // in the client for two reasons. The block needs TWELVE weeks of activities —
+  // six to summarise and six to compare against — which is more than the
+  // display window the client receives, and the plan recap needs a plan the
+  // client is never sent (the athlete's last FINISHED one, which is usually not
+  // their active one). Both are pure passes over arrays already in memory here,
+  // so the cost is arithmetic, not I/O.
+  const blockRecap = buildBlockRecap(history, trainingLoad, today);
+
+  const finishedPlan = await getLatestFinishedPlan(resolved.userId, today);
+  const planRecap: PlanRecap | null = finishedPlan
+    ? buildPlanRecap(
+        finishedPlan.plan,
+        history,
+        trainingLoad,
+        planOverrides,
+        today,
+        customWorkouts,
+      )
+    : null;
+
   // Real last-sync time for the "Synced …" label: the timestamp on the cached
   // activities row, which only changes on an actual Strava fetch (login / Sync
   // button / daily auto-sync above), not on a plain refresh. Stored in Unix
@@ -153,6 +177,8 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
       planActivities={planActivities}
       weeklyVolume={weeklyVolume}
       trainingLoad={trainingLoad}
+      blockRecap={blockRecap}
+      planRecap={planRecap}
       trainingPlan={activePlan?.plan ?? null}
       planSummary={activePlan?.summary ?? null}
       planOverrides={planOverrides}

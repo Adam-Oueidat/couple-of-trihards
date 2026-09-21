@@ -100,6 +100,47 @@ export async function getActiveTrainingPlan(
   }
 }
 
+/**
+ * The most recent plan whose race is already behind the athlete, or null.
+ *
+ * "My previous plan" is deliberately read as "the last one I finished", not
+ * "the one before the current upload". An athlete who uploaded a new block the
+ * day after their race wants the race they just ran summarised, and an athlete
+ * mid-plan wants the one before it — both are the newest plan with a race date
+ * in the past. Uploads are append-only, so walking them newest-first and taking
+ * the first finished one answers that in one query.
+ *
+ * Rows that fail validation are skipped rather than throwing, for the same
+ * reason getActiveTrainingPlan degrades to "no plan": a plan written by an
+ * older version of the app must not take the dashboard down with it.
+ */
+export async function getLatestFinishedPlan(
+  userId: string,
+  today: string,
+): Promise<ActiveTrainingPlan | null> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(trainingPlans)
+    .where(eq(trainingPlans.userId, userId))
+    .orderBy(desc(trainingPlans.createdAt), desc(trainingPlans.id));
+
+  for (const [i, row] of rows.entries()) {
+    if (row.raceDate >= today) continue;
+    try {
+      const raw = parseRawTrainingPlan(rowToRawPlan(row));
+      return { summary: rowToSummary(row, i === 0), plan: buildTrainingPlan(raw) };
+    } catch (err) {
+      log.error("stored plan failed validation; skipping it in the recap", {
+        userId,
+        planId: row.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return null;
+}
+
 /** Every plan this athlete has uploaded, newest first. */
 export async function listTrainingPlans(userId: string): Promise<PlanSummary[]> {
   const db = getDb();
