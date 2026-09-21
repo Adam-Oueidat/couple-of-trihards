@@ -367,14 +367,111 @@ export function getCurrentWeekSessions(
   );
 }
 
+/** Whole days from `today` to the race — negative once the race has passed. */
+function raceDayDelta(trainingPlan: TrainingPlan, today: string): number {
+  const race = new Date(trainingPlan.raceDate + "T12:00:00");
+  const now = new Date(today + "T12:00:00");
+  return Math.ceil((race.getTime() - now.getTime()) / 86400000);
+}
+
 // Takes a non-null plan by design: "days until race" is meaningless without
 // one, so a caller has to establish the athlete has a plan before asking. There
 // is no default here to fall through to.
+//
+// Clamped at zero on purpose — "days until" cannot sensibly go negative. That
+// makes it the wrong thing to ask once the race is behind the athlete: it
+// answers 0 forever, which is how the dashboard came to say "Race in 0 days"
+// indefinitely after a race. Use racePhase() when the answer has to
+// distinguish "race day" from "the plan is over".
 export function daysUntilRace(
   trainingPlan: TrainingPlan,
   today: string = localToday(),
 ): number {
-  const race = new Date(trainingPlan.raceDate + "T12:00:00");
-  const now = new Date(today + "T12:00:00");
-  return Math.max(0, Math.ceil((race.getTime() - now.getTime()) / 86400000));
+  return Math.max(0, raceDayDelta(trainingPlan, today));
+}
+
+/**
+ * Where the athlete is relative to their goal race.
+ *
+ * A plan has a life cycle, and "upcoming" is only one third of it. Modelling
+ * that as a single clamped number lost the difference between the morning of
+ * the race and the month after it, so every surface that asked ended up
+ * claiming the race was imminent forever.
+ */
+export type RacePhase =
+  | { state: "upcoming"; days: number }
+  | { state: "raceDay" }
+  | { state: "complete"; days: number };
+
+export function racePhase(
+  trainingPlan: TrainingPlan,
+  today: string = localToday(),
+): RacePhase {
+  const delta = raceDayDelta(trainingPlan, today);
+  if (delta > 0) return { state: "upcoming", days: delta };
+  if (delta === 0) return { state: "raceDay" };
+  return { state: "complete", days: -delta };
+}
+
+export function isPlanComplete(
+  trainingPlan: TrainingPlan,
+  today: string = localToday(),
+): boolean {
+  return racePhase(trainingPlan, today).state === "complete";
+}
+
+/** How a finished (or in-progress) plan actually went. */
+export interface PlanAdherence {
+  completed: number;
+  partial: number;
+  missed: number;
+  skipped: number;
+  /** Sessions not yet due — zero once the plan is over. */
+  remaining: number;
+  total: number;
+  plannedKm: number;
+  actualKm: number;
+}
+
+/**
+ * Roll the per-session grades up into one summary.
+ *
+ * Deliberately derived from matchSessions rather than counted separately, so
+ * the headline number can never disagree with the rows it summarises — and so
+ * skips keep being counted apart from misses, which is the distinction the
+ * coach prompt already leans on.
+ */
+export function planAdherence(
+  trainingPlan: TrainingPlan | null,
+  activities: StravaActivity[],
+  overrides?: PlanOverrideMap,
+  today: string = localToday(),
+  customWorkouts: CustomWorkoutInput[] = [],
+): PlanAdherence {
+  const sessions = matchSessions(
+    trainingPlan,
+    activities,
+    overrides,
+    today,
+    customWorkouts,
+  );
+
+  const a: PlanAdherence = {
+    completed: 0, partial: 0, missed: 0, skipped: 0,
+    remaining: 0, total: sessions.length, plannedKm: 0, actualKm: 0,
+  };
+
+  for (const s of sessions) {
+    a.plannedKm += s.km;
+    a.actualKm += s.actualKm ?? 0;
+    if (s.status === "completed") a.completed++;
+    else if (s.status === "partial") a.partial++;
+    else if (s.status === "missed") a.missed++;
+    else if (s.status === "skipped") a.skipped++;
+    else a.remaining++; // today / upcoming
+  }
+
+  a.plannedKm = Math.round(a.plannedKm * 10) / 10;
+  a.actualKm = Math.round(a.actualKm * 10) / 10;
+  return a;
 }

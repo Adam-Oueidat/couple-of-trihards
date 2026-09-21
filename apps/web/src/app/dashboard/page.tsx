@@ -107,6 +107,24 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   );
   const weeklyVolume = groupByWeek(activities);
 
+  // The plan and calendar tabs grade sessions against same-day activities, so
+  // they need activities covering the WHOLE plan — not the display window.
+  // A plan longer than DISPLAY_WEEKS (a 15-week half-marathon block, say) had
+  // its earliest weeks graded against activities that had been sliced away, so
+  // sessions the athlete genuinely ran showed as "missed" forever. Widening to
+  // the plan's own start date fixes the grade without shipping the entire
+  // year: the extra rows are bounded by the plan's length.
+  const planStart = activePlan?.plan?.startDate;
+  const planCutoff = planStart
+    ? Math.min(displayCutoff, new Date(planStart + "T00:00:00").getTime())
+    : displayCutoff;
+  const planActivities =
+    planCutoff === displayCutoff
+      ? activities
+      : history.filter(
+          (a) => new Date(a.start_date_local).getTime() >= planCutoff,
+        );
+
   // "This week" is the current calendar week (resets every Monday), NOT the most
   // recent week that happens to contain an activity. Until the athlete trains
   // this week it shows zeros rather than rolling back to last week's totals.
@@ -132,6 +150,7 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
       syncState={syncState}
       athlete={athlete}
       activities={activities}
+      planActivities={planActivities}
       weeklyVolume={weeklyVolume}
       trainingLoad={trainingLoad}
       trainingPlan={activePlan?.plan ?? null}

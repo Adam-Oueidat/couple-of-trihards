@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Discipline, TrainingPlan } from "@trihards/core";
-import { daysUntilRace } from "@trihards/core";
+import { racePhase } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
 import { DisciplineGlyph } from "./DisciplineGlyph";
 import { DISCIPLINE_PILL } from "./discipline-pill";
@@ -14,6 +14,15 @@ interface Props {
   summary: PlanSummary | null;
   /** Called with the plan the athlete's calendar should now render. */
   onPlanChange: (plan: TrainingPlan | null, summary: PlanSummary | null) => void;
+  /**
+   * The upload dialog is controlled by the shell, because more than one place
+   * opens it: this card's own button, and "Upload your next plan" on a
+   * finished plan over in the Plan tab. Owning it here and syncing from a prop
+   * would mean setting state from an effect, which is exactly the cascading
+   * render the lint rule warns about.
+   */
+  uploadOpen: boolean;
+  onUploadOpenChange: (open: boolean) => void;
 }
 
 const ACCEPT = ".pdf,.md,.txt,application/pdf,text/markdown,text/plain";
@@ -29,6 +38,40 @@ const PLAN_DATE_FMT = new Intl.DateTimeFormat("en-US", {
 
 function formatDate(date: string): string {
   return PLAN_DATE_FMT.format(new Date(date + "T12:00:00"));
+}
+
+/**
+ * The race countdown, which has to survive the race actually happening.
+ *
+ * It used to render `Race in {daysUntilRace(plan)} days` — and daysUntilRace
+ * clamps at zero, so from race day onward it read "Race in 0 days" forever.
+ * Each phase now gets its own wording, and a finished plan is stated as such
+ * rather than as a race that is perpetually about to start.
+ */
+function RacePill({ plan }: { plan: TrainingPlan }) {
+  const phase = racePhase(plan);
+
+  if (phase.state === "raceDay") {
+    return (
+      <Pill className="border-orange-500/40 bg-orange-500/20 text-orange-300">
+        Race day
+      </Pill>
+    );
+  }
+
+  if (phase.state === "complete") {
+    return (
+      <Pill className="border-gray-700 bg-gray-800 text-gray-400">
+        {phase.days === 1 ? "Raced yesterday" : `Raced ${phase.days} days ago`}
+      </Pill>
+    );
+  }
+
+  return (
+    <Pill className="border-orange-500/30 bg-orange-500/15 text-orange-400">
+      Race in {phase.days} {phase.days === 1 ? "day" : "days"}
+    </Pill>
+  );
 }
 
 function Pill({
@@ -49,8 +92,9 @@ function Pill({
   );
 }
 
-export function PlanSourceCard({ plan, summary, onPlanChange }: Props) {
-  const [open, setOpen] = useState(false);
+export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUploadOpenChange }: Props) {
+  const open = uploadOpen;
+  const setOpen = onUploadOpenChange;
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +107,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange }: Props) {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, setOpen]);
 
   async function upload(file: File) {
     setUploading(true);
@@ -118,9 +162,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange }: Props) {
         <>
           <SectionLabel
             trailing={
-              <Pill className="border-orange-500/30 bg-orange-500/15 text-orange-400">
-                Race in {daysUntilRace(plan)} days
-              </Pill>
+              <RacePill plan={plan} />
             }
           >
             Training plan
