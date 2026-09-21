@@ -17,6 +17,7 @@ import {
   plannedVsActualByWeek,
   matchSessions,
   planAdherence,
+  findMisdatedSessions,
   isPlanComplete,
 } from "@trihards/core";
 import type { TrainingPlan } from "@trihards/core";
@@ -24,6 +25,7 @@ import { getWeekStart } from "@trihards/core";
 import type { PlanEdits } from "./usePlanEdits";
 import { PlanCompleteCard, type PlanDetailView } from "./PlanCompleteCard";
 import { MissedSessions } from "./MissedSessions";
+import { MisdatedReview } from "./MisdatedReview";
 import { SessionRow } from "./SessionRow";
 
 interface Props {
@@ -74,6 +76,10 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
   const complete = plan ? isPlanComplete(plan) : false;
   const adherence = useMemo(
     () => planAdherence(plan, activities, overrides, undefined, workouts),
+    [plan, activities, overrides, workouts]
+  );
+  const misdated = useMemo(
+    () => findMisdatedSessions(plan, activities, overrides, undefined, workouts),
     [plan, activities, overrides, workouts]
   );
   const [detailView, setDetailView] = useState<PlanDetailView>("none");
@@ -156,6 +162,7 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
       return (
         <div className="space-y-6">
           {card}
+          <MisdatedReview candidates={misdated} edits={edits} />
           <MissedSessions sessions={allSessions} />
         </div>
       );
