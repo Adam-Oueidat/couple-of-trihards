@@ -434,6 +434,14 @@ export interface MisdatedSession {
   activity: { id: number; name: string; date: string; km: number };
   /** Days from planned to actual: -1 ran a day early, +1 a day late. */
   offsetDays: number;
+  /**
+   * `full` — the run covers the planned distance, so moving it completes the
+   * session. `partial` — the athlete clearly set out to do this session and cut
+   * it short (one such run in the real data is literally named "should have
+   * been 15, became 8"). Moving it records that they trained and that the
+   * session came up short, which is truer than leaving it as "missed".
+   */
+  confidence: "full" | "partial";
 }
 
 // One day either side, and no further. On the plan this was built against,
@@ -446,7 +454,14 @@ const MISDATE_WINDOW_DAYS = 1;
 // The same threshold matchSessions uses to call a session "completed". A run
 // that would not have completed the session on the day cannot retro-complete it
 // from a day away either.
-const MISDATE_MIN_RATIO = 0.8;
+const MISDATE_FULL_RATIO = 0.8;
+
+// Below the completion bar but still plainly an attempt at the session rather
+// than an unrelated outing. These are offered separately and never applied
+// without the athlete accepting them, which is what makes the looser bar safe:
+// a wrong suggestion costs one click to dismiss, while the alternative is
+// leaving a session they actually ran marked as missed.
+const MISDATE_PARTIAL_RATIO = 0.4;
 
 function shiftDate(date: string, days: number): string {
   const d = new Date(date + "T12:00:00");
@@ -500,27 +515,41 @@ export function findMisdatedSessions(
     for (let d = 1; d <= MISDATE_WINDOW_DAYS; d++) offsets.push(-d, d);
     offsets.sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
 
-    for (const offset of offsets) {
-      const candidate = (byDate.get(shiftDate(session.date, offset)) ?? []).find(
-        (act) =>
-          !claimed.has(act.id) &&
-          act.distance / 1000 >= session.km * MISDATE_MIN_RATIO,
-      );
-      if (!candidate) continue;
+    let picked: { act: StravaActivity; offset: number; confidence: "full" | "partial" } | null =
+      null;
 
-      claimed.add(candidate.id);
-      found.push({
-        session,
-        activity: {
-          id: candidate.id,
-          name: candidate.name,
-          date: candidate.start_date_local.split("T")[0],
-          km: Math.round((candidate.distance / 1000) * 10) / 10,
-        },
-        offsetDays: offset,
-      });
-      break;
+    for (const offset of offsets) {
+      const onDay = (byDate.get(shiftDate(session.date, offset)) ?? []).filter(
+        (act) => !claimed.has(act.id),
+      );
+      const ratio = (act: StravaActivity) =>
+        session.km > 0 ? act.distance / 1000 / session.km : 0;
+
+      // A full match on this day beats a partial on this day; only if neither
+      // exists do we look a day further out.
+      const full = onDay.find((act) => ratio(act) >= MISDATE_FULL_RATIO);
+      if (full) {
+        picked = { act: full, offset, confidence: "full" };
+        break;
+      }
+      const partial = onDay.find((act) => ratio(act) >= MISDATE_PARTIAL_RATIO);
+      if (partial && !picked) picked = { act: partial, offset, confidence: "partial" };
     }
+
+    if (!picked) continue;
+
+    claimed.add(picked.act.id);
+    found.push({
+      session,
+      activity: {
+        id: picked.act.id,
+        name: picked.act.name,
+        date: picked.act.start_date_local.split("T")[0],
+        km: Math.round((picked.act.distance / 1000) * 10) / 10,
+      },
+      offsetDays: picked.offset,
+      confidence: picked.confidence,
+    });
   }
 
   return found;

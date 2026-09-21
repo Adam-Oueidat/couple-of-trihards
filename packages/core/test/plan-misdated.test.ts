@@ -47,9 +47,36 @@ describe("findMisdatedSessions", () => {
     expect(findMisdatedSessions(plan([{ id: "a", date: "2026-07-01", km: 10 }]), [run("2026-07-03", 10)], {}, TODAY)).toHaveLength(0);
   });
 
-  it("ignores a run too short to have completed the session", () => {
-    // 5km against a 10km session is under the 80% completion threshold.
-    expect(findMisdatedSessions(plan([{ id: "a", date: "2026-07-01", km: 10 }]), [run("2026-07-02", 5)], {}, TODAY)).toHaveLength(0);
+  it("offers a short run as a partial rather than a full match", () => {
+    // 5km against a 10km session is below the 80% completion bar but well
+    // above the floor: the athlete plainly set out to do this session and cut
+    // it short, which is different from not training at all.
+    const found = findMisdatedSessions(plan([{ id: "a", date: "2026-07-01", km: 10 }]), [run("2026-07-02", 5)], {}, TODAY);
+    expect(found).toHaveLength(1);
+    expect(found[0].confidence).toBe("partial");
+  });
+
+  it("marks a full-distance match as full", () => {
+    const found = findMisdatedSessions(plan([{ id: "a", date: "2026-07-01", km: 10 }]), [run("2026-07-02", 9)], {}, TODAY);
+    expect(found[0].confidence).toBe("full");
+  });
+
+  it("ignores a run far too short to be this session", () => {
+    // 3km against 10km is a different outing, not a cut-short long run.
+    expect(findMisdatedSessions(plan([{ id: "a", date: "2026-07-01", km: 10 }]), [run("2026-07-02", 3)], {}, TODAY)).toHaveLength(0);
+  });
+
+  it("prefers a full match on a further day over a partial on a nearer one", () => {
+    // Distance is the stronger signal: a run that actually covers the session
+    // beats an adjacent-day run that only half covers it.
+    const found = findMisdatedSessions(
+      plan([{ id: "a", date: "2026-07-02", km: 10 }]),
+      [run("2026-07-01", 5), run("2026-07-03", 10)],
+      {}, TODAY,
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].confidence).toBe("full");
+    expect(found[0].activity.date).toBe("2026-07-03");
   });
 
   it("does not steal a run that already completed its own session", () => {
