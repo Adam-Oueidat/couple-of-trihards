@@ -395,14 +395,32 @@ export interface PlanWeekRecap {
   total: number;
 }
 
+/**
+ * What the plan did to the athlete's fitness, measured AT THE START LINE.
+ *
+ * Every figure here is read from the day before the race, never from race day
+ * itself, and that distinction is the whole correctness of this block. The
+ * load series applies a day's training at the END of that day, so the race —
+ * by far the hardest effort in the plan — lands in race day's own ATL. Reading
+ * TSB there answers "how wrecked did the race leave me", and the recap was
+ * reporting that as "how fresh did you arrive": one real half marathon showed
+ * +24.8 the evening before and -8.4 once its own 328 TSS was counted, so a
+ * textbook taper was being read back to the athlete as racing tired.
+ *
+ * The race is the exam, not the study. Measuring at the start line is what
+ * makes these numbers a verdict on the plan rather than on the race.
+ */
 export interface PlanRecapFitness {
   /** CTL the day before the plan started. */
   ctlStart: number;
-  /** CTL on race day. */
-  ctlRace: number;
+  /** CTL on the morning of the race — the fitness the plan actually built. */
+  ctlStartLine: number;
+  /** Highest CTL reached between the plan's start and the start line. */
   ctlPeak: number;
-  /** Form on race day — the number that says whether the taper landed. */
-  tsbRace: number;
+  /** Fatigue on the morning of the race — how far the taper shed it. */
+  atlStartLine: number;
+  /** Form on the morning of the race — whether the taper landed. */
+  tsbStartLine: number;
 }
 
 export interface PlanRecap {
@@ -505,17 +523,22 @@ export function buildPlanRecap(
     }));
 
   const ctlAt = ctlLookup(trainingLoad);
-  const racePoint = ctlAt(plan.raceDate);
+  // The day before the race, for the reason set out on PlanRecapFitness: the
+  // race's own load lands in race day and would be read as the athlete's
+  // freshness on the start line.
+  const startLine = addDays(plan.raceDate, -1);
+  const startLinePoint = ctlAt(startLine);
   const startPoint = ctlAt(addDays(plan.startDate, -1));
   const peak = trainingLoad
-    .filter((p) => p.date >= plan.startDate && p.date <= plan.raceDate)
+    .filter((p) => p.date >= plan.startDate && p.date <= startLine)
     .reduce((max, p) => Math.max(max, p.ctl), 0);
-  const fitness: PlanRecapFitness | null = racePoint
+  const fitness: PlanRecapFitness | null = startLinePoint
     ? {
         ctlStart: round1(startPoint?.ctl ?? 0),
-        ctlRace: round1(racePoint.ctl),
+        ctlStartLine: round1(startLinePoint.ctl),
         ctlPeak: round1(peak),
-        tsbRace: round1(racePoint.tsb),
+        atlStartLine: round1(startLinePoint.atl),
+        tsbStartLine: round1(startLinePoint.tsb),
       }
     : null;
 
@@ -849,31 +872,37 @@ export function readPlan(recap: PlanRecap, limit = 4): Insight[] {
 
   // --- Did the taper land. Race-day form is the single number that answers it.
   if (fitness) {
-    if (fitness.tsbRace >= 10) {
+    if (fitness.tsbStartLine >= 10) {
       found.push({
         id: "taper-good",
         tone: "ok",
-        headline: `You raced on +${fitness.tsbRace.toFixed(0)} form`,
-        detail: "That is a taper that worked — you arrived fresh with the fitness intact. Repeat the last two weeks next time.",
+        headline: `You started on +${fitness.tsbStartLine.toFixed(0)} form`,
+        detail: `Fatigue was down to ${fitness.atlStartLine.toFixed(0)} against ${fitness.ctlStartLine.toFixed(0)} fitness on the morning of the race — a taper that did its job. Repeat the last two weeks next time.`,
       });
-    } else if (fitness.tsbRace >= -5) {
+    } else if (fitness.tsbStartLine >= -5) {
       found.push({
         id: "taper-thin",
         tone: "accent",
-        headline: `You raced on ${fitness.tsbRace.toFixed(0)} form`,
-        detail: "Close to neutral — you were rested but not sharp. A slightly deeper taper is usually worth a few more minutes.",
+        headline: `You started on ${fitness.tsbStartLine.toFixed(0)} form`,
+        detail: "Close to neutral on the morning of the race — rested, but not sharp. A slightly deeper taper is usually worth a few minutes.",
       });
     } else {
       found.push({
         id: "taper-tired",
         tone: "warn",
-        headline: `You raced tired at ${fitness.tsbRace.toFixed(0)} form`,
-        detail: "Fatigue was still in your legs on the day. The fitness was there; the freshness to use it was not.",
+        headline: `You started tired at ${fitness.tsbStartLine.toFixed(0)} form`,
+        detail: "Fatigue was still in your legs on the morning of the race. The fitness was there; the freshness to use it was not.",
       });
     }
 
-    const built = fitness.ctlRace - fitness.ctlStart;
-    if (Math.abs(built) >= 5) {
+    // What the plan BUILT is measured to the peak, not to the start line. A
+    // taper sheds CTL on purpose — that is the entire point of it — so
+    // measuring the build against race-week fitness makes every well-executed
+    // taper read as a plan that destroyed the athlete's fitness. One real block
+    // came in at 74, peaked at 82 and tapered to 55: it built seven points and
+    // would have been reported as losing nineteen.
+    const built = fitness.ctlPeak - fitness.ctlStart;
+    if (Math.abs(built) >= FLAT_BAND) {
       found.push({
         id: "plan-fitness",
         tone: built > 0 ? "ok" : "warn",
@@ -881,7 +910,7 @@ export function readPlan(recap: PlanRecap, limit = 4): Insight[] {
           built > 0
             ? `The plan added ${built.toFixed(0)} points of fitness`
             : `Fitness fell ${Math.abs(built).toFixed(0)} points across the plan`,
-        detail: `CTL went ${fitness.ctlStart.toFixed(0)} to ${fitness.ctlRace.toFixed(0)}, peaking at ${fitness.ctlPeak.toFixed(0)}. That peak is the level the next plan starts from, not zero.`,
+        detail: `CTL went ${fitness.ctlStart.toFixed(0)} to a peak of ${fitness.ctlPeak.toFixed(0)}, then tapered to ${fitness.ctlStartLine.toFixed(0)} for the start line. That peak is the level your next plan starts from, not zero.`,
       });
     }
   }
