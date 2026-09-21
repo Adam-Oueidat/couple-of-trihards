@@ -123,16 +123,19 @@ export function PlanRecapPanel({ recap }: { recap: PlanRecap }) {
               : undefined
           }
         />
+        {/* Measured to the PEAK, not to the start line: a taper sheds fitness
+            deliberately, so measuring the build against race week would report
+            every good taper as a plan that wrecked the athlete. */}
         <Readout
           label="Fitness built"
           value={
             fitness
-              ? `${fitness.ctlRace >= fitness.ctlStart ? "+" : ""}${(fitness.ctlRace - fitness.ctlStart).toFixed(0)}`
+              ? `${fitness.ctlPeak >= fitness.ctlStart ? "+" : ""}${(fitness.ctlPeak - fitness.ctlStart).toFixed(0)}`
               : "—"
           }
           note={
             fitness
-              ? `CTL ${fitness.ctlStart.toFixed(0)} → ${fitness.ctlRace.toFixed(0)}`
+              ? `CTL ${fitness.ctlStart.toFixed(0)} → ${fitness.ctlPeak.toFixed(0)} at peak, ${fitness.ctlStartLine.toFixed(0)} on the line`
               : "no history for this plan"
           }
         />
@@ -141,11 +144,15 @@ export function PlanRecapPanel({ recap }: { recap: PlanRecap }) {
           value={fitness ? fitness.ctlPeak.toFixed(0) : "—"}
           note="the level your next block starts from"
         />
+        {/* Labelled "start line", not "race day", because that is literally
+            which day it is read from — the race's own load lands in race day
+            and would report the damage the race did as the freshness the
+            athlete brought to it. */}
         <Readout
-          label="Form on race day"
+          label="Form on the start line"
           value={
             fitness
-              ? `${fitness.tsbRace > 0 ? "+" : ""}${fitness.tsbRace.toFixed(0)}`
+              ? `${fitness.tsbStartLine > 0 ? "+" : ""}${fitness.tsbStartLine.toFixed(0)}`
               : "—"
           }
           note="above +10 is a taper that landed"

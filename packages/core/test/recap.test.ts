@@ -308,16 +308,46 @@ describe("buildPlanRecap", () => {
     expect(recap.byType.find((t) => t.type === "easy")?.total).toBe(3);
   });
 
-  it("reads fitness at the plan's edges and on race day", () => {
+  it("reads fitness at the start line, not at the end of race day", () => {
     const load = calcTrainingLoad(runs, TODAY);
     const recap = buildPlanRecap(plan(), runs, load, undefined, TODAY);
+    const startLine = load.find((p) => p.date === "2026-09-12")!;
     expect(recap.fitness).not.toBeNull();
-    expect(recap.fitness!.ctlRace).toBe(
-      load.find((p) => p.date === "2026-09-13")!.ctl,
-    );
-    expect(recap.fitness!.tsbRace).toBe(
-      load.find((p) => p.date === "2026-09-13")!.tsb,
-    );
+    expect(recap.fitness!.ctlStartLine).toBe(startLine.ctl);
+    expect(recap.fitness!.tsbStartLine).toBe(startLine.tsb);
+    expect(recap.fitness!.atlStartLine).toBe(startLine.atl);
+  });
+
+  it("does not let the race's own load count as the athlete's freshness", () => {
+    // The real case this comes from: a half marathon tapered to +24.8 on the
+    // evening before, and the race itself put 328 TSS into race day, taking
+    // TSB to -8.4. Reading race day reported the damage the race did as the
+    // freshness the athlete brought to it, and told someone who had tapered
+    // perfectly that they raced tired.
+    const load: TrainingLoadPoint[] = [
+      { date: "2026-09-11", atl: 35.3, ctl: 56.7, tsb: 21.4, dailyTSS: 17 },
+      { date: "2026-09-12", atl: 30.6, ctl: 55.4, tsb: 24.8, dailyTSS: 0 },
+      { date: "2026-09-13", atl: 70.2, ctl: 61.8, tsb: -8.4, dailyTSS: 328 },
+      { date: "2026-09-14", atl: 60.9, ctl: 60.4, tsb: -0.5, dailyTSS: 0 },
+    ];
+    const recap = buildPlanRecap(plan(), runs, load, undefined, TODAY);
+    expect(recap.fitness!.tsbStartLine).toBe(24.8);
+
+    const taper = readPlan(recap, 6).find((i) => i.id.startsWith("taper"));
+    expect(taper?.id).toBe("taper-good");
+    expect(taper?.headline).toBe("You started on +25 form");
+  });
+
+  it("keeps the race out of peak fitness too", () => {
+    // Race day's CTL is inflated by the race's own load; the peak the plan
+    // built is the highest level reached before the start line.
+    const load: TrainingLoadPoint[] = [
+      { date: "2026-09-11", atl: 35, ctl: 60, tsb: 25, dailyTSS: 0 },
+      { date: "2026-09-12", atl: 30, ctl: 58, tsb: 28, dailyTSS: 0 },
+      { date: "2026-09-13", atl: 90, ctl: 99, tsb: -9, dailyTSS: 400 },
+    ];
+    const recap = buildPlanRecap(plan(), runs, load, undefined, TODAY);
+    expect(recap.fitness!.ctlPeak).toBe(60);
   });
 
   it("counts weeks and days since the race", () => {
@@ -353,12 +383,29 @@ describe("readPlan", () => {
     expect(split?.headline).toContain("Interval");
   });
 
-  it("reads race-day form as the verdict on the taper", () => {
-    const fresh = buildPlanRecap(plan(), runs, [{ date: "2026-09-13", ctl: 50, atl: 35, tsb: 15, dailyTSS: 0 }], undefined, TODAY);
+  it("reads start-line form as the verdict on the taper", () => {
+    // Dated the day before the race (2026-09-13), which is where the recap
+    // reads freshness from.
+    const fresh = buildPlanRecap(plan(), runs, [{ date: "2026-09-12", ctl: 50, atl: 35, tsb: 15, dailyTSS: 0 }], undefined, TODAY);
     expect(readPlan(fresh, 6).find((i) => i.id.startsWith("taper"))?.id).toBe("taper-good");
 
-    const tired = buildPlanRecap(plan(), runs, [{ date: "2026-09-13", ctl: 50, atl: 70, tsb: -20, dailyTSS: 0 }], undefined, TODAY);
+    const tired = buildPlanRecap(plan(), runs, [{ date: "2026-09-12", ctl: 50, atl: 70, tsb: -20, dailyTSS: 0 }], undefined, TODAY);
     expect(readPlan(tired, 6).find((i) => i.id.startsWith("taper"))?.id).toBe("taper-tired");
+  });
+
+  it("measures what the plan built to the peak, so a taper is not a loss", () => {
+    // The real shape: in at 74, peaked at 82, tapered to 55 for the start
+    // line. Measured against the start line this reads as losing nineteen
+    // points of fitness — punishing the athlete for tapering correctly.
+    const load: TrainingLoadPoint[] = [
+      { date: "2026-06-07", atl: 70, ctl: 74, tsb: 4, dailyTSS: 0 },
+      { date: "2026-07-15", atl: 85, ctl: 82, tsb: -3, dailyTSS: 120 },
+      { date: "2026-09-12", atl: 30, ctl: 55, tsb: 25, dailyTSS: 0 },
+    ];
+    const recap = buildPlanRecap(plan(), runs, load, undefined, TODAY);
+    const built = readPlan(recap, 6).find((i) => i.id === "plan-fitness");
+    expect(built?.headline).toBe("The plan added 8 points of fitness");
+    expect(built?.tone).toBe("ok");
   });
 
   it("calls out a skip reason that keeps recurring", () => {

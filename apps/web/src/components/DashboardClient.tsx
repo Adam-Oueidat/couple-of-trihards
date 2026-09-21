@@ -379,8 +379,6 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
           <div className="space-y-6">
             <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
 
-            <TrainingRecap block={blockRecap} plan={planRecap} />
-
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
                 <SectionLabel>Weekly Volume</SectionLabel>
@@ -419,6 +417,18 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               edits={edits}
               onUploadNew={() => setUploadOpen(true)}
             />
+
+            {/* The retrospective sits under the plan's own cards rather than on
+                Overview, which is a daily glance and was getting crowded. This
+                is a tab you open deliberately, which is the right register for
+                a summary you read a few times a block.
+
+                It defaults to the six-week block view even here: when the
+                active plan is also the most recently finished one, PlanCompleteCard
+                above is already showing that plan's headline adherence, and
+                opening on the plan view would stack two summaries of the same
+                race. The plan read stays one click away. */}
+            <TrainingRecap block={blockRecap} plan={planRecap} />
           </div>
         ) : tab === "calendar" ? (
           <CalendarTab activities={planActivities} plan={plan.plan} edits={edits} />
