@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, planOverrides } from "@trihards/db";
 import { SESSION_TYPES, type SessionType } from "@trihards/core";
 import type { PlanOverride, PlanOverrideMap } from "@trihards/core";
+import { getActiveTrainingPlan } from "./training-plans";
 
 export type { PlanOverride, PlanOverrideMap };
 
@@ -185,4 +186,41 @@ export async function clearOverride(userId: string, sessionId: string): Promise<
     .where(and(eq(planOverrides.userId, userId), eq(planOverrides.sessionId, sessionId)))
     .returning({ sessionId: planOverrides.sessionId });
   return deleted.length > 0;
+}
+
+/**
+ * Move one plan session onto a different date on the athlete's behalf.
+ *
+ * Exists so the coach's move_session tool does not have to reach for the plan
+ * itself: the override row is keyed by the session's ORIGINAL plan date, which
+ * only the plan knows, and a tool handler that guessed it would write a row
+ * that silently fails to match the session it meant to move.
+ *
+ * Validates that the session actually belongs to this athlete's active plan.
+ * The tool's arguments are model-generated, so a hallucinated id must be
+ * rejected here rather than persisted as an override for a session that does
+ * not exist.
+ */
+export async function moveSession(
+  userId: string,
+  sessionId: string,
+  newDate: string,
+  reason?: string,
+): Promise<{ name: string; from: string; to: string }> {
+  const active = await getActiveTrainingPlan(userId);
+  const plan = active?.plan;
+  if (!plan) throw new Error("This athlete has no training plan");
+
+  const session = plan.sessions.find((s) => s.id === sessionId);
+  if (!session) throw new Error(`No session with id ${sessionId} in this plan`);
+
+  const input = validateOverrideInput({
+    sessionId,
+    originalDate: session.date,
+    newDate,
+    reason,
+  });
+  await setOverride(userId, input);
+
+  return { name: session.name, from: session.date, to: newDate };
 }

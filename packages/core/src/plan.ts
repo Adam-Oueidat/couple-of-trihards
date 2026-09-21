@@ -420,6 +420,112 @@ export function isPlanComplete(
   return racePhase(trainingPlan, today).state === "complete";
 }
 
+/**
+ * A session that looks like it was run, just not on its planned day.
+ *
+ * Grading matches a session to activities on the SAME date only, so a session
+ * done a day early or late reads as missed while the run that satisfied it sits
+ * unclaimed next to it. This finds those pairs so the coach can offer to move
+ * the session onto the day it actually happened.
+ */
+export interface MisdatedSession {
+  session: SessionWithStatus;
+  /** The run that looks like it satisfied it. */
+  activity: { id: number; name: string; date: string; km: number };
+  /** Days from planned to actual: -1 ran a day early, +1 a day late. */
+  offsetDays: number;
+}
+
+// One day either side, and no further. On the plan this was built against,
+// widening to ±2, ±3 or even ±7 days found nothing a ±1 window had not already
+// caught — every real case was an adjacent-day slip. A wider window only buys
+// the chance of claiming an unrelated run for a session the athlete genuinely
+// skipped, which is a worse error than leaving it marked missed.
+const MISDATE_WINDOW_DAYS = 1;
+
+// The same threshold matchSessions uses to call a session "completed". A run
+// that would not have completed the session on the day cannot retro-complete it
+// from a day away either.
+const MISDATE_MIN_RATIO = 0.8;
+
+function shiftDate(date: string, days: number): string {
+  const d = new Date(date + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+export function findMisdatedSessions(
+  trainingPlan: TrainingPlan | null,
+  activities: StravaActivity[],
+  overrides?: PlanOverrideMap,
+  today: string = localToday(),
+  customWorkouts: CustomWorkoutInput[] = [],
+): MisdatedSession[] {
+  if (!trainingPlan) return [];
+
+  const graded = matchSessions(
+    trainingPlan,
+    activities,
+    overrides,
+    today,
+    customWorkouts,
+  );
+
+  const discipline = trainingPlan.discipline;
+  const byDate = new Map<string, StravaActivity[]>();
+  for (const act of activities) {
+    if (getDiscipline(act) !== discipline) continue;
+    const day = act.start_date_local.split("T")[0];
+    byDate.set(day, [...(byDate.get(day) ?? []), act]);
+  }
+
+  // An activity that already credits a session on its own date is spoken for.
+  // Without this a single run could complete its own day's session AND be
+  // offered as the rescue for the neighbouring day's.
+  const claimed = new Set<number>();
+  for (const s of graded) {
+    if (s.status !== "completed" && s.status !== "partial") continue;
+    for (const act of byDate.get(s.date) ?? []) claimed.add(act.id);
+  }
+
+  const found: MisdatedSession[] = [];
+
+  // Earliest first, so when two missed sessions could both claim one run the
+  // earlier session gets it rather than whichever happened to be iterated first.
+  for (const session of [...graded].sort((a, b) => (a.date < b.date ? -1 : 1))) {
+    if (session.status !== "missed") continue;
+
+    // Nearest day wins: a run the day after beats one two days before.
+    const offsets: number[] = [];
+    for (let d = 1; d <= MISDATE_WINDOW_DAYS; d++) offsets.push(-d, d);
+    offsets.sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+
+    for (const offset of offsets) {
+      const candidate = (byDate.get(shiftDate(session.date, offset)) ?? []).find(
+        (act) =>
+          !claimed.has(act.id) &&
+          act.distance / 1000 >= session.km * MISDATE_MIN_RATIO,
+      );
+      if (!candidate) continue;
+
+      claimed.add(candidate.id);
+      found.push({
+        session,
+        activity: {
+          id: candidate.id,
+          name: candidate.name,
+          date: candidate.start_date_local.split("T")[0],
+          km: Math.round((candidate.distance / 1000) * 10) / 10,
+        },
+        offsetDays: offset,
+      });
+      break;
+    }
+  }
+
+  return found;
+}
+
 /** How a finished (or in-progress) plan actually went. */
 export interface PlanAdherence {
   completed: number;

@@ -13,6 +13,7 @@ import {
   formatSecondsAsClock,
   matchSessions,
   racePhase,
+  findMisdatedSessions,
   type TrainingPlan,
   SUMMARY_MODEL,
 } from "@trihards/core";
@@ -62,6 +63,12 @@ Guidelines:
 Plan moves:
 - The athlete may reschedule planned sessions in their calendar (drag-and-drop). Moved sessions show up under "Plan moves" with original → new dates. Sessions in upcoming/recent plan sessions are listed at their CURRENT dates (after the move), not their original plan dates.
 - When the athlete tells you they had to move a session, acknowledge the change and adapt advice (e.g. a long run pushed by a day means the easy day around it should shift too). If they're stacking hard sessions back-to-back due to a move, flag the risk.
+
+Sessions done on the wrong day:
+- Grading matches a session to activities on the SAME date only, so a session the athlete did a day early or late is graded [missed] even though they trained. Any such pair is listed for you under "Sessions that look mis-dated" — you do not have to spot these yourself, and you should not go hunting for others.
+- Raise them rather than treating the athlete as having missed the work: they ran it, the calendar has it on the wrong day. Say which session and which run you think it was.
+- If they confirm, call move_session with the id from the listing. If they say it was genuinely a different session, leave it alone — a missed session that really was missed must stay missed, and the plan record is theirs, not yours to tidy.
+- Never move a session they have not agreed to, and never use a move to make adherence look better than it was.
 
 Skipped sessions:
 - The athlete can mark a planned session as skipped and write down why. Skipped sessions stay in the plan sections above with status [skipped] and their reason attached, and are gathered under "Skipped sessions".
@@ -293,8 +300,32 @@ ${opts.priorSummary}\n`
       s.status === "skipped"
         ? ` — reason: ${s.skipReason ?? "none given"}`
         : "";
-    return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}${skip}`;
+    // The id is what move_session takes. Without it the coach can describe a
+    // session but not act on one.
+    return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}${skip} [id: ${s.id}]`;
   };
+
+  // Sessions that look like they were simply done on the wrong day, worked out
+  // deterministically rather than left for the model to spot. Correlating a
+  // capped session list against a capped activity list is exactly the kind of
+  // cross-referencing an LLM does unreliably, and older cases fall outside both
+  // windows entirely — so the pairing is computed here and handed over ready to
+  // act on.
+  const misdated = findMisdatedSessions(plan, activities, overrides, today);
+  const misdatedSection = misdated.length
+    ? `\n## Sessions that look mis-dated (a matching ${plan?.discipline ?? "run"} exists within a day)
+These are graded "missed" only because the athlete trained on the adjacent day.
+Raise them, and if they confirm, call move_session to put each one on the day it
+actually happened. Do not move anything they have not agreed to.
+${misdated
+  .map(
+    (m) =>
+      `- [id: ${m.session.id}] ${m.session.date} "${m.session.name}" (${m.session.km}km) — ` +
+      `"${m.activity.name}" ${m.activity.km}km on ${m.activity.date} ` +
+      `(${m.offsetDays > 0 ? "+" : ""}${m.offsetDays} day)`,
+  )
+  .join("\n")}`
+    : "";
 
   // Every skip in one place. The recent/upcoming windows above are capped, so a
   // pattern worth acting on — three run sessions dropped for the same niggle —
@@ -326,6 +357,8 @@ ${pastSessions.map(sessionLine).join("\n") || "None yet"}
 
 ## Upcoming plan sessions (next 7)
 ${upcomingSessions.map(sessionLine).join("\n") || "None"}
+
+${misdatedSection}
 
 ## Skipped sessions (the athlete marked these as not done, in their own words)
 ${skippedLines.join("\n") || "None — no sessions skipped"}
