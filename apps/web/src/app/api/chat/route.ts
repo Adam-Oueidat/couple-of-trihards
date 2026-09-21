@@ -25,6 +25,7 @@ import {
   resolveNow,
 } from "@/lib/coach-dates";
 import { addWorkout, validateWorkoutInput } from "@/lib/workouts";
+import { moveSession } from "@/lib/plan-overrides";
 import {
   getCarryoverSummary,
   getConversation,
@@ -71,6 +72,32 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["date", "discipline", "name"],
+    },
+  },
+  {
+    name: "move_session",
+    description:
+      "Move an existing training-plan session to a different date on the athlete's calendar. The main use is correcting a session that was graded 'missed' only because the athlete trained on an adjacent day: the context section 'Sessions that look mis-dated' lists those pairs with the session id and the run that appears to match. Only call this after the athlete has confirmed the move — it rewrites their training record, so never move a session they have not agreed to, and never move one to hide a session they genuinely did not do. Pass the exact id from the session's [id: ...] marker in the context; ids are not guessable and a wrong one is rejected. Once moved, the session re-grades against that day's activity and stops reading as missed.",
+    input_schema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description:
+            "The session's id, copied exactly from its [id: ...] marker in the training-plan context",
+        },
+        new_date: {
+          type: "string",
+          description:
+            "The date the session actually happened, YYYY-MM-DD — normally the date of the matching activity",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Short note on why it moved, shown to the athlete on the calendar, e.g. 'ran a day late'",
+        },
+      },
+      required: ["session_id", "new_date"],
     },
   },
 ];
@@ -349,6 +376,36 @@ export async function POST(request: NextRequest) {
                     error: err instanceof Error ? err.message : String(err),
                   });
                   result = `Failed to add workout: ${err instanceof Error ? err.message : "unknown error"}`;
+                }
+              } else if (block.name === "move_session") {
+                try {
+                  // Model-generated arguments: shape-check here, and moveSession
+                  // additionally verifies the id belongs to this athlete's plan.
+                  const input = block.input as Record<string, unknown>;
+                  if (typeof input.session_id !== "string" || !input.session_id)
+                    throw new Error("session_id required");
+                  if (typeof input.new_date !== "string")
+                    throw new Error("new_date required");
+
+                  const moved = await moveSession(
+                    userId,
+                    input.session_id,
+                    input.new_date,
+                    typeof input.reason === "string" ? input.reason : undefined,
+                  );
+                  log.info("coach moved session", {
+                    userId,
+                    sessionId: input.session_id,
+                    from: moved.from,
+                    to: moved.to,
+                  });
+                  result = `Moved "${moved.name}" from ${moved.from} (${dayOfWeekOf(moved.from)}) to ${moved.to} (${dayOfWeekOf(moved.to)}). It will re-grade against that day's activity.`;
+                } catch (err) {
+                  log.warn("move_session tool failed", {
+                    userId,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                  result = `Failed to move session: ${err instanceof Error ? err.message : "unknown error"}`;
                 }
               } else {
                 log.warn("unknown tool requested", { userId, name: block.name });
