@@ -63,6 +63,14 @@ import { ThemeToggle } from "./ThemeToggle";
 interface Props {
   athlete: { firstname: string; lastname: string; profile: string };
   activities: StravaActivity[];
+  /**
+   * Activities covering the whole plan, not just the display window. The plan
+   * and calendar tabs grade sessions against same-day activities, so a plan
+   * longer than the display window was grading its earliest weeks against
+   * activities that had been sliced away — sessions the athlete really ran
+   * showed as "missed".
+   */
+  planActivities: StravaActivity[];
   weeklyVolume: WeeklyVolume[];
   /** Current calendar week (resets Monday); zero-filled until trained in. */
   currentWeek: WeeklyVolume;
@@ -100,8 +108,11 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek, trainingLoad, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
+  // The plan-upload dialog is opened from two places — the plan card itself
+  // and "Upload your next plan" on a finished plan — so the shell owns it.
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   // Latches on the first open and never clears: the panel still has to survive
   // tab switches and being closed again, so once mounted it stays mounted and
@@ -386,12 +397,19 @@ export function DashboardClient({ athlete, activities, weeklyVolume, currentWeek
               plan={plan.plan}
               summary={plan.summary}
               onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
+              uploadOpen={uploadOpen}
+              onUploadOpenChange={setUploadOpen}
             />
 
-            <PlannedVsActual activities={activities} plan={plan.plan} edits={edits} />
+            <PlannedVsActual
+              activities={planActivities}
+              plan={plan.plan}
+              edits={edits}
+              onUploadNew={() => setUploadOpen(true)}
+            />
           </div>
         ) : tab === "calendar" ? (
-          <CalendarTab activities={activities} plan={plan.plan} edits={edits} />
+          <CalendarTab activities={planActivities} plan={plan.plan} edits={edits} />
         ) : (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">

@@ -16,11 +16,14 @@ import { StravaActivity } from "@trihards/core";
 import {
   plannedVsActualByWeek,
   matchSessions,
+  planAdherence,
+  isPlanComplete,
   SessionWithStatus,
 } from "@trihards/core";
 import type { TrainingPlan } from "@trihards/core";
 import { getWeekStart } from "@trihards/core";
 import type { PlanEdits } from "./usePlanEdits";
+import { PlanCompleteCard } from "./PlanCompleteCard";
 
 interface Props {
   activities: StravaActivity[];
@@ -37,6 +40,8 @@ interface Props {
    * complete on the first paint rather than filling in after a fetch.
    */
   edits: PlanEdits;
+  /** Opens the plan-upload dialog; offered on a finished plan. */
+  onUploadNew?: () => void;
 }
 
 const STATUS_STYLES: Record<SessionWithStatus["status"], { label: string; cls: string }> = {
@@ -80,7 +85,7 @@ function formatWeekRange(weekStart: string): string {
   return `${fmt(start)} – ${fmt(end)}`;
 }
 
-export function PlannedVsActual({ activities, plan, edits }: Props) {
+export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props) {
   const { overrides, workouts } = edits;
 
   const weeks = useMemo(
@@ -92,11 +97,20 @@ export function PlannedVsActual({ activities, plan, edits }: Props) {
     [plan, activities, overrides, workouts]
   );
 
-  const currentWeekStart = getWeekStart(new Date());
-  const currentIdx = Math.max(
-    0,
-    weeks.findIndex((w) => w.weekStart === currentWeekStart)
+  const complete = plan ? isPlanComplete(plan) : false;
+  const adherence = useMemo(
+    () => planAdherence(plan, activities, overrides, undefined, workouts),
+    [plan, activities, overrides, workouts]
   );
+  const [showSessions, setShowSessions] = useState(false);
+
+  const currentWeekStart = getWeekStart(new Date());
+  const foundCurrent = weeks.findIndex((w) => w.weekStart === currentWeekStart);
+  // Once the plan is over, "this week" is past its last week and the lookup
+  // misses — which used to fall back to index 0 and open a finished plan on
+  // its very first week. The last week (the race week) is the useful default.
+  const currentIdx =
+    foundCurrent >= 0 ? foundCurrent : complete ? Math.max(0, weeks.length - 1) : 0;
 
   // The selection is stored as a week start, not an index. The week list is
   // replaced wholesale when the athlete uploads a new plan, and is empty until
@@ -149,8 +163,32 @@ export function PlannedVsActual({ activities, plan, edits }: Props) {
     );
   }
 
+  // A finished plan leads with its outcome. The week chart and the session
+  // rows are still one click away, but they stop being the first thing an
+  // athlete sees after a race they have already run.
+  if (complete && plan && !showSessions) {
+    return (
+      <PlanCompleteCard
+        plan={plan}
+        adherence={adherence}
+        expanded={false}
+        onToggle={() => setShowSessions(true)}
+        onUploadNew={onUploadNew}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {complete && plan && (
+        <PlanCompleteCard
+          plan={plan}
+          adherence={adherence}
+          expanded
+          onToggle={() => setShowSessions(false)}
+          onUploadNew={onUploadNew}
+        />
+      )}
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">

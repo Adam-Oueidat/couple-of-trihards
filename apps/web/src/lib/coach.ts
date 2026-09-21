@@ -12,7 +12,8 @@ import {
   formatPace,
   formatSecondsAsClock,
   matchSessions,
-  daysUntilRace,
+  racePhase,
+  type TrainingPlan,
   SUMMARY_MODEL,
 } from "@trihards/core";
 import { getWorkouts } from "./workouts";
@@ -317,7 +318,7 @@ ${opts.priorSummary}\n`
   // details. Nothing here is rendered from a default plan.
   const planSection = plan
     ? `# Training plan: ${plan.name} (${plan.source}, ${plan.discipline})
-Goal race: ${plan.raceName} on ${plan.raceDate} (${daysUntilRace(plan, today)} days away)
+Goal race: ${plan.raceName} on ${plan.raceDate} (${raceTiming(plan, today)})
 Plan span: ${plan.startDate} to ${plan.raceDate}
 
 ## Recent plan sessions (with adherence)
@@ -423,6 +424,21 @@ ${
 }`;
 
   return { identity: athleteIdentity, context };
+}
+
+/**
+ * How the race sits relative to today, in words the model can act on.
+ *
+ * This used to be `${daysUntilRace()} days away`, and daysUntilRace clamps at
+ * zero — so for every day after the race the coach was told the race was
+ * happening today, and kept giving race-week advice to an athlete who had
+ * already run it. A finished plan needs to read as finished.
+ */
+function raceTiming(plan: TrainingPlan, today: string): string {
+  const phase = racePhase(plan, today);
+  if (phase.state === "raceDay") return "race day is TODAY";
+  if (phase.state === "upcoming") return `${phase.days} days away`;
+  return `already raced, ${phase.days} day${phase.days === 1 ? "" : "s"} ago — this plan is complete, so talk about recovery and what comes next rather than race preparation`;
 }
 
 function formatPaceFromSpeed(metersPerSecond: number): string {
