@@ -6,7 +6,7 @@ import Link from "next/link";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import type { SyncState } from "@/lib/strava";
-import { TrainingLoadPoint, type TrainingPlan } from "@trihards/core";
+import { TrainingLoadPoint, type BlockRecap, type PlanRecap, type TrainingPlan } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
@@ -38,6 +38,7 @@ const TrainingLoadChart = dynamic(
 );
 import { ActivityList } from "./ActivityList";
 import { OverviewHero } from "./OverviewHero";
+import { TrainingRecap } from "./TrainingRecap";
 import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
 // The coach panel is behind a button and nobody sees it on first paint, but it
@@ -75,6 +76,15 @@ interface Props {
   /** Current calendar week (resets Monday); zero-filled until trained in. */
   currentWeek: WeeklyVolume;
   trainingLoad: TrainingLoadPoint[];
+  /**
+   * The last six weeks condensed, and the athlete's last finished plan read
+   * back to them. Both are computed on the server: the block compares against
+   * the six weeks before it, which reach further back than the activities sent
+   * down here, and the plan recap summarises the last FINISHED plan, which is
+   * usually not the active one below.
+   */
+  blockRecap: BlockRecap;
+  planRecap: PlanRecap | null;
   /** Unix-millis of the last real Strava sync; null before any data is cached. */
   syncedAt: number | null;
   /** How current the figures below are. "refreshing" means a sync is running
@@ -108,7 +118,7 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   // The plan-upload dialog is opened from two places — the plan card itself
   // and "Upload your next plan" on a finished plan — so the shell owns it.
@@ -368,6 +378,8 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
         {tab === "overview" ? (
           <div className="space-y-6">
             <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
+
+            <TrainingRecap block={blockRecap} plan={planRecap} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
