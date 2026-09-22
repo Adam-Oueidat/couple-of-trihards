@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+import type { QualityScanResult } from "@/lib/quality-scan";
 import {
   formatSecondsAsClock,
   readQuality,
@@ -9,6 +13,7 @@ import {
 import { Delta, Reads, Readout, Rule } from "./parts";
 import { ZoneBar } from "./ZoneBar";
 import { EfficiencySpark } from "./EfficiencySpark";
+import { RepChart, RepTable } from "./RepChart";
 
 const RANGE_FMT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 const RANGE_FMT_YEAR = new Intl.DateTimeFormat("en-GB", {
@@ -59,9 +64,74 @@ function zoneProvenance(source: ZoneSource, maxHr: number | null): string {
  * from noise month to month. The intensity mix covers the current block,
  * because what you do about it is a decision about next week.
  */
-export function QualityPanel({ recap }: { recap: QualityRecap }) {
+export const QUALITY_KEY = "/api/training-quality";
+
+/**
+ * A full season is more Strava reads than one rate-limit window allows, so the
+ * scan runs in batches. Capping the batches per press matters: spending the
+ * whole 100-read budget here would make the athlete's next dashboard Sync fail
+ * with a 429 that has nothing to do with what they just clicked.
+ */
+const MAX_BATCHES_PER_PRESS = 4;
+
+export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
+  // Server-rendered for the first paint, then revalidated here so scan progress
+  // appears without a reload. One builder, one shape, no waterfall.
+  const { data, mutate } = useSWR<QualityRecap>(QUALITY_KEY, fetcher, {
+    fallbackData: seed,
+    revalidateOnFocus: false,
+  });
+  const recap = data ?? seed;
+
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState<string | null>(null);
+
   const insights = readQuality(recap);
   const { efficiency, paceAtHr, timeInZone, summary, coverage, zones } = recap;
+  const [openSession, setOpenSession] = useState(0);
+  const session = recap.sessions[openSession] ?? recap.sessions[0];
+
+  async function scan() {
+    // `disabled` only takes effect on the render after setScanning, so a
+    // double-click inside one tick would start two loops on the same rows.
+    if (scanning) return;
+    setScanning(true);
+    setScanNote(null);
+    let done = 0;
+    try {
+      for (let i = 0; i < MAX_BATCHES_PER_PRESS; i++) {
+        const res = await fetch(`${QUALITY_KEY}/scan`, { method: "POST" });
+        if (!res.ok) throw new Error("scan failed");
+        const batch = (await res.json()) as QualityScanResult;
+        done += batch.processed;
+
+        if (batch.rateLimited) {
+          setScanNote(
+            `Strava's rate limit paused the scan after ${done} session${done === 1 ? "" : "s"}. Run it again in about 15 minutes to carry on from here.`,
+          );
+          break;
+        }
+        if (batch.done) {
+          setScanNote(done === 0 ? "Already up to date." : `Scanned ${done} sessions.`);
+          break;
+        }
+        // Defensive: a batch reporting neither progress nor completion would
+        // otherwise spin this loop until the cap.
+        if (batch.processed === 0) break;
+        setScanNote(`Scanned ${done}, ${batch.remaining} to go...`);
+        if (i === MAX_BATCHES_PER_PRESS - 1) {
+          setScanNote(
+            `Scanned ${done} sessions, ${batch.remaining} to go. Press again to continue — this is paced so it does not use up your whole Strava allowance at once.`,
+          );
+        }
+      }
+    } catch {
+      setScanNote("Scan failed. Try again.");
+    } finally {
+      setScanning(false);
+      void mutate();
+    }
+  }
 
   const easyShare = timeInZone
     ? Math.round((timeInZone.share[0] + timeInZone.share[1]) * 100)
@@ -149,6 +219,30 @@ export function QualityPanel({ recap }: { recap: QualityRecap }) {
         </p>
       )}
 
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <button
+          type="button"
+          onClick={scan}
+          disabled={scanning}
+          className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
+        >
+          {scanning
+            ? "Reading sessions…"
+            : timeInZone
+              ? "Scan more sessions"
+              : "Scan for real time in zone"}
+        </button>
+        <span className="font-data text-[11px] text-gray-600">
+          {coverage.scanned} of {coverage.eligible} sessions read in full
+        </span>
+      </div>
+
+      {scanNote && (
+        <p className="mt-2 max-w-2xl font-data text-[11px] leading-snug text-gray-500">
+          {scanNote}
+        </p>
+      )}
+
       <p className="mt-2 font-data text-[11px] text-gray-600">
         Zones: {zoneProvenance(zones.source, zones.maxHr)}
       </p>
@@ -166,6 +260,74 @@ export function QualityPanel({ recap }: { recap: QualityRecap }) {
       <div className="mt-4">
         <EfficiencySpark trend={efficiency} />
       </div>
+
+      {recap.sessions.length > 0 && session?.structure && (
+        <>
+          <Rule className="my-6" />
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="font-display text-[12px] uppercase tracking-[0.22em] text-gray-500">
+              Interval sessions
+            </span>
+            <span className="font-data text-[11px] text-gray-600">
+              {range(recap.mixFrom, recap.mixTo)}
+            </span>
+          </div>
+
+          {/* Newest first: the session an athlete wants to look at is almost
+              always the one they just did. */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {recap.sessions.map((s, i) => (
+              <button
+                key={s.activityId}
+                type="button"
+                onClick={() => setOpenSession(i)}
+                aria-pressed={i === openSession}
+                className={`cursor-pointer rounded-full border px-3 py-1 font-data text-[11px] transition-colors ${
+                  i === openSession
+                    ? "border-orange-500 bg-orange-500/15 text-orange-300"
+                    : "border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300"
+                }`}
+              >
+                {s.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 space-y-5">
+            {session.structure.sets.map((set, i) => (
+              <div key={i}>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                  <span className="font-display text-[15px] text-gray-200">{set.label}</span>
+                  <span className="font-data text-[11px] text-gray-500">
+                    {set.fadePct !== null && (
+                      <>
+                        {set.fadePct > 0
+                          ? `faded ${set.fadePct.toFixed(1)}%`
+                          : set.fadePct < 0
+                            ? `negative split ${Math.abs(set.fadePct).toFixed(1)}%`
+                            : "even"}
+                      </>
+                    )}
+                    {set.hrDriftBpm !== null && set.fadePct !== null && " · "}
+                    {set.hrDriftBpm !== null && (
+                      <>heart rate {set.hrDriftBpm >= 0 ? "+" : ""}{set.hrDriftBpm} bpm</>
+                    )}
+                  </span>
+                </div>
+                {/* The chart carries legibility, the table carries the numbers.
+                    Twenty bars in 320px is not readable, so narrow screens get
+                    the table alone. */}
+                <div className="mt-2 max-sm:hidden">
+                  <RepChart set={set} />
+                </div>
+                <div className="mt-3">
+                  <RepTable set={set} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {insights.length > 0 && (
         <>

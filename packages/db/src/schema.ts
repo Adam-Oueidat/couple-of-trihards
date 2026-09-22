@@ -289,6 +289,112 @@ export const stravaCache = sqliteTable(
   (t) => [primaryKey({ columns: [t.athleteId, t.cacheKey] })],
 );
 
+/**
+ * One activity's derived training-quality profile.
+ *
+ * Deliberately NOT in `strava_cache`: every dashboard Sync press calls
+ * invalidateAthleteCache, which deletes that athlete's rows wholesale. These
+ * rows cost one to two Strava reads each to rebuild, so a single button press
+ * would throw away hours of accumulated scanning.
+ *
+ * What is stored is DERIVED, never raw. A 90-minute run sampled at 1 Hz across
+ * five stream channels is several hundred kilobytes of JSON; the aggregates
+ * below are about one, and answer every question the quality panel asks.
+ */
+export const activityQuality = sqliteTable(
+  "activity_quality",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Text, matching analyses.activityId and personalBests.activityId: Strava
+    // ids keep growing and JS numbers are not 64-bit safe.
+    activityId: text("activity_id").notNull(),
+
+    // Identity, copied so the panel can render without joining the cache.
+    startDate: text("start_date").notNull(), // YYYY-MM-DD, athlete-local
+    startedAt: integer("started_at").notNull(), // Unix seconds
+    name: text("name").notNull(),
+    workoutKey: text("workout_key").notNull(), // normalised, for same-workout comparison
+    movingTime: integer("moving_time").notNull(),
+    elapsedTime: integer("elapsed_time").notNull(),
+    distance: real("distance").notNull(), // meters
+    avgHr: integer("avg_hr"),
+    maxHr: integer("max_hr"),
+
+    // Seconds at each 1 bpm bucket (see HR_HIST_MIN/MAX in @trihards/core),
+    // NOT five zone totals. Zone boundaries are the least stable input in the
+    // feature: an athlete who sets custom zones, or whose /athlete/zones call
+    // starts succeeding, would invalidate every stored bucket and force a full
+    // re-scan at a Strava read apiece. A histogram is re-bucketable for free,
+    // which makes the zone model a read-time decision instead of a stored one.
+    hrSeconds: text("hr_seconds", { mode: "json" }).$type<number[] | null>(),
+    hrCoverage: real("hr_coverage"), // attributed seconds / elapsed, 0..1
+
+    decoupling: real("decoupling"),
+    decouplingEligible: integer("decoupling_eligible", { mode: "boolean" })
+      .notNull()
+      .default(false),
+
+    // Session structure from the lap file; null when laps were not fetched.
+    structureKind: text("structure_kind", {
+      enum: ["intervals", "steady", "progression", "unknown"],
+    }),
+    sets: text("sets", { mode: "json" }).$type<unknown[] | null>(),
+    workSeconds: integer("work_seconds"),
+    recoverySeconds: integer("recovery_seconds"),
+
+    // Provenance, so the panel can say honestly what it has and the scan knows
+    // what is worth retrying.
+    streamStatus: text("stream_status", {
+      enum: ["ok", "partial", "none", "error"],
+    }).notNull(),
+    lapStatus: text("lap_status", {
+      enum: ["ok", "auto-laps", "none", "skipped", "error"],
+    }).notNull(),
+    attempts: integer("attempts").notNull().default(1),
+    // The only invalidation lever: bump it and every row re-derives.
+    schemaVersion: integer("schema_version").notNull(),
+    derivedAt: integer("derived_at")
+      .notNull()
+      .$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.activityId] }),
+    index("activity_quality_user_started_idx").on(t.userId, t.startedAt),
+    index("activity_quality_user_workout_idx").on(t.userId, t.workoutKey),
+  ],
+);
+
+/**
+ * Progress metadata for the multi-batch backfills.
+ *
+ * `pb_sync_state` cannot host a second scan — it is user-scoped with a single
+ * scalar cursor — so `kind` is the generalisation. That table is deliberately
+ * left in place rather than migrated: moving a live cursor buys nothing and a
+ * mistake would re-spend a year of personal-best reads.
+ *
+ * Note this carries no cursor of its own. The quality scan finds its pending
+ * work by anti-joining activity_quality against the cached activity list, so
+ * the rows themselves ARE the progress record. What lives here is only what the
+ * UI wants to report back.
+ */
+export const scanState = sqliteTable(
+  "scan_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: ["quality"] }).notNull(),
+    lastRunAt: integer("last_run_at").notNull(),
+    lastResult: text("last_result"), // "done" | "rate-limited" | "error"
+    updatedAt: integer("updated_at")
+      .notNull()
+      .$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.kind] })],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type License = typeof licenses.$inferSelect;
@@ -306,6 +412,9 @@ export type ChatMessage = typeof chatMessages.$inferSelect;
 export type StravaToken = typeof stravaTokens.$inferSelect;
 export type MobileToken = typeof mobileTokens.$inferSelect;
 export type StravaCacheEntry = typeof stravaCache.$inferSelect;
+export type ActivityQualityRow = typeof activityQuality.$inferSelect;
+export type NewActivityQualityRow = typeof activityQuality.$inferInsert;
+export type ScanStateRow = typeof scanState.$inferSelect;
 
 // Suppress unused-import warning for `sql` if no schema entry uses it.
 void sql;
