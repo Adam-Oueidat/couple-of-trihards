@@ -83,3 +83,53 @@ describe("credentials follow the caller, not a cookie", () => {
     expect(detail).toMatchObject({ name: "payload for Bearer token-user-9" });
   });
 });
+
+describe("getActivityStreamsStrict error handling", () => {
+  // The bug this pins shut: getActivityStreams returned null for EVERY error,
+  // including 429. A backfill persists what it is told, so a rate limit was
+  // recorded as "this activity has no streams" and the activity was never
+  // looked at again — one 15-minute limit silently became permanent missing
+  // data across the athlete's history.
+  function respondWith(status: number, body: string) {
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      fetchCalls.push(url.toString());
+      return new Response(body, { status, headers: { "Content-Type": "application/json" } });
+    });
+  }
+
+  it("rethrows a rate limit instead of reporting no streams", async () => {
+    const { getActivityStreamsStrict } = await import("./strava");
+    respondWith(429, JSON.stringify({ message: "Rate Limit Exceeded" }));
+
+    await expect(getActivityStreamsStrict(identity(21), 1001)).rejects.toThrow(
+      /Strava API error 429/,
+    );
+  });
+
+  it("returns null only for a genuine 404", async () => {
+    const { getActivityStreamsStrict } = await import("./strava");
+    respondWith(404, JSON.stringify({ message: "Record Not Found" }));
+
+    await expect(getActivityStreamsStrict(identity(22), 1002)).resolves.toBeNull();
+  });
+
+  it("caches nothing after a throw, so the next attempt is a real retry", async () => {
+    const { getActivityStreamsStrict } = await import("./strava");
+    respondWith(429, JSON.stringify({ message: "Rate Limit Exceeded" }));
+
+    await expect(getActivityStreamsStrict(identity(23), 1003)).rejects.toThrow();
+    const afterFirst = fetchCalls.length;
+
+    await expect(getActivityStreamsStrict(identity(23), 1003)).rejects.toThrow();
+    expect(fetchCalls.length).toBeGreaterThan(afterFirst);
+  });
+
+  it("still degrades to null through the render-path wrapper", async () => {
+    const { getActivityStreams } = await import("./strava");
+    respondWith(429, JSON.stringify({ message: "Rate Limit Exceeded" }));
+
+    // The activity modal fetches this in a Promise.all with the detail; a throw
+    // would turn a missing HR trace into a 500 on the whole modal.
+    await expect(getActivityStreams(identity(24), 1004)).resolves.toBeNull();
+  });
+});
