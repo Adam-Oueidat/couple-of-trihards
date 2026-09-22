@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { BLOCK_WEEKS, type BlockRecap, type PlanRecap } from "@trihards/core";
+import { BLOCK_WEEKS, type BlockRecap, type PlanRecap, type QualityRecap } from "@trihards/core";
 import { BlockPanel } from "./recap/BlockPanel";
 import { PlanRecapPanel } from "./recap/PlanRecapPanel";
+import { QualityPanel } from "./recap/QualityPanel";
 
 const RANGE_FMT = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -14,9 +15,11 @@ interface Props {
   block: BlockRecap;
   /** The athlete's most recently finished plan, or null when they have none. */
   plan: PlanRecap | null;
+  /** What the heart-rate and pace data say. Always present. */
+  quality: QualityRecap;
 }
 
-type View = "block" | "plan";
+type View = "block" | "plan" | "quality";
 
 /**
  * The recap card: what the last six weeks amounted to, and how the last plan
@@ -32,9 +35,11 @@ type View = "block" | "plan";
  * this component does no arithmetic — it renders a reading that the numbers
  * beside it can be checked against.
  */
-export function TrainingRecap({ block, plan }: Props) {
+export function TrainingRecap({ block, plan, quality }: Props) {
   const [view, setView] = useState<View>("block");
-  const active = plan ? view : "block";
+  // "Last plan" is the only view that can be missing; falling back to the block
+  // keeps a stale selection from rendering an empty panel after a plan changes.
+  const active = view === "plan" && !plan ? "block" : view;
 
   const range = `${RANGE_FMT.format(new Date(`${block.start}T12:00:00`))} – ${RANGE_FMT.format(
     new Date(`${block.end}T12:00:00`),
@@ -50,25 +55,37 @@ export function TrainingRecap({ block, plan }: Props) {
             aria-hidden
           />
           <h2 className="font-display text-[13px] uppercase leading-none tracking-[0.2em] text-gray-400">
-            {active === "block" ? `The last ${BLOCK_WEEKS} weeks` : "Your last plan"}
+            {active === "block"
+              ? `The last ${BLOCK_WEEKS} weeks`
+              : active === "plan"
+                ? "Your last plan"
+                : "Training quality"}
           </h2>
           <span className="font-data text-[11px] text-gray-600 max-sm:hidden">
-            {active === "block" ? range : plan?.raceName}
+            {active === "block"
+              ? range
+              : active === "plan"
+                ? plan?.raceName
+                : "how hard, how fast, how it went"}
           </span>
         </div>
 
-        {plan && (
-          <div
-            className="flex gap-1 rounded-lg bg-gray-800 p-1"
-            role="tablist"
-            aria-label="Recap view"
-          >
-            {(
-              [
-                ["block", "This block"],
-                ["plan", "Last plan"],
-              ] as const
-            ).map(([key, label]) => (
+        <div
+          className="flex gap-1 rounded-lg bg-gray-800 p-1"
+          role="tablist"
+          aria-label="Recap view"
+        >
+          {(
+            [
+              ["block", "Block"],
+              ["plan", "Last plan"],
+              ["quality", "Quality"],
+            ] as const
+          )
+            // Quality and the block always exist; the plan view only appears
+            // once the athlete has actually finished one.
+            .filter(([key]) => key !== "plan" || plan)
+            .map(([key, label]) => (
               <button
                 key={key}
                 type="button"
@@ -84,12 +101,13 @@ export function TrainingRecap({ block, plan }: Props) {
                 {label}
               </button>
             ))}
-          </div>
-        )}
+        </div>
       </div>
 
       {active === "plan" && plan ? (
         <PlanRecapPanel recap={plan} />
+      ) : active === "quality" ? (
+        <QualityPanel recap={quality} />
       ) : (
         <BlockPanel recap={block} />
       )}

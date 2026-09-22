@@ -421,7 +421,26 @@ export async function getAthleteStats({
   );
 }
 
-export async function getActivityStreams(
+/** 404 is the one Strava status that means "no streams, and there never will be". */
+function isNotFound(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("Strava API error 404");
+}
+
+/**
+ * Activity streams with errors left intact — null ONLY for a genuine 404.
+ *
+ * The catch-all below returns null for every failure, which is right for the
+ * render path (no chart beats a broken page) and catastrophic for a backfill.
+ * A backfill writes its verdict down: handed null for a 429, it records "this
+ * activity has no streams" permanently and never looks at it again, so a rate
+ * limit silently becomes missing data for the rest of the athlete's history.
+ * Any caller that persists what it learns must use this variant and let a 429
+ * stop the batch instead.
+ *
+ * `cached()` only ever stores a resolved value, so a throw caches nothing and
+ * the next attempt is a real retry rather than a replayed failure.
+ */
+export async function getActivityStreamsStrict(
   { userId, stravaAthleteId: athleteId }: StravaIdentity,
   id: number,
 ): Promise<StreamSet | null> {
@@ -432,11 +451,26 @@ export async function getActivityStreams(
         keys: "time,distance,heartrate,velocity_smooth,altitude,watts",
         key_by_type: "true",
       });
-    } catch {
+    } catch (err) {
       // Manual activities and some swims have no streams (Strava returns 404)
-      return null;
+      if (isNotFound(err)) return null;
+      throw err;
     }
   });
+}
+
+/**
+ * Streams for the render path: any failure degrades to "no chart".
+ *
+ * Contract deliberately unchanged — the activity modal fetches this alongside
+ * the detail in a Promise.all, and a throw here would turn a missing HR trace
+ * into a 500 on the whole modal.
+ */
+export async function getActivityStreams(
+  identity: StravaIdentity,
+  id: number,
+): Promise<StreamSet | null> {
+  return getActivityStreamsStrict(identity, id).catch(() => null);
 }
 
 // Fetch activities from the past N weeks. Cached persistently per athlete in the

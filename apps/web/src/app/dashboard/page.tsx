@@ -3,13 +3,14 @@ import { redirect } from "next/navigation";
 import { isAdminAthlete, resolveSession, type ResolvedSession } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
-import { getActivitiesWithDailySync } from "@/lib/strava";
+import { getActivitiesWithDailySync, getAthleteZones } from "@/lib/strava";
 import {
   groupByWeek,
   calcTrainingLoad,
   getWeekStart,
   buildBlockRecap,
   buildPlanRecap,
+  buildQualityRecap,
   TRAINING_HISTORY_WEEKS,
   type PlanRecap,
   type WeeklyVolume,
@@ -104,6 +105,20 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   // so the cost is arithmetic, not I/O.
   const blockRecap = buildBlockRecap(history, trainingLoad, today);
 
+  // Heart-rate zones are frequently unavailable — they need the profile:read_all
+  // scope and are gated behind a Strava subscription in practice — so this
+  // degrades to a max-HR estimate rather than failing the render, exactly as
+  // the fitness card and the coach already do.
+  const athleteZones = await getAthleteZones(resolved).catch(() => null);
+  const qualityRecap = buildQualityRecap({
+    activities: history,
+    // Per-activity profiles arrive with the scan; until then the panel runs on
+    // summary data alone and says so.
+    profiles: [],
+    zones: athleteZones,
+    today,
+  });
+
   const finishedPlan = await getLatestFinishedPlan(resolved.userId, today);
   const planRecap: PlanRecap | null = finishedPlan
     ? buildPlanRecap(
@@ -179,6 +194,7 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
       trainingLoad={trainingLoad}
       blockRecap={blockRecap}
       planRecap={planRecap}
+      qualityRecap={qualityRecap}
       trainingPlan={activePlan?.plan ?? null}
       planSummary={activePlan?.summary ?? null}
       planOverrides={planOverrides}

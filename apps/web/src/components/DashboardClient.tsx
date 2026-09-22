@@ -6,7 +6,7 @@ import Link from "next/link";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import type { SyncState } from "@/lib/strava";
-import { TrainingLoadPoint, type BlockRecap, type PlanRecap, type TrainingPlan } from "@trihards/core";
+import { TrainingLoadPoint, type BlockRecap, type PlanRecap, type QualityRecap, type TrainingPlan } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
@@ -85,6 +85,8 @@ interface Props {
    */
   blockRecap: BlockRecap;
   planRecap: PlanRecap | null;
+  /** What the heart-rate and pace history say about training quality. */
+  qualityRecap: QualityRecap;
   /** Unix-millis of the last real Strava sync; null before any data is cached. */
   syncedAt: number | null;
   /** How current the figures below are. "refreshing" means a sync is running
@@ -118,7 +120,7 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
+export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, qualityRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
   const [tab, setTab] = useState<Tab>("overview");
   // The plan-upload dialog is opened from two places — the plan card itself
   // and "Upload your next plan" on a finished plan — so the shell owns it.
@@ -428,7 +430,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
                 above is already showing that plan's headline adherence, and
                 opening on the plan view would stack two summaries of the same
                 race. The plan read stays one click away. */}
-            <TrainingRecap block={blockRecap} plan={planRecap} />
+            <TrainingRecap block={blockRecap} plan={planRecap} quality={qualityRecap} />
           </div>
         ) : tab === "calendar" ? (
           <CalendarTab activities={planActivities} plan={plan.plan} edits={edits} />
