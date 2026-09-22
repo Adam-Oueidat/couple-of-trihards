@@ -4,6 +4,7 @@ export * from "./plan-schema";
 export * from "./quality";
 export * from "./quality-recap";
 export * from "./recap";
+export * from "./suggest";
 export * from "./types/strava";
 export * from "./rate-limit";
 export * from "./logger";
