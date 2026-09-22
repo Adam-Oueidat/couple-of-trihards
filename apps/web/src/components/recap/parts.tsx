@@ -17,6 +17,50 @@ export const TONE_VAR: Record<InsightTone, string> = {
   err: "var(--err)",
 };
 
+/**
+ * A definition attached to a label, revealed on hover or keyboard focus.
+ *
+ * Several figures here are real sports-science measures whose names do not
+ * explain themselves — "aerobic efficiency" means nothing until someone tells
+ * you it is speed per heartbeat. Rather than spend a line of the card on prose
+ * nobody re-reads after the first time, the explanation hides behind a marker
+ * and stays one hover away.
+ *
+ * Focusable and described through aria, so it is reachable by keyboard and read
+ * out by a screen reader instead of being a mouse-only affordance. The marker
+ * is drawn type, not an icon font or an emoji.
+ */
+export function InfoHint({
+  text,
+  align = "left",
+}: {
+  text: string;
+  /** Flip to "right" in the last column, where a left-aligned panel would
+   *  overflow the card — which clips it, since the card hides overflow. */
+  align?: "left" | "right";
+}) {
+  return (
+    <span className="group relative ml-1 inline-flex align-middle">
+      <span
+        tabIndex={0}
+        role="note"
+        aria-label={text}
+        className="flex h-[13px] w-[13px] cursor-help items-center justify-center rounded-full border border-gray-700 text-[9px] font-semibold leading-none text-gray-500 transition-colors hover:border-gray-500 hover:text-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+      >
+        i
+      </span>
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute top-full z-20 mt-2 w-max max-w-[240px] rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-[12px] font-normal normal-case leading-snug tracking-normal text-gray-300 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 motion-reduce:transition-none ${
+          align === "right" ? "right-0" : "left-0"
+        }`}
+      >
+        {text}
+      </span>
+    </span>
+  );
+}
+
 /** One measured figure with its label and an optional line of context. */
 export function Readout({
   label,
@@ -24,17 +68,23 @@ export function Readout({
   unit,
   note,
   tone,
+  hint,
+  hintAlign,
 }: {
   label: string;
   value: string;
   unit?: string;
   note?: React.ReactNode;
   tone?: InsightTone;
+  /** Plain-language definition, shown on hover or focus of the label. */
+  hint?: string;
+  hintAlign?: "left" | "right";
 }) {
   return (
     <div className="min-w-0">
       <div className="font-data text-[10px] uppercase tracking-wider text-gray-600">
         {label}
+        {hint && <InfoHint text={hint} align={hintAlign} />}
       </div>
       <div className="mt-1.5 flex items-baseline gap-1">
         <span

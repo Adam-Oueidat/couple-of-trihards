@@ -10,7 +10,7 @@ import {
   type QualityRecap,
   type ZoneSource,
 } from "@trihards/core";
-import { Delta, Reads, Readout, Rule } from "./parts";
+import { Delta, InfoHint, Reads, Readout, Rule } from "./parts";
 import { ZoneBar } from "./ZoneBar";
 import { EfficiencySpark } from "./EfficiencySpark";
 import { RepChart, RepTable } from "./RepChart";
@@ -35,6 +35,24 @@ function range(from: string, to: string): string {
   const fmt = start.getFullYear() === end.getFullYear() ? RANGE_FMT : RANGE_FMT_YEAR;
   return `${fmt.format(start)} – ${fmt.format(end)}`;
 }
+
+/**
+ * Plain-language definitions for the measures on this panel.
+ *
+ * Each says what the number IS first, then why it is worth looking at. Written
+ * for an athlete rather than a physiologist: no jargon that is not immediately
+ * unpacked, and no claim the panel does not actually compute.
+ */
+const HINTS = {
+  efficiency:
+    "Speed per heartbeat. Rising means you cover more ground for the same cardiac cost, which is the clearest sign your aerobic base is growing. Measured on easy runs only, so it tracks fitness rather than how hard you chose to run that day.",
+  paceAtHr:
+    "Your average pace on runs whose heart rate sat inside this band. Holding effort constant is what makes it a fair comparison: if the pace improves, that is fitness rather than simply trying harder.",
+  sessions:
+    "Runs in the last six weeks that recorded heart rate. Everything on this panel is built from these, so the count is also how much evidence there is behind it.",
+  easyShare:
+    "Share of your training time spent in zones 1 and 2. Most endurance plans aim for roughly 80 percent easy, which is what leaves enough freshness to do the hard sessions properly.",
+} as const;
 
 function pace(secPerKm: number): string {
   return `${formatSecondsAsClock(secPerKm)}/km`;
@@ -155,6 +173,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
       <div className="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
         <Readout
           label="Aerobic efficiency"
+          hint={HINTS.efficiency}
           value={efficiency.eligible ? efficiency.late.toFixed(1) : "—"}
           note={
             efficiency.eligible && efficiency.changePct !== null ? (
@@ -166,6 +185,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
         />
         <Readout
           label={paceAtHr ? `Pace at ${paceAtHr.lowBpm}–${paceAtHr.highBpm} bpm` : "Pace at a fixed effort"}
+          hint={HINTS.paceAtHr}
           value={paceAtHr?.eligible ? pace(paceAtHr.latePaceSecPerKm) : "—"}
           note={
             paceAtHr?.eligible && paceAtHr.deltaSecPerKm !== null
@@ -175,6 +195,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
         />
         <Readout
           label="Sessions with HR"
+          hint={HINTS.sessions}
           value={`${coverage.eligible}`}
           note={
             coverage.tier === "summary"
@@ -184,6 +205,10 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
         />
         <Readout
           label="Easy share"
+          hint={HINTS.easyShare}
+          // Last column: a left-aligned panel would run off the card, which
+          // hides overflow and would clip it.
+          hintAlign="right"
           value={easyShare === null ? "—" : `${easyShare}%`}
           note={easyShare === null ? "needs a session scan" : "of training time in Z1–Z2"}
         />
@@ -252,6 +277,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-display text-[12px] uppercase tracking-[0.22em] text-gray-500">
           Aerobic efficiency
+          <InfoHint text={HINTS.efficiency} />
         </span>
         <span className="font-data text-[11px] text-gray-600">
           {range(recap.trendFrom, recap.trendTo)} · speed per heartbeat
