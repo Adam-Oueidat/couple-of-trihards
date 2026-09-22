@@ -230,3 +230,126 @@ describe("workoutKey", () => {
     expect(workoutKey("Rolling 300s")).toBe(workoutKey("Rolling 300s"));
   });
 });
+
+/**
+ * Fixtures taken from the athlete's actual Strava lap files.
+ *
+ * Every bug in this block was invisible to the hand-written fixtures above and
+ * only appeared when the detector was first run against real sessions. Real
+ * track recoveries are 60-90 seconds covering 50-130 metres at walking pace,
+ * which is nothing like the tidy 200m jog a synthetic fixture reaches for.
+ */
+describe("analyzeStructure against real sessions", () => {
+  /** Build a lap list from [metres, seconds, hr] triples. */
+  function laps(rows: [number, number, number?][]): Lap[] {
+    reset();
+    return rows.map(([m, s, hr]) => lap(m, s, hr));
+  }
+
+  it("reads 400m Repeats — twelve reps behind sub-100m recoveries", () => {
+    // The bug: recoveries here are 48-83 m, and a marker rule of "under 20 s OR
+    // under 100 m" discarded every one of them as a double-pressed lap button.
+    // With the separators gone the twelve reps looked like one contiguous block
+    // of work, the alternation guard saw a single group, and a track session
+    // came back as a steady run.
+    const s = analyzeStructure(
+      laps([
+        [4526, 1600, 156], [23, 90, 0],
+        [400, 90, 161], [73, 60, 175],
+        [400, 94, 169], [75, 60, 179],
+        [400, 94, 174], [73, 60, 181],
+        [400, 93, 177], [76, 60, 182],
+        [400, 94, 177], [65, 60, 184],
+        [400, 93, 176], [75, 150, 178],
+        [400, 93, 167], [48, 60, 180],
+        [400, 94, 175], [72, 60, 180],
+        [400, 94, 177], [73, 60, 180],
+        [400, 91, 179], [83, 60, 184],
+        [400, 92, 180], [77, 60, 184],
+        [400, 85, 182], [111, 150, 182],
+        [3000, 1109, 155], [1094, 403, 155],
+      ]),
+      "run",
+    );
+    expect(s.kind).toBe("intervals");
+    expect(s.sets).toHaveLength(1);
+    expect(s.sets[0].reps).toHaveLength(12);
+    expect(s.sets[0].label).toBe("12 x 400 m");
+    // The 4.5 km warm-up and 4 km of cool-down must not be counted as recovery.
+    expect(s.recoverySeconds).toBeLessThan(15 * 60);
+    // He negative-splits the set while heart rate climbs — the real finding.
+    expect(s.sets[0].fadePct!).toBeLessThan(0);
+    expect(s.sets[0].hrDriftBpm!).toBeGreaterThan(15);
+  });
+
+  it("reads a Drop Set as five descending pairs", () => {
+    const s = analyzeStructure(
+      laps([
+        [4022, 1316, 151], [79, 90, 135],
+        [1000, 252, 169], [125, 90, 159],
+        [1000, 241, 176], [117, 90, 173],
+        [800, 190, 178], [94, 90, 165],
+        [800, 191, 178], [120, 90, 170],
+        [600, 135, 177], [101, 90, 178],
+        [600, 140, 178], [101, 90, 174],
+        [400, 91, 173], [115, 90, 170],
+        [400, 90, 174], [119, 90, 172],
+        [200, 41, 169], [131, 90, 166],
+        [200, 40, 166], [127, 90, 165],
+        [3000, 1019, 160], [368, 121, 162],
+      ]),
+      "run",
+    );
+    expect(s.kind).toBe("intervals");
+    expect(s.sets.map((set) => set.label)).toEqual([
+      "2 x 1000 m",
+      "2 x 800 m",
+      "2 x 600 m",
+      "2 x 400 m",
+      "2 x 200 m",
+    ]);
+    // Recoveries here are every one of them below walking pace. Counting only
+    // jogged recoveries would report this session as having none at all.
+    expect(s.recoverySeconds).toBeGreaterThan(10 * 60);
+  });
+
+  it("reads a descending tempo as four blocks, not one steady run", () => {
+    // Same alternation bug as the track session: the floats between blocks are
+    // walk-pace, so once they were filtered out the four tempo blocks looked
+    // contiguous and the session read as steady.
+    const s = analyzeStructure(
+      laps([
+        [1745, 562, 150],
+        [4000, 1122, 177], [273, 210, 160],
+        [3000, 827, 182], [157, 180, 160],
+        [2000, 541, 183], [103, 120, 160],
+        [1000, 265, 181], [104, 90, 160],
+        [1500, 526, 150], [18, 7, 140],
+      ]),
+      "run",
+    );
+    expect(s.kind).toBe("intervals");
+    expect(s.sets.map((set) => set.reps[0].meters)).toEqual([4000, 3000, 2000, 1000]);
+    // The 18 m / 7 s lap at the end is a genuine double-press and stays dropped.
+    expect(s.sets.flatMap((set) => set.reps).every((r) => r.meters >= 1000)).toBe(true);
+  });
+
+  it("reads a rolling session where the recovery is a float, not a jog", () => {
+    // No walk recoveries at all: 300 m hard alternating with 300 m easy. The
+    // clustering has to separate them on speed alone.
+    const rows: [number, number, number?][] = [[4016, 1378, 150]];
+    const fast = [81, 80, 80, 78, 79, 77, 79, 78, 77, 76];
+    const float = [93, 95, 89, 90, 91, 88, 89, 85, 88, 86];
+    fast.forEach((f, i) => {
+      rows.push([300, f, 178]);
+      rows.push([300, float[i], 165]);
+    });
+    rows.push([3000, 1029, 155]);
+
+    const s = analyzeStructure(laps(rows), "run");
+    expect(s.kind).toBe("intervals");
+    const reps = s.sets.flatMap((set) => set.reps);
+    expect(reps.length).toBeGreaterThanOrEqual(9);
+    expect(reps.every((r) => r.meters === 300)).toBe(true);
+  });
+});

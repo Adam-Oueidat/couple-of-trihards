@@ -358,7 +358,15 @@ const STEADY: SessionStructure = {
   recoverySeconds: 0,
 };
 
-/** Laps under this are a button double-press, not an effort. */
+/**
+ * A lap this short in BOTH time and distance is a double-pressed lap button,
+ * not an effort.
+ *
+ * Both conditions, never either: real interval recoveries are frequently under
+ * a hundred metres — a 73 m jog taking 60 seconds between 400 m reps is the
+ * standard shape of a track session — and discarding those as noise removes
+ * the very laps that separate one rep from the next.
+ */
 const MARKER_SECONDS = 20;
 const MARKER_METERS = 100;
 
@@ -450,7 +458,7 @@ export function analyzeStructure(
   const roles = new Map<number, LapRole>();
   const candidates: Lap[] = [];
   for (const lap of laps) {
-    if (lap.moving_time < MARKER_SECONDS || lap.distance < MARKER_METERS) {
+    if (lap.moving_time < MARKER_SECONDS && lap.distance < MARKER_METERS) {
       roles.set(lap.lap_index, "marker");
       continue;
     }
@@ -481,15 +489,23 @@ export function analyzeStructure(
     roles.set(lap.lap_index, isWork ? "work" : "recovery");
   }
 
+  const ordered = [...laps].sort((a, b) => a.lap_index - b.lap_index);
+
   // Separation alone is not enough: a progression run also splits cleanly into
   // a slow cluster and a fast one, because its laps get steadily quicker. What
   // distinguishes an interval session is that the two ALTERNATE — work, rest,
   // work, rest — whereas a progression's fast laps are one contiguous block at
-  // the end. Counting the work groups tells the two apart; without this a
-  // negative-split long run is reported as reps that never happened.
+  // the end.
+  //
+  // Counted over EVERY lap, not just the clustered ones. Real recoveries are
+  // often walk-pace or very short, so they are excluded from the clustering by
+  // design — but excluding them from this count too leaves the reps looking
+  // adjacent to one another, and a twelve-rep track session reads as a single
+  // block of work. On real data that silently turned "400m Repeats" and
+  // "Tempo 4-3-2-1" into steady runs.
   let workGroups = 0;
   let inWork = false;
-  for (const lap of candidates) {
+  for (const lap of ordered) {
     const isWork = roles.get(lap.lap_index) === "work";
     if (isWork && !inWork) workGroups++;
     inWork = isWork;
@@ -507,38 +523,35 @@ export function analyzeStructure(
   // Leading and trailing non-work laps are the jog to and from the session.
   // Counting them as recovery would inflate "18 min work / 9 min recovery"
   // with a fifteen-minute warm-up that was never part of the set.
-  const ordered = [...laps].sort((a, b) => a.lap_index - b.lap_index);
   const firstWork = ordered.findIndex((l) => roles.get(l.lap_index) === "work");
   const lastWork = ordered.map((l) => roles.get(l.lap_index)).lastIndexOf("work");
   if (firstWork === -1) return STEADY;
+  const isRest = (role: LapRole | undefined) => role === "recovery" || role === "walk";
   for (let i = 0; i < firstWork; i++) {
-    if (roles.get(ordered[i].lap_index) === "recovery") {
-      roles.set(ordered[i].lap_index, "warmup");
-    }
+    if (isRest(roles.get(ordered[i].lap_index))) roles.set(ordered[i].lap_index, "warmup");
   }
   for (let i = lastWork + 1; i < ordered.length; i++) {
-    if (roles.get(ordered[i].lap_index) === "recovery") {
-      roles.set(ordered[i].lap_index, "cooldown");
-    }
+    if (isRest(roles.get(ordered[i].lap_index))) roles.set(ordered[i].lap_index, "cooldown");
   }
 
   // Walk-through, pairing each work rep with the recovery that followed it.
+  // A recovery counts whether the athlete jogged it or walked it — standing
+  // around between reps is still the rest interval, and on real track sessions
+  // most of these laps are below walking pace.
   const reps: Rep[] = [];
   let workSeconds = 0;
   let recoverySeconds = 0;
   for (let i = 0; i < ordered.length; i++) {
     const lap = ordered[i];
     const role = roles.get(lap.lap_index);
-    if (role === "recovery") recoverySeconds += lap.moving_time;
+    if (isRest(role)) recoverySeconds += lap.moving_time;
     if (role !== "work") continue;
     workSeconds += lap.moving_time;
     let recovery: number | undefined;
     for (let j = i + 1; j < ordered.length; j++) {
       const next = roles.get(ordered[j].lap_index);
       if (next === "work") break;
-      if (next === "recovery") {
-        recovery = (recovery ?? 0) + ordered[j].moving_time;
-      }
+      if (isRest(next)) recovery = (recovery ?? 0) + ordered[j].moving_time;
     }
     reps.push({
       index: reps.length + 1,
