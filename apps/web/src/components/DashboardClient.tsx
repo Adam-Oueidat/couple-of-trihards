@@ -39,6 +39,7 @@ const TrainingLoadChart = dynamic(
 import { ActivityList } from "./ActivityList";
 import { OverviewHero } from "./OverviewHero";
 import { TrainingRecap } from "./TrainingRecap";
+import { NextUpTab } from "./NextUpTab";
 import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
 // The coach panel is behind a button and nobody sees it on first paint, but it
@@ -103,7 +104,7 @@ interface Props {
   isAdmin: boolean;
 }
 
-type Tab = "overview" | "plan" | "calendar" | "activities";
+type Tab = "overview" | "next" | "plan" | "calendar" | "activities";
 
 // "Synced …" label from a real sync timestamp (Unix millis). Only ever called
 // from async callbacks (never during render), so Date.now() stays out of the
@@ -269,7 +270,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
 
           <div className="flex items-center gap-4 max-sm:w-full max-sm:gap-2">
             <nav className="flex gap-1 bg-gray-800 rounded-lg p-1 max-sm:flex-1">
-              {(["overview", "plan", "calendar", "activities"] as Tab[]).map((t) => (
+              {(["overview", "next", "plan", "calendar", "activities"] as Tab[]).map((t) => (
                 <button
                   type="button"
                   key={t}
@@ -403,6 +404,8 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               <FitnessProfile />
             </div>
           </div>
+        ) : tab === "next" ? (
+          <NextUpTab />
         ) : tab === "plan" ? (
           <div className="space-y-6">
             <PlanSourceCard
