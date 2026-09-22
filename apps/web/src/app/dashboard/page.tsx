@@ -19,6 +19,7 @@ import { DashboardClient } from "@/components/DashboardClient";
 import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
 import { getActiveTrainingPlan, getLatestFinishedPlan } from "@/lib/training-plans";
 import { getOverrides } from "@/lib/plan-overrides";
+import { getQualityProfiles } from "@/lib/quality-scan";
 import { getWorkouts } from "@/lib/workouts";
 
 // What the activity lists, calendar, and plan tabs render. The full year of
@@ -109,12 +110,13 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   // scope and are gated behind a Strava subscription in practice — so this
   // degrades to a max-HR estimate rather than failing the render, exactly as
   // the fitness card and the coach already do.
-  const athleteZones = await getAthleteZones(resolved).catch(() => null);
+  const [athleteZones, qualityProfiles] = await Promise.all([
+    getAthleteZones(resolved).catch(() => null),
+    getQualityProfiles(resolved.userId),
+  ]);
   const qualityRecap = buildQualityRecap({
     activities: history,
-    // Per-activity profiles arrive with the scan; until then the panel runs on
-    // summary data alone and says so.
-    profiles: [],
+    profiles: qualityProfiles,
     zones: athleteZones,
     today,
   });
