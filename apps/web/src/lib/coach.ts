@@ -10,7 +10,11 @@ import {
   groupByWeek,
   calcTrainingLoad,
   formatPace,
+  describeRunThreshold,
+  estimateRunThreshold,
   formatSecondsAsClock,
+  observedMaxHr,
+  resolveZoneModel,
   matchSessions,
   racePhase,
   findMisdatedSessions,
@@ -30,6 +34,7 @@ import {
 } from "./strava";
 import { getPersonalBests, type PersonalBest } from "./personal-bests";
 import { resolveToday } from "./coach-dates";
+import { getQualityProfiles } from "./quality-scan";
 
 export { localDateOf, resolveToday } from "./coach-dates";
 
@@ -382,10 +387,11 @@ This athlete has not uploaded a training plan. They have no prescribed sessions,
 
 Do not name a plan, a race, a race date, or a prescribed session — you have not been given any, and none exist for this athlete. Never describe a session by name unless it appears in their activities or custom workouts above. Coach from their actual training data and stated goals alone, and if a plan would help, invite them to upload one on the Plan tab.`;
 
-  const [athleteResult, zonesResult, statsResult] = await Promise.allSettled([
+  const [athleteResult, zonesResult, statsResult, profilesResult] = await Promise.allSettled([
     getAthleteDetail(identity),
     getAthleteZones(identity),
     getAthleteStats(identity),
+    getQualityProfiles(userId),
   ]);
   if (athleteResult.status === "rejected")
     log.warn("athlete detail unavailable", { reason: String(athleteResult.reason) });
@@ -397,6 +403,21 @@ Do not name a plan, a race, a race date, or a prescribed session — you have no
   const zones = zonesResult.status === "fulfilled" ? zonesResult.value : null;
   const stats = statsResult.status === "fulfilled" ? statsResult.value : null;
 
+  // The same estimate the workout charts draw at 100%, so the coach and the
+  // charts never quote two different thresholds.
+  const runThreshold = estimateRunThreshold({
+    plan,
+    activities,
+    overrides,
+    customWorkouts: workouts,
+    today,
+    zones: resolveZoneModel(zones, observedMaxHr(activities)),
+    profiles: profilesResult.status === "fulfilled" ? profilesResult.value : [],
+  });
+  const thresholdLine = runThreshold
+    ? `Run threshold pace: ${describeRunThreshold(runThreshold, formatSecondsAsClock)}. Races, time trials and steady runs at threshold heart rate set this; quote it for run intensity, and do not estimate a different one yourself.`
+    : "Run threshold pace: not established — no race, time trial or steady threshold-heart-rate run in the last 12 weeks. Describe run intensity by effort and heart rate, not by a threshold pace.";
+
   const athleteIdentity = formatAthleteIdentity(athlete);
 
   const context = `# Today is ${today} (the athlete's current local date — treat this as "now")
@@ -405,6 +426,7 @@ ${memorySection}
 
 ## Fitness profile
 ${formatFitnessProfile(athlete, zones, stats)}
+${thresholdLine}
 
 ## Personal bests (running, from analyzed activities)
 ${formatPBs(pbs)}

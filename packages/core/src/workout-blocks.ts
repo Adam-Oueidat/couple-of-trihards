@@ -35,16 +35,18 @@ export interface WorkoutBlock {
 }
 
 /**
- * What 100% means for this session. Rides anchor to FTP when Strava has one;
- * everything else is "threshold effort" with no number attached, because no
- * trustworthy threshold pace exists for runs or swims. The nearest candidate,
- * Strava's best efforts, are the fastest stretches of any run rather than
- * all-out efforts, and converting one into a threshold needs a race-equivalence
- * model on top — a guess that would then be printed on every chart as fact.
- * Rep paces from the athlete's own sessions are real, so they appear as the
- * reps' `target` instead.
+ * What 100% means for this session. Rides anchor to FTP when Strava has one.
+ * Runs anchor to a threshold pace when a recent race or a steady effort at
+ * threshold heart rate supports one (see threshold.ts), and `from` names that
+ * session so the number on the chart can be traced. Everything else — swims,
+ * and runs with no such evidence — is "threshold effort" with no number:
+ * Strava's best efforts alone are the fastest stretches of any run, not
+ * all-out efforts, and a guess would be printed on every chart as fact.
  */
-export type ThresholdAnchor = { kind: "ftp"; watts: number } | { kind: "effort" };
+export type ThresholdAnchor =
+  | { kind: "ftp"; watts: number }
+  | { kind: "pace"; secPerKm: number; from: string }
+  | { kind: "effort" };
 
 /**
  * The one place intensity is mapped from effort language to a fraction of

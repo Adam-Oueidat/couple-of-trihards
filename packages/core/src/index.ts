@@ -7,6 +7,7 @@ export * from "./recap";
 export * from "./suggest";
 export * from "./schedule";
 export * from "./schedule-conflicts";
+export * from "./threshold";
 export * from "./types/strava";
 export * from "./rate-limit";
 export * from "./logger";

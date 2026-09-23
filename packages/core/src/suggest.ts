@@ -20,6 +20,7 @@ import {
   isPending,
   scheduledSessions,
 } from "./schedule";
+import { estimateRunThreshold, type RunThreshold } from "./threshold";
 import { shiftDays, type ZoneModel } from "./quality";
 import type { TriDiscipline } from "./recap";
 import type { QualityProfile } from "./quality-recap";
@@ -160,6 +161,8 @@ export interface AthleteState {
   longestRecentKm: number | null;
   medianRideMin: number | null;
   medianSwimKm: number | null;
+  /** Estimated from a recent race or threshold-HR effort; null without evidence. */
+  runThreshold: RunThreshold | null;
 }
 
 /**
@@ -273,6 +276,15 @@ export function readAthleteState(input: SuggestInput): AthleteState {
     medianSwimKm: median(
       recent.filter((a) => getDiscipline(a) === "swim").map((a) => a.distance / 1000),
     ),
+    runThreshold: estimateRunThreshold({
+      plan: input.plan,
+      activities: input.activities,
+      overrides: input.overrides,
+      customWorkouts: input.customWorkouts,
+      today,
+      zones: input.zones,
+      profiles: input.profiles,
+    }),
   };
 }
 
@@ -321,6 +333,14 @@ export const VO2_MAX_REP_METERS = 600;
 
 const EFFORT_ANCHOR: ThresholdAnchor = { kind: "effort" };
 
+/** Runs anchor to the athlete's threshold pace when there is evidence for one. */
+function runAnchor(state: AthleteState): ThresholdAnchor {
+  const t = state.runThreshold;
+  return t
+    ? { kind: "pace", secPerKm: t.secPerKm, from: `${t.activityName}, ${t.date}` }
+    : EFFORT_ANCHOR;
+}
+
 export function easyRun(state: AthleteState): SuggestedSession {
   const km = round(state.medianEasyKm ?? 8, 0.5);
   const minutes = Math.round(km * 6);
@@ -342,7 +362,7 @@ export function easyRun(state: AthleteState): SuggestedSession {
         distanceM: km * 1000,
       },
     ],
-    threshold: EFFORT_ANCHOR,
+    threshold: runAnchor(state),
     summary: `${km} km easy, Z2 throughout. Comfortable enough to hold a conversation.`,
   };
 }
@@ -366,7 +386,7 @@ function recoveryRun(state: AthleteState): SuggestedSession {
         distanceM: km * 1000,
       },
     ],
-    threshold: EFFORT_ANCHOR,
+    threshold: runAnchor(state),
     summary: `${km} km recovery. Z1 only; if it feels like training, slow down.`,
   };
 }
@@ -406,7 +426,7 @@ function longRun(state: AthleteState): SuggestedSession {
         distanceM: Math.round((km * 1000) / 3),
       },
     ],
-    threshold: EFFORT_ANCHOR,
+    threshold: runAnchor(state),
     summary: `${km} km long run, Z2 for two thirds then steady if controlled.`,
   };
 }
@@ -479,7 +499,7 @@ function intervalRun(
         { label: "Cool-down", detail: "10–15 min easy" },
       ],
       blocks,
-      threshold: EFFORT_ANCHOR,
+      threshold: runAnchor(state),
       summary: `${name} @ ${pace(best)}, ${formatSecondsAsClock(recovery)} recovery. Based on your ${template!.name} on ${template!.date}.`,
     };
   }
@@ -509,7 +529,7 @@ function intervalRun(
         { label: "Cool-down", detail: "10–15 min easy" },
       ],
       blocks,
-      threshold: EFFORT_ANCHOR,
+      threshold: runAnchor(state),
       summary: "5 x 3 min hard with 3 min full recoveries, either side of a 15-20 min warm-up and cool-down.",
     };
   }
@@ -538,7 +558,7 @@ function intervalRun(
       { label: "Cool-down", detail: "10–15 min easy" },
     ],
     blocks,
-    threshold: EFFORT_ANCHOR,
+    threshold: runAnchor(state),
     summary: "6 x 400 m with 90 s recoveries, either side of a 15-20 min warm-up and cool-down.",
   };
 }
@@ -574,7 +594,7 @@ function tempoRun(state: AthleteState): SuggestedSession {
       { label: "Cool-down", detail: "10–15 min easy" },
     ],
     blocks,
-    threshold: EFFORT_ANCHOR,
+    threshold: runAnchor(state),
     summary: `${km} km continuous at comfortably hard effort, with a 15 min warm-up and cool-down.`,
   };
 }
