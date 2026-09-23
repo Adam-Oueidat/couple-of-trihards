@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import {
   analyzeLimiter,
+  ANALYSIS_FALLBACK_MODEL,
   ANALYSIS_MODEL,
   createLogger,
   TRAINING_HISTORY_WEEKS,
@@ -55,15 +56,20 @@ export async function POST(request: NextRequest) {
     activities,
   );
 
-  const stream = anthropic.messages.stream({
+  // Beta namespace for `fallbacks`: a classifier false positive is re-run on
+  // the fallback model inside the same call rather than losing the analysis.
+  const stream = anthropic.beta.messages.stream({
     model: ANALYSIS_MODEL,
+    betas: ["server-side-fallback-2026-06-01"],
+    fallbacks: [{ model: ANALYSIS_FALLBACK_MODEL }],
     // Thinking and visible text share this budget. Streamed, so headroom is free
     // until it is used.
     max_tokens: 4000,
     thinking: { type: "adaptive" },
-    // Unlike the chat, this is one-shot and nobody is waiting mid-sentence, so
-    // it can afford to think harder about splits, laps and HR drift.
-    output_config: { effort: "high" },
+    // Medium, set explicitly (it is also Opus 5.5's default). Against `high` on
+    // the same four activities it caught the same things — the zones, the race
+    // already being run, the long-measuring watch — for ~5% less and faster.
+    output_config: { effort: "medium" },
     // Stable → volatile, with the breakpoints on the two repeating blocks.
     // See the same construction in app/api/chat/route.ts for the reasoning.
     system: [

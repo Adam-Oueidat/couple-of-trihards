@@ -16,8 +16,24 @@
 /** The coaching chat. Interactive and streamed, so it is latency-sensitive. */
 export const COACH_MODEL = process.env.COACH_MODEL ?? "claude-sonnet-5";
 
-/** One-shot activity analysis. Streamed, but nobody is waiting mid-sentence. */
-export const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL ?? "claude-sonnet-5";
+/**
+ * One-shot activity analysis. Streamed, but nobody is waiting mid-sentence.
+ *
+ * Opus rather than Sonnet because every saved analysis is replayed into later
+ * coach prompts, so a misread stays in context. Side by side on four real
+ * activities, Sonnet 5 put an HR average in the wrong zone twice and gave
+ * pre-race advice for a race already run; Opus 5.5 got both right and caught a
+ * watch that measured 290 m over the course. About 2.5x the cost per analysis.
+ */
+export const ANALYSIS_MODEL = process.env.ANALYSIS_MODEL ?? "claude-opus-5-5";
+
+/**
+ * Re-runs an analysis server-side when ANALYSIS_MODEL's safety classifiers
+ * decline it. Same constraints as PLAN_PARSE_FALLBACK_MODEL below: it must be on
+ * that model's allowed_fallback_models, and it stays out of PINNED_MODELS.
+ */
+export const ANALYSIS_FALLBACK_MODEL =
+  process.env.ANALYSIS_FALLBACK_MODEL ?? "claude-opus-5";
 
 /**
  * Condenses a finished conversation into a few sentences of memory. Cheap and
