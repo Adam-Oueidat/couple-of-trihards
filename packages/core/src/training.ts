@@ -121,9 +121,14 @@ export interface TrainingLoadPoint {
 // timezone, else the server's UTC date. The series runs through it — not just
 // the last activity — so Form (TSB) decays forward and reflects current
 // freshness. Days with no activity contribute 0 TSS, so CTL/ATL ebb naturally.
+//
+// `expectedTss` adds load that is scheduled but not yet done, by day. Passing it
+// with a `today` in the future projects Form forward to that day — which is
+// what "how fresh will I be on Thursday" actually needs.
 export function calcTrainingLoad(
   activities: StravaActivity[],
   today: string = localToday(),
+  expectedTss?: Map<string, number>,
 ): TrainingLoadPoint[] {
   if (activities.length === 0) return [];
 
@@ -131,6 +136,9 @@ export function calcTrainingLoad(
   for (const act of activities) {
     const day = act.start_date_local.split("T")[0];
     dailyTSS.set(day, (dailyTSS.get(day) ?? 0) + estimateTSS(act));
+  }
+  for (const [day, tss] of expectedTss ?? []) {
+    dailyTSS.set(day, (dailyTSS.get(day) ?? 0) + tss);
   }
 
   const dates = Array.from(dailyTSS.keys()).sort();

@@ -7,11 +7,19 @@ import {
   type TrainingLoadPoint,
 } from "./training";
 import {
-  matchSessions,
   type CustomWorkoutInput,
   type PlanOverrideMap,
+  type SessionWithStatus,
   type TrainingPlan,
 } from "./plan";
+import {
+  LONG_RUN_KM,
+  disciplineOf,
+  isHardSession,
+  isLive,
+  isPending,
+  scheduledSessions,
+} from "./schedule";
 import { shiftDays, type ZoneModel } from "./quality";
 import type { TriDiscipline } from "./recap";
 import type { QualityProfile } from "./quality-recap";
@@ -126,8 +134,11 @@ export interface AthleteState {
   daysSince: Record<TriDiscipline, number | null>;
   daysSinceHard: number | null;
   daysSinceLong: number | null;
-  /** The hard session that is still being absorbed, if any. */
-  lastHard: { name: string; date: string } | null;
+  /**
+   * The most recent hard day before the one being planned. `scheduled` means it
+   * is on the calendar but not done yet — still a hard day to recover from.
+   */
+  lastHard: { name: string; date: string; scheduled: boolean } | null;
   /** Typical easy-run distance, so suggestions match what they actually do. */
   medianEasyKm: number | null;
   longestRecentKm: number | null;
@@ -135,8 +146,37 @@ export interface AthleteState {
   medianSwimKm: number | null;
 }
 
+/**
+ * Calendar sessions that shape the day being planned: ones already done, and
+ * ones still to come before it. Looking at Thursday on a Tuesday, Wednesday's
+ * intervals are as real as yesterday's — they just have not happened yet.
+ */
+function countedSessions(input: SuggestInput, today: string, date: string): SessionWithStatus[] {
+  return scheduledSessions({
+    plan: input.plan,
+    activities: input.activities,
+    overrides: input.overrides,
+    customWorkouts: input.customWorkouts,
+    today,
+  }).filter(
+    (s) =>
+      isLive(s) &&
+      s.date >= shiftDays(today, -90) &&
+      (s.date < date || (s.date <= today && !isPending(s))),
+  );
+}
+
+/** The later of two dated candidates; ties go to the first. */
+function later<T extends { date: string }>(a: T | null, b: T | null): T | null {
+  if (!a) return b;
+  if (!b) return a;
+  return b.date > a.date ? b : a;
+}
+
 export function readAthleteState(input: SuggestInput): AthleteState {
   const today = input.today ?? localToday();
+  // Every "days since" is measured from the day being planned, not from today.
+  const date = input.date ?? today;
   const windowStart = shiftDays(today, -90);
   const recent = input.activities
     .filter((a) => dayOf(a) >= windowStart && dayOf(a) <= today)
@@ -151,15 +191,39 @@ export function readAthleteState(input: SuggestInput): AthleteState {
     ride: null,
     run: null,
   };
+  // Newest first, like `recent`.
+  const counted = countedSessions(input, today, date).sort((a, b) =>
+    b.date.localeCompare(a.date),
+  );
+
   for (const key of ["swim", "ride", "run"] as TriDiscipline[]) {
-    const last = recent.find((a) => getDiscipline(a) === key);
-    daysSince[key] = last ? daysBetween(dayOf(last), today) : null;
+    const act = recent.find((a) => getDiscipline(a) === key);
+    const session = counted.find((s) => disciplineOf(s) === key);
+    const last = later<{ date: string }>(act ? { date: dayOf(act) } : null, session ?? null);
+    daysSince[key] = last ? daysBetween(last.date, date) : null;
   }
 
-  const lastHardAct = recent.find((a) => isHard(a, medianTss));
-  const lastLong = recent.find(
-    (a) => getDiscipline(a) === "run" && a.distance >= 16000,
+  // A completed activity is judged by the load it actually carried; a calendar
+  // session by what it is. That second test is what catches a short, sharp
+  // interval session whose load alone would not look hard.
+  const hardAct = recent.find((a) => isHard(a, medianTss));
+  const hardSession = counted.find(isHardSession);
+  const lastHard = later(
+    hardAct ? { name: hardAct.name, date: dayOf(hardAct), scheduled: false } : null,
+    hardSession
+      ? { name: hardSession.name, date: hardSession.date, scheduled: isPending(hardSession) }
+      : null,
   );
+
+  const longAct = recent.find(
+    (a) => getDiscipline(a) === "run" && a.distance >= LONG_RUN_KM * 1000,
+  );
+  const longSession = counted.find(
+    (s) =>
+      disciplineOf(s) === "run" &&
+      (s.km >= LONG_RUN_KM || (!s.isCustom && s.type === "long")),
+  );
+  const lastLong = later<{ date: string }>(longAct ? { date: dayOf(longAct) } : null, longSession ?? null);
 
   const easyRuns = recent.filter(
     (a) =>
@@ -176,9 +240,9 @@ export function readAthleteState(input: SuggestInput): AthleteState {
     tsb: latest?.tsb ?? 0,
     ctl: latest?.ctl ?? 0,
     daysSince,
-    daysSinceHard: lastHardAct ? daysBetween(dayOf(lastHardAct), today) : null,
-    daysSinceLong: lastLong ? daysBetween(dayOf(lastLong), today) : null,
-    lastHard: lastHardAct ? { name: lastHardAct.name, date: dayOf(lastHardAct) } : null,
+    daysSinceHard: lastHard ? daysBetween(lastHard.date, date) : null,
+    daysSinceLong: lastLong ? daysBetween(lastLong.date, date) : null,
+    lastHard,
     medianEasyKm: median(easyRuns.map((a) => a.distance / 1000)),
     longestRecentKm: median(
       recent
@@ -239,7 +303,7 @@ export function findRepTemplate(
 /** Reps longer than this are threshold work, not top end. */
 export const VO2_MAX_REP_METERS = 600;
 
-function easyRun(state: AthleteState): SuggestedSession {
+export function easyRun(state: AthleteState): SuggestedSession {
   const km = round(state.medianEasyKm ?? 8, 0.5);
   const minutes = Math.round(km * 6);
   return {
@@ -488,16 +552,15 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
 
   const out: Suggestion[] = [];
 
-  // --- Constraint: the plan already answers this.
-  const planned = input.plan
-    ? matchSessions(
-        input.plan,
-        input.activities,
-        input.overrides,
-        today,
-        input.customWorkouts ?? [],
-      ).filter((s) => s.date === date && s.status !== "skipped" && !s.hidden)
-    : [];
+  // --- Constraint: the plan, or the athlete's own calendar, already answers
+  // this. Calendar workouts count even with no plan uploaded.
+  const planned = scheduledSessions({
+    plan: input.plan,
+    activities: input.activities,
+    overrides: input.overrides,
+    customWorkouts: input.customWorkouts,
+    today,
+  }).filter((s) => s.date === date && s.status !== "skipped");
 
   if (planned.length > 0) {
     const s = planned[0];
@@ -506,8 +569,10 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
       priority: "do-this",
       score: 100,
       constraint: "plan",
-      headline: `Your plan: ${s.name}`,
-      why: `Already prescribed for ${date}${s.km ? `, ${s.km} km` : ""}. A plan you wrote when you were thinking clearly beats a suggestion made now — the options below are alternatives if it will not fit.`,
+      headline: s.isCustom ? `On your calendar: ${s.name}` : `Your plan: ${s.name}`,
+      why: s.isCustom
+        ? `You already put this on ${date}${s.km ? `, ${s.km} km` : ""}. The options below are alternatives if it will not fit.`
+        : `Already prescribed for ${date}${s.km ? `, ${s.km} km` : ""}. A plan you wrote when you were thinking clearly beats a suggestion made now — the options below are alternatives if it will not fit.`,
       session: null,
     });
   }
@@ -535,8 +600,10 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
       priority: "do-this",
       score: 85,
       constraint: "recent-hard",
-      headline: "Easy day — you went hard recently",
-      why: `"${state.lastHard.name}" was ${state.daysSinceHard === 0 ? "today" : "yesterday"}. Back-to-back hard days is the pattern that turns a good block into an injury.`,
+      headline: state.lastHard.scheduled
+        ? "Easy day — a hard session comes first"
+        : "Easy day — you went hard recently",
+      why: `"${state.lastHard.name}" ${describeHardDay(state.lastHard, today)}. Back-to-back hard days is the pattern that turns a good block into an injury.`,
       session: easyRun(state),
     });
   }
@@ -702,6 +769,22 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
   }
 
   return out.slice(0, limit);
+}
+
+const WEEKDAY = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" });
+
+/** "Thursday", for an ISO date. */
+export function weekdayOf(date: string): string {
+  return WEEKDAY.format(new Date(`${date}T12:00:00Z`));
+}
+
+function describeHardDay(last: NonNullable<AthleteState["lastHard"]>, today: string): string {
+  if (last.scheduled) {
+    return `is on your calendar for ${last.date === today ? "today" : weekdayOf(last.date)}`;
+  }
+  if (last.date === today) return "was today";
+  if (last.date === shiftDays(today, -1)) return "was yesterday";
+  return `was on ${weekdayOf(last.date)}`;
 }
 
 /** Render a suggestion as the workout note stored on the calendar. */

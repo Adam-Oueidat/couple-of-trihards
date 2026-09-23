@@ -92,6 +92,8 @@ export interface CustomWorkoutInput {
   discipline: "swim" | "ride" | "run";
   name: string;
   distanceKm: number | null;
+  /** Used to estimate the load of a workout that has not happened yet. */
+  durationMin?: number | null;
 }
 
 function sessionSlug(date: string, name: string): string {
