@@ -29,7 +29,19 @@ export const SUMMARY_MODEL = process.env.SUMMARY_MODEL ?? "claude-haiku-4-5";
  * Transcribes an uploaded plan document into structured sessions. Runs once per
  * upload against a whole PDF, so it gets the strongest model available.
  */
-export const PLAN_PARSE_MODEL = process.env.PLAN_PARSE_MODEL ?? "claude-opus-5";
+export const PLAN_PARSE_MODEL =
+  process.env.PLAN_PARSE_MODEL ?? "claude-opus-5-5";
+
+/**
+ * Re-runs a plan parse server-side when PLAN_PARSE_MODEL's safety classifiers
+ * decline the document. It has to be on that model's `allowed_fallback_models`
+ * (see GET /v1/models with the server-side-fallback beta), and it is the
+ * previous parser, already proven on real plans. Deliberately not in
+ * PINNED_MODELS: it is meant to trail the parser, so `pnpm models:check` would
+ * flag it as behind forever.
+ */
+export const PLAN_PARSE_FALLBACK_MODEL =
+  process.env.PLAN_PARSE_FALLBACK_MODEL ?? "claude-opus-5";
 
 /** Every pinned role, for `pnpm models:check` to report against. */
 export const PINNED_MODELS = {

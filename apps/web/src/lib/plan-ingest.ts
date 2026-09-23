@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   createLogger,
   parseRawTrainingPlan,
+  PLAN_PARSE_FALLBACK_MODEL,
   PLAN_PARSE_MODEL,
   TRAINING_PLAN_JSON_SCHEMA,
   type RawTrainingPlan,
@@ -93,7 +94,7 @@ export async function parsePlanDocument(
     );
   }
 
-  const document: Anthropic.DocumentBlockParam =
+  const document: Anthropic.Beta.BetaRequestDocumentBlock =
     input.mediaType === "application/pdf"
       ? {
           type: "document",
@@ -115,9 +116,13 @@ export async function parsePlanDocument(
         };
 
   // Streamed because a full plan plus adaptive thinking can run well past the
-  // point where a non-streaming request risks an HTTP timeout.
-  const stream = anthropic.messages.stream({
+  // point where a non-streaming request risks an HTTP timeout. Beta namespace
+  // for `fallbacks`: a classifier false positive on a plan document is re-run
+  // on the fallback model inside the same call instead of failing the upload.
+  const stream = anthropic.beta.messages.stream({
     model: PLAN_PARSE_MODEL,
+    betas: ["server-side-fallback-2026-06-01"],
+    fallbacks: [{ model: PLAN_PARSE_FALLBACK_MODEL }],
     max_tokens: 32000,
     system: SYSTEM_PROMPT,
     output_config: {
@@ -147,7 +152,7 @@ export async function parsePlanDocument(
   }
 
   const text = message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === "text")
     .map((block) => block.text)
     .join("");
 
