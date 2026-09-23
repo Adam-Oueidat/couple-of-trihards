@@ -195,7 +195,20 @@ export function NextUpTab() {
           <SectionLabel className="mb-0">
             {isToday ? "What to train today" : "What to train"}
           </SectionLabel>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Stops at today: a day that has gone cannot be trained, and the
+                API clamps anything earlier back to today anyway. */}
+            <button
+              type="button"
+              onClick={() => {
+                const previous = shiftDate(viewing, -1);
+                changeDay(previous === data.today ? null : previous);
+              }}
+              disabled={isToday}
+              className="cursor-pointer rounded-full border border-gray-700 px-3 py-1 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default disabled:opacity-40"
+            >
+              ← Previous day
+            </button>
             <button
               type="button"
               onClick={() => changeDay(null)}
