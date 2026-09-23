@@ -61,6 +61,8 @@ const INTERVALS: SuggestedSession = {
   kind: "intervals",
   durationMin: 55,
   steps: [{ label: "6 x 400 m", detail: "5 km race effort" }],
+  blocks: [],
+  threshold: { kind: "effort" },
   summary: "6 x 400 m",
 };
 

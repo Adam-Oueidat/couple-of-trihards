@@ -15,6 +15,7 @@ import {
 } from "@trihards/core";
 import { DisciplineGlyph } from "./DisciplineGlyph";
 import { SectionLabel } from "./SectionLabel";
+import { WorkoutProfile } from "./WorkoutProfile";
 
 interface Payload {
   date: string;
@@ -285,8 +286,22 @@ export function NextUpTab() {
                   {s.why}
                 </p>
 
+                {/* The session as a shape first, then the same session as
+                    words; the two are built together and say the same thing. */}
+                {s.session && s.session.blocks.length > 0 && (
+                  <div className="mt-4 border-t border-gray-800 pt-4">
+                    <WorkoutProfile
+                      blocks={s.session.blocks}
+                      threshold={s.session.threshold}
+                      name={s.session.name}
+                    />
+                  </div>
+                )}
+
                 {s.session && s.session.steps.length > 0 && (
-                  <div className="mt-4 space-y-1.5 border-t border-gray-800 pt-4">
+                  <div
+                    className={`mt-4 space-y-1.5 ${s.session.blocks.length > 0 ? "" : "border-t border-gray-800 pt-4"}`}
+                  >
                     {s.session.steps.map((step, i) => (
                       <div
                         key={i}

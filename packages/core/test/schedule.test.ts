@@ -105,6 +105,8 @@ const INTERVALS: SuggestedSession = {
   kind: "intervals",
   durationMin: 55,
   steps: [],
+  blocks: [],
+  threshold: { kind: "effort" },
   summary: "",
 };
 

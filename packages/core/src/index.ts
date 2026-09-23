@@ -11,3 +11,4 @@ export * from "./types/strava";
 export * from "./rate-limit";
 export * from "./logger";
 export * from "./models";
+export * from "./workout-blocks";

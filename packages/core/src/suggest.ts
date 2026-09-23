@@ -23,6 +23,14 @@ import {
 import { shiftDays, type ZoneModel } from "./quality";
 import type { TriDiscipline } from "./recap";
 import type { QualityProfile } from "./quality-recap";
+import {
+  EFFORT,
+  blocksMinutes,
+  repeats,
+  runWarmup,
+  type ThresholdAnchor,
+  type WorkoutBlock,
+} from "./workout-blocks";
 
 /**
  * What to train next, and why.
@@ -63,6 +71,14 @@ export interface SuggestedSession {
   distanceKm?: number;
   durationMin: number;
   steps: SessionStep[];
+  /**
+   * The same session as intensity over time, for the workout profile chart.
+   * Built by the same function as `steps`, block for step, and display-only:
+   * the calendar stores only the text note.
+   */
+  blocks: WorkoutBlock[];
+  /** What the chart's 100% line means: FTP in watts, or unlabelled effort. */
+  threshold: ThresholdAnchor;
   /** One-line rendering, for the workout note written onto the calendar. */
   summary: string;
 }
@@ -303,6 +319,8 @@ export function findRepTemplate(
 /** Reps longer than this are threshold work, not top end. */
 export const VO2_MAX_REP_METERS = 600;
 
+const EFFORT_ANCHOR: ThresholdAnchor = { kind: "effort" };
+
 export function easyRun(state: AthleteState): SuggestedSession {
   const km = round(state.medianEasyKm ?? 8, 0.5);
   const minutes = Math.round(km * 6);
@@ -315,19 +333,40 @@ export function easyRun(state: AthleteState): SuggestedSession {
     steps: [
       { label: "Whole run", detail: `${km} km conversational, heart rate in Z2` },
     ],
+    blocks: [
+      {
+        kind: "steady",
+        label: "Whole run",
+        durationSec: minutes * 60,
+        intensity: EFFORT.easy,
+        distanceM: km * 1000,
+      },
+    ],
+    threshold: EFFORT_ANCHOR,
     summary: `${km} km easy, Z2 throughout. Comfortable enough to hold a conversation.`,
   };
 }
 
 function recoveryRun(state: AthleteState): SuggestedSession {
   const km = round(Math.min(6, (state.medianEasyKm ?? 8) * 0.6), 0.5);
+  const minutes = Math.round(km * 6.5);
   return {
     name: `${km} km recovery run`,
     discipline: "run",
     kind: "recovery",
     distanceKm: km,
-    durationMin: Math.round(km * 6.5),
+    durationMin: minutes,
     steps: [{ label: "Whole run", detail: `${km} km very easy, Z1 — slower than feels natural` }],
+    blocks: [
+      {
+        kind: "steady",
+        label: "Whole run",
+        durationSec: minutes * 60,
+        intensity: EFFORT.recovery,
+        distanceM: km * 1000,
+      },
+    ],
+    threshold: EFFORT_ANCHOR,
     summary: `${km} km recovery. Z1 only; if it feels like training, slow down.`,
   };
 }
@@ -338,17 +377,57 @@ function longRun(state: AthleteState): SuggestedSession {
   // turns into a calf strain.
   const base = state.longestRecentKm ?? 12;
   const km = round(Math.min(base + 1, base * 1.1), 0.5);
+  const minutes = Math.round(km * 6);
+  // Split on the rounded total, so the two thirds always add back up to it.
+  const firstSec = Math.round((minutes * 60 * 2) / 3);
   return {
     name: `${km} km long run`,
     discipline: "run",
     kind: "long",
     distanceKm: km,
-    durationMin: Math.round(km * 6),
+    durationMin: minutes,
     steps: [
       { label: "First two thirds", detail: "Easy, Z2 — resist going with the legs" },
       { label: "Last third", detail: "Lift to steady if it still feels controlled" },
     ],
+    blocks: [
+      {
+        kind: "steady",
+        label: "First two thirds",
+        durationSec: firstSec,
+        intensity: EFFORT.easy,
+        distanceM: Math.round((km * 1000 * 2) / 3),
+      },
+      {
+        kind: "steady",
+        label: "Last third",
+        durationSec: minutes * 60 - firstSec,
+        intensity: EFFORT.steady,
+        distanceM: Math.round((km * 1000) / 3),
+      },
+    ],
+    threshold: EFFORT_ANCHOR,
     summary: `${km} km long run, Z2 for two thirds then steady if controlled.`,
+  };
+}
+
+/**
+ * Width, in seconds per kilometre, for a rep whose pace nobody knows: a club
+ * runner's 5K pace. It only sets how wide the generic session's reps are drawn
+ * — the chart labels those reps by distance and never shows this as a pace.
+ */
+const GENERIC_REP_SEC_PER_KM = 285;
+
+/** Run cool-downs are prescribed as "10–15 min"; drawn at the middle. */
+const RUN_COOLDOWN_MIN = 12;
+
+function runCooldown(minutes = RUN_COOLDOWN_MIN): WorkoutBlock {
+  return {
+    kind: "cooldown",
+    label: "Cool-down",
+    durationSec: minutes * 60,
+    intensity: EFFORT.easy,
+    endIntensity: EFFORT.recovery,
   };
 }
 
@@ -368,13 +447,28 @@ function intervalRun(
     const count = kind === "vo2" ? Math.max(4, Math.min(reps.length, 8)) : reps.length;
     const recovery = reps[0].recoverySeconds ?? 90;
     const name = `${count} x ${meters} m`;
+    // Short reps are top-end work whatever the heading says; kilometre repeats
+    // are threshold. The pace itself is theirs, so it rides along as the target.
+    const effort = meters <= VO2_MAX_REP_METERS ? EFFORT.vo2 : EFFORT.threshold;
+    const blocks = [
+      ...runWarmup(20, 4),
+      ...repeats(
+        count,
+        () => ({
+          durationSec: Math.round((meters / 1000) * best),
+          intensity: effort,
+          distanceM: meters,
+          target: pace(best),
+        }),
+        { durationSec: recovery, intensity: EFFORT.recovery, label: "Jog recovery" },
+      ),
+      runCooldown(),
+    ];
     return {
       name,
       discipline: "run",
       kind,
-      durationMin: Math.round(
-        20 + (count * (meters / 1000) * (best / 60)) + (count * recovery) / 60 + 12,
-      ),
+      durationMin: blocksMinutes(blocks),
       steps: [
         { label: "Warm-up", detail: "15–20 min easy, then a few strides" },
         {
@@ -384,6 +478,8 @@ function intervalRun(
         { label: "Recovery", detail: `${formatSecondsAsClock(recovery)} jog between reps` },
         { label: "Cool-down", detail: "10–15 min easy" },
       ],
+      blocks,
+      threshold: EFFORT_ANCHOR,
       summary: `${name} @ ${pace(best)}, ${formatSecondsAsClock(recovery)} recovery. Based on your ${template!.name} on ${template!.date}.`,
     };
   }
@@ -392,48 +488,93 @@ function intervalRun(
   // rather than distance: the point is minutes spent above threshold, and a
   // fixed distance lets a tiring athlete simply take longer over it.
   if (kind === "vo2") {
+    const blocks = [
+      ...runWarmup(20, 4),
+      ...repeats(
+        5,
+        () => ({ durationSec: 180, intensity: EFFORT.vo2 }),
+        { durationSec: 180, intensity: EFFORT.recovery, label: "Jog recovery" },
+      ),
+      runCooldown(),
+    ];
     return {
       name: "5 x 3 min hard",
       discipline: "run",
       kind,
-      durationMin: 60,
+      durationMin: blocksMinutes(blocks),
       steps: [
         { label: "Warm-up", detail: "15–20 min easy, then 4 strides" },
         { label: "5 x 3 min", detail: "Hard but repeatable — into Z5 by the end of each rep" },
         { label: "Recovery", detail: "3 min easy jog, full recovery between efforts" },
         { label: "Cool-down", detail: "10–15 min easy" },
       ],
+      blocks,
+      threshold: EFFORT_ANCHOR,
       summary: "5 x 3 min hard with 3 min full recoveries, either side of a 15-20 min warm-up and cool-down.",
     };
   }
+  const blocks = [
+    ...runWarmup(20, 4),
+    ...repeats(
+      6,
+      () => ({
+        durationSec: Math.round(0.4 * GENERIC_REP_SEC_PER_KM),
+        intensity: EFFORT.vo2,
+        distanceM: 400,
+      }),
+      { durationSec: 90, intensity: EFFORT.recovery, label: "Jog recovery" },
+    ),
+    runCooldown(),
+  ];
   return {
     name: "6 x 400 m",
     discipline: "run",
     kind,
-    durationMin: 55,
+    durationMin: blocksMinutes(blocks),
     steps: [
       { label: "Warm-up", detail: "15–20 min easy, then a few strides" },
       { label: "6 x 400 m", detail: "5 km race effort" },
       { label: "Recovery", detail: "90 s jog" },
       { label: "Cool-down", detail: "10–15 min easy" },
     ],
+    blocks,
+    threshold: EFFORT_ANCHOR,
     summary: "6 x 400 m with 90 s recoveries, either side of a 15-20 min warm-up and cool-down.",
   };
 }
 
 function tempoRun(state: AthleteState): SuggestedSession {
   const km = round(Math.max(4, (state.medianEasyKm ?? 10) * 0.4), 0.5);
+  const blocks: WorkoutBlock[] = [
+    {
+      kind: "warmup",
+      label: "Warm-up",
+      durationSec: 15 * 60,
+      intensity: EFFORT.recovery,
+      endIntensity: EFFORT.easy,
+    },
+    {
+      kind: "work",
+      label: `${km} km continuous`,
+      durationSec: Math.round(km * 5 * 60),
+      intensity: EFFORT.tempo,
+      distanceM: km * 1000,
+    },
+    runCooldown(15),
+  ];
   return {
     name: `${km} km tempo`,
     discipline: "run",
     kind: "tempo",
     distanceKm: round(km + 5, 0.5),
-    durationMin: Math.round(km * 5 + 30),
+    durationMin: blocksMinutes(blocks),
     steps: [
       { label: "Warm-up", detail: "15 min easy" },
       { label: `${km} km continuous`, detail: "Comfortably hard — Z3/low Z4, controlled to the end" },
       { label: "Cool-down", detail: "10–15 min easy" },
     ],
+    blocks,
+    threshold: EFFORT_ANCHOR,
     summary: `${km} km continuous at comfortably hard effort, with a 15 min warm-up and cool-down.`,
   };
 }
@@ -443,6 +584,7 @@ function rideSession(
   kind: "easy" | "intervals" | "vo2",
   ftp: number | null,
 ): SuggestedSession {
+  const threshold: ThresholdAnchor = ftp ? { kind: "ftp", watts: ftp } : EFFORT_ANCHOR;
   const base = Math.round(state.medianRideMin ?? 60);
   if (kind === "easy") {
     return {
@@ -451,41 +593,111 @@ function rideSession(
       kind: "easy",
       durationMin: base,
       steps: [{ label: "Whole ride", detail: "Z2 endurance, steady — spin rather than grind" }],
+      blocks: [
+        { kind: "steady", label: "Whole ride", durationSec: base * 60, intensity: EFFORT.easy },
+      ],
+      threshold,
       summary: `${base} min steady Z2 endurance ride.`,
     };
   }
   // FTP gives a target a rider can actually hold to; without it, fall back to
   // effort language rather than inventing a number.
   const target = ftp ? `${Math.round(ftp * 0.95)}–${Math.round(ftp * 1.0)} W` : "threshold effort";
+  const blocks: WorkoutBlock[] = [
+    {
+      kind: "warmup",
+      label: "Warm-up",
+      durationSec: 15 * 60,
+      intensity: EFFORT.spin,
+      endIntensity: EFFORT.easy,
+    },
+    ...repeats(
+      4,
+      // The middle of the prescribed 95–100% FTP band.
+      () => ({ durationSec: 8 * 60, intensity: 0.975, ...(ftp ? { target } : {}) }),
+      { durationSec: 4 * 60, intensity: EFFORT.recovery, label: "Easy spin" },
+    ),
+    {
+      kind: "cooldown",
+      label: "Cool-down",
+      durationSec: 10 * 60,
+      intensity: EFFORT.easy,
+      endIntensity: EFFORT.spin,
+    },
+  ];
   return {
     name: "4 x 8 min threshold",
     discipline: "ride",
     kind: "intervals",
-    durationMin: Math.max(60, base),
+    // The structure decides the length: warm-up, efforts, recoveries and
+    // cool-down come to 69 min whatever the athlete's usual ride is.
+    durationMin: blocksMinutes(blocks),
     steps: [
       { label: "Warm-up", detail: "15 min building, with 3 x 1 min spin-ups" },
       { label: "4 x 8 min", detail: `${target}${ftp ? " (95–100% FTP)" : ""}` },
       { label: "Recovery", detail: "4 min easy spin between efforts" },
       { label: "Cool-down", detail: "10 min easy" },
     ],
+    blocks,
+    threshold,
     summary: `4 x 8 min at ${target} with 4 min recoveries, either side of a 15 min warm-up and 10 min cool-down.`,
   };
 }
 
+/**
+ * Nominal swim pace, 2:30 per 100 m including turns — the figure `km * 25` has
+ * always assumed. Swim blocks are drawn to it; none of it is shown as a pace.
+ */
+const SWIM_SEC_PER_100 = 150;
+const SWIM_REST_SEC = 20;
+
 function swimSession(state: AthleteState): SuggestedSession {
-  const km = round(state.medianSwimKm ?? 1.2, 0.1);
+  // The main set fills whatever the warm-up and cool-down leave of the athlete's
+  // usual swim, so the session's name and its steps add up to the same distance.
+  const reps = Math.max(4, Math.round(round(state.medianSwimKm ?? 1.2, 0.1) * 10) - 5);
+  const meters = 300 + reps * 100 + 200;
+  const blocks: WorkoutBlock[] = [
+    {
+      kind: "warmup",
+      label: "Warm-up",
+      durationSec: 3 * SWIM_SEC_PER_100,
+      intensity: EFFORT.recovery,
+      endIntensity: EFFORT.easy,
+      distanceM: 300,
+    },
+    ...repeats(
+      reps,
+      // "Building through the set": tempo on the first rep, threshold by the last.
+      (i) => ({
+        durationSec: SWIM_SEC_PER_100 - SWIM_REST_SEC,
+        intensity: EFFORT.tempo + ((EFFORT.threshold - EFFORT.tempo) * i) / Math.max(1, reps - 1),
+        distanceM: 100,
+      }),
+      { durationSec: SWIM_REST_SEC, intensity: EFFORT.rest, label: "Rest at the wall" },
+    ),
+    {
+      kind: "cooldown",
+      label: "Cool-down",
+      durationSec: 2 * SWIM_SEC_PER_100,
+      intensity: EFFORT.easy,
+      endIntensity: EFFORT.recovery,
+      distanceM: 200,
+    },
+  ];
   return {
-    name: `${(km * 1000).toFixed(0)} m swim`,
+    name: `${meters} m swim`,
     discipline: "swim",
     kind: "intervals",
-    distanceKm: km,
-    durationMin: Math.round(km * 25),
+    distanceKm: meters / 1000,
+    durationMin: blocksMinutes(blocks),
     steps: [
       { label: "Warm-up", detail: "300 m mixed" },
-      { label: "Main set", detail: "8 x 100 m with 20 s rest, building through the set" },
+      { label: "Main set", detail: `${reps} x 100 m with 20 s rest, building through the set` },
       { label: "Cool-down", detail: "200 m easy" },
     ],
-    summary: `${(km * 1000).toFixed(0)} m: 300 warm-up, 8 x 100 m on 20 s rest, 200 easy.`,
+    blocks,
+    threshold: EFFORT_ANCHOR,
+    summary: `${meters} m: 300 warm-up, ${reps} x 100 m on 20 s rest, 200 easy.`,
   };
 }
 
