@@ -553,5 +553,7 @@ ${efforts ? `\nBest efforts:\n${efforts}` : ""}
 Give me:
 ${analysisPoints}
 
-Keep it tight and specific to my data. Generalize across the laps rather than listing them — the whole answer should be a few short paragraphs.`;
+Keep it tight and specific to my data. Generalize across the laps rather than listing them — the whole answer should be a few short paragraphs.
+
+This is a report I read on its own, not a conversation: I can't reply to it. Don't end with a question or an offer to add sessions to my calendar — I do that in the coach chat.`;
 }
