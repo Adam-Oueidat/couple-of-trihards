@@ -99,7 +99,9 @@ function describe(b: WorkoutBlock): string {
 }
 
 function thresholdLabel(anchor: ThresholdAnchor): string {
-  return anchor.kind === "ftp" ? `FTP ${anchor.watts} W` : "Threshold";
+  if (anchor.kind === "ftp") return `FTP ${anchor.watts} W`;
+  if (anchor.kind === "pace") return `Threshold ${formatSecondsAsClock(anchor.secPerKm)}/km`;
+  return "Threshold";
 }
 
 /** Tick spacing that keeps the time axis to a handful of labels. */
@@ -273,6 +275,13 @@ export function WorkoutProfile({
           {formatDuration(totalMin)}
         </span>
       </div>
+
+      {/* An estimated pace says where it came from, so it can be argued with. */}
+      {threshold.kind === "pace" && (
+        <p className="mt-1.5 font-data text-[10px] text-gray-600">
+          Threshold estimated from {threshold.from}
+        </p>
+      )}
     </figure>
   );
 }

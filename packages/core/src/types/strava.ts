@@ -38,6 +38,8 @@ export interface StravaActivity {
   weighted_average_watts?: number;
   trainer: boolean;
   manual: boolean;
+  /** Runs: 1 = race, 2 = long run, 3 = workout. Absent when the athlete never tagged it. */
+  workout_type?: number | null;
 }
 
 export interface StravaAthlete {
