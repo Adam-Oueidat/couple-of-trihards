@@ -131,6 +131,10 @@ export function validateSuggestedSession(input: unknown): SuggestedSession {
     distanceKm: workout.distanceKm,
     durationMin: workout.durationMin ?? 0,
     steps,
+    // The profile is for drawing the card, and nothing posted back draws or
+    // stores it — so it is dropped rather than validated.
+    blocks: [],
+    threshold: { kind: "effort" },
     summary: typeof s.summary === "string" ? s.summary.slice(0, 500) : "",
   };
 }
