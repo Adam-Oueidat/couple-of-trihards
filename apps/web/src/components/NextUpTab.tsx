@@ -75,7 +75,11 @@ function shiftDate(date: string, days: number): string {
  * with it, where one handed a bare ordering can only obey or ignore. So every
  * card leads with the verdict and carries its evidence underneath.
  */
-export function NextUpTab() {
+/**
+ * `context` is a one-line read of the athlete's load ("Form +12 · fatigue
+ * down 4 a day"), shown under the reason for the top pick.
+ */
+export function NextUpTab({ context }: { context?: string } = {}) {
   const [date, setDate] = useState<string | null>(null);
   const key = date ? `/api/suggestions?date=${date}` : "/api/suggestions";
   const { data, error, mutate } = useSWR<Payload>(key, fetcher, {
@@ -212,7 +216,7 @@ export function NextUpTab() {
       <>
         {/* The evidence, always. A ranking you cannot argue with is one
             you can only obey or ignore. */}
-        <p className="mt-2 max-w-3xl text-[13px] leading-snug text-gray-500">{s.why}</p>
+        {!isLead && <p className="mt-2 max-w-3xl text-[13px] leading-snug text-gray-500">{s.why}</p>}
 
         {s.session && s.session.blocks.length > 0 && (
           <div className="mt-3">
@@ -349,9 +353,20 @@ export function NextUpTab() {
             </p>
           )}
           {lead && (
-            <div className="rounded-[14px] border border-orange-500/25 bg-gradient-to-br from-gray-800 to-gray-900 to-70% p-5">
-              <SuggestionHeader s={lead} large />
-              {suggestionBody(lead, true)}
+            <div className="grid overflow-hidden rounded-[14px] border border-orange-500/25 bg-gradient-to-br from-gray-800 to-gray-900 to-70% md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+              <div className="min-w-0 p-5">
+                <SuggestionHeader s={lead} large />
+                {suggestionBody(lead, true)}
+              </div>
+              {/* The reason gets its own panel on the pick that leads the
+                  day: it is what lets the athlete agree or argue. */}
+              <div className="flex flex-col gap-3 border-t border-gray-800 bg-gray-950/60 p-5 md:border-l md:border-t-0">
+                <p className="font-data text-[11px] uppercase tracking-[0.14em] text-orange-500">
+                  Why this, today
+                </p>
+                <p className="text-[15px] leading-relaxed text-gray-200">{lead.why}</p>
+                {context && <p className="font-data text-[12px] text-gray-500">{context}</p>}
+              </div>
             </div>
           )}
 
