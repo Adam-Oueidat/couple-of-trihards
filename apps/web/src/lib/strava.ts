@@ -13,6 +13,7 @@ import { getDb, stravaCache } from "@trihards/db";
 import { after } from "next/server";
 import { getValidAccessToken } from "./strava-tokens";
 import { localDateOf, resolveToday } from "./coach-dates";
+import { isMockAccessToken, mockStravaResponse } from "./strava-mock";
 
 const log = createLogger("strava");
 
@@ -282,6 +283,8 @@ async function stravaFetch<T>(
   params?: Record<string, string>,
 ): Promise<T> {
   const token = await getValidAccessToken(userId);
+  // The dev-only test athlete (see strava-mock.ts) never reaches Strava.
+  if (isMockAccessToken(token)) return mockStravaResponse(path, params) as T;
   const url = new URL(`${STRAVA_API}${path}`);
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -358,6 +361,9 @@ function toStravaActivity(a: StravaActivity): StravaActivity {
     weighted_average_watts: a.weighted_average_watts,
     trainer: a.trainer,
     manual: a.manual,
+    // Strava's race tag. The run-threshold estimate and the feed's race
+    // highlight both read it, so dropping it here hid every tagged race.
+    workout_type: a.workout_type,
   };
 }
 

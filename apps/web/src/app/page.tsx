@@ -1,5 +1,6 @@
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
+import { devMockEnabled } from "@/lib/strava-mock";
 
 export default async function Home({
   searchParams,
@@ -59,6 +60,15 @@ export default async function Home({
           >
             Connect with Strava
           </a>
+          {devMockEnabled() && (
+            // Dev server only: signs in a made-up athlete on generated data.
+            <a
+              href="/api/dev/login"
+              className="mt-3 block w-full rounded-[10px] border border-dashed border-gray-700 px-6 py-2.5 text-center text-sm text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+            >
+              Dev: sign in as a test athlete
+            </a>
+          )}
 
           <p className="text-gray-600 text-xs text-center mt-4">
             Read-only access · Tokens stored in encrypted session cookie
