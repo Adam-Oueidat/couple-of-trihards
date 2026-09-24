@@ -19,6 +19,7 @@ export interface OverrideInput {
   name?: string;
   type?: SessionType;
   km?: number;
+  durationMin?: number;
 }
 
 const MAX_NAME_LENGTH = 200;
@@ -58,6 +59,11 @@ export function validateOverrideInput(input: unknown): OverrideInput {
     (typeof o.km !== "number" || !Number.isFinite(o.km) || o.km < 0)
   )
     throw new Error("km must be a non-negative number");
+  if (
+    o.durationMin !== undefined &&
+    (typeof o.durationMin !== "number" || !Number.isFinite(o.durationMin) || o.durationMin < 0 || o.durationMin > 1000)
+  )
+    throw new Error("durationMin must be between 0 and 1000 minutes");
 
   return {
     sessionId: o.sessionId,
@@ -76,6 +82,7 @@ export function validateOverrideInput(input: unknown): OverrideInput {
     name: typeof o.name === "string" ? o.name.trim().slice(0, MAX_NAME_LENGTH) : undefined,
     type: isSessionType(o.type) ? o.type : undefined,
     km: typeof o.km === "number" ? o.km : undefined,
+    durationMin: typeof o.durationMin === "number" ? Math.round(o.durationMin) : undefined,
   };
 }
 
@@ -99,6 +106,7 @@ export async function getOverrides(userId: string): Promise<PlanOverrideMap> {
       name: row.name ?? undefined,
       type: (row.type as SessionType | null) ?? undefined,
       km: row.km ?? undefined,
+      durationMin: row.durationMin ?? undefined,
     };
   }
   return map;
@@ -119,7 +127,10 @@ export async function setOverride(
   // therefore the same call with `skipped: false`, which falls through here and
   // clears the row when nothing else is recorded on it.
   const editsBaseFields =
-    input.name !== undefined || input.type !== undefined || input.km !== undefined;
+    input.name !== undefined ||
+    input.type !== undefined ||
+    input.km !== undefined ||
+    input.durationMin !== undefined;
   if (input.newDate === input.originalDate && !hidden && !skipped && !editsBaseFields) {
     await db
       .delete(planOverrides)
@@ -147,6 +158,7 @@ export async function setOverride(
       name: input.name ?? null,
       type: input.type ?? null,
       km: input.km ?? null,
+      durationMin: input.durationMin ?? null,
     })
     .onConflictDoUpdate({
       target: [planOverrides.userId, planOverrides.sessionId],
@@ -161,6 +173,7 @@ export async function setOverride(
         name: input.name ?? null,
         type: input.type ?? null,
         km: input.km ?? null,
+        durationMin: input.durationMin ?? null,
       },
     });
 
@@ -176,6 +189,7 @@ export async function setOverride(
     name: input.name,
     type: input.type,
     km: input.km,
+    durationMin: input.durationMin,
   };
 }
 

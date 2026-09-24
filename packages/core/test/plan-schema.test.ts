@@ -143,7 +143,7 @@ describe("TRAINING_PLAN_JSON_SCHEMA", () => {
     const items = (schema.properties as Record<string, { items?: Record<string, unknown> }>)
       .sessions.items!;
     expect(items.additionalProperties).toBe(false);
-    expect(items.required).toEqual(["date", "name", "type", "km"]);
+    expect(items.required).toEqual(["date", "name", "type", "km", "discipline", "durationMin", "notes"]);
   });
 });
 

@@ -69,6 +69,24 @@ describe("base-field edits round-trip", () => {
     expect(overrides["s-fields"].km).toBe(12.5);
   });
 
+  it("persists a duration edit made on its own", async () => {
+    await setOverride(userId, {
+      sessionId: "s-duration",
+      originalDate: DATE,
+      newDate: DATE,
+      durationMin: 90,
+    });
+
+    const overrides = await getOverrides(userId);
+    expect(overrides["s-duration"].durationMin).toBe(90);
+  });
+
+  it("rejects an impossible duration", () => {
+    expect(() =>
+      validateOverrideInput({ sessionId: "x", originalDate: DATE, newDate: DATE, durationMin: -5 }),
+    ).toThrow(/durationMin/);
+  });
+
   it("still drops the row when nothing is left to record", async () => {
     await setOverride(userId, {
       sessionId: "s-moved",

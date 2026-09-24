@@ -1,0 +1,1 @@
+ALTER TABLE `plan_overrides` ADD `duration_min` integer;

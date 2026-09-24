@@ -55,8 +55,11 @@ Transcribe only what the document prescribes. Do not invent sessions, weeks, or 
 Rules:
 - One entry per prescribed session. Omit rest days entirely.
 - Two sessions on the same day are two entries with the same date.
-- Distances are kilometres. Convert miles (1 mi = 1.609 km). When the document prescribes only a duration, estimate the distance from the prescribed pace, or from an easy pace for the discipline if none is given.
+- Give every session its sport (swim, ride, run, or strength). Set the plan's discipline to that sport when all sessions share it, and to "multi" when they mix (a triathlon plan). A brick is two entries on the same date: the ride, then the run.
+- Distances are kilometres. Convert miles (1 mi = 1.609 km); swims in metres or yards become km. For a single-sport run plan that prescribes only a duration, estimate the distance from the prescribed pace, or from an easy pace if none is given. In any other plan, keep durations as durations: set km to 0 rather than guessing.
+- durationMin is the prescribed time in minutes, or 0 when the document gives none. Strength sessions usually have a duration and km 0.
 - For interval and repeat sessions, km is the total session distance including warm-up, recoveries, and cool-down.
+- notes carries the how in a sentence or two (intervals, zones, targets, drills), or an empty string. Do not repeat the name.
 - Dates are absolute ISO dates. When the document gives relative weeks ("Week 3, Tuesday"), count forward from the plan's start date.
 - Set source to whoever produced the plan (the app or coach named in the document); use "Upload" only when the document does not say.
 

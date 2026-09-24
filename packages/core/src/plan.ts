@@ -27,6 +27,12 @@ export interface PlannedSession {
   name: string;
   type: SessionType;
   km: number;
+  /** The session's own sport; for a single-sport plan, the plan's. */
+  discipline: TrainingDiscipline;
+  /** Planned minutes, when the plan prescribes time rather than (or as well as) distance. */
+  durationMin?: number;
+  /** What the session is for or how to do it, e.g. "last 20 min at race pace". */
+  notes?: string;
   movedFrom?: string;
   moveReason?: string;
   hidden?: boolean;
@@ -39,6 +45,7 @@ export interface PlannedSession {
 export interface TrainingPlan {
   name: string;
   source: string;
+  /** run / ride / swim for a single-sport plan, "multi" when sessions differ. */
   discipline: string;
   startDate: string;
   raceDate: string;
@@ -55,6 +62,10 @@ export interface RawPlannedSession {
   name: string;
   type: SessionType;
   km: number;
+  /** Omitted by single-sport plans, whose sessions take the plan's discipline. */
+  discipline?: TrainingDiscipline;
+  durationMin?: number;
+  notes?: string;
 }
 
 export type RawTrainingPlan = Omit<TrainingPlan, "sessions"> & {
@@ -79,6 +90,7 @@ export interface PlanOverride {
   name?: string;
   type?: SessionType;
   km?: number;
+  durationMin?: number;
 }
 
 export type PlanOverrideMap = Record<string, PlanOverride>;
@@ -95,6 +107,11 @@ export interface CustomWorkoutInput {
   distanceKm: number | null;
   /** Used to estimate the load of a workout that has not happened yet. */
   durationMin?: number | null;
+}
+
+/** The sport a session without its own takes: single-sport plans are run, ride or swim. */
+function planDefaultDiscipline(discipline: string): TrainingDiscipline {
+  return discipline === "ride" || discipline === "swim" ? discipline : "run";
 }
 
 function sessionSlug(date: string, name: string): string {
@@ -122,6 +139,9 @@ export function buildTrainingPlan(raw: RawTrainingPlan): TrainingPlan {
       name: s.name,
       type: s.type,
       km: s.km,
+      discipline: s.discipline ?? planDefaultDiscipline(raw.discipline),
+      ...(s.durationMin ? { durationMin: s.durationMin } : {}),
+      ...(s.notes ? { notes: s.notes } : {}),
     })),
   };
 }
@@ -139,6 +159,17 @@ export function buildTrainingPlan(raw: RawTrainingPlan): TrainingPlan {
 export const SEED_PLAN: TrainingPlan = buildTrainingPlan(
   seedPlanData as RawTrainingPlan,
 );
+
+/**
+ * The plan's sessions, each carrying its sport. buildTrainingPlan already sets
+ * it; this also covers a plan assembled by hand, which a single-sport plan's
+ * sessions inherit from the plan.
+ */
+export function planSessions(trainingPlan: TrainingPlan | null): PlannedSession[] {
+  if (!trainingPlan) return [];
+  const fallback = planDefaultDiscipline(trainingPlan.discipline);
+  return trainingPlan.sessions.map((s) => (s.discipline ? s : { ...s, discipline: fallback }));
+}
 
 export function applyPlanOverrides(
   sessions: PlannedSession[],
@@ -159,6 +190,7 @@ export function applyPlanOverrides(
       name: override.name ?? s.name,
       type: override.type ?? s.type,
       km: override.km ?? s.km,
+      durationMin: override.durationMin ?? s.durationMin,
     };
   });
 }
@@ -174,12 +206,32 @@ export type SessionStatus =
 export interface SessionWithStatus extends PlannedSession {
   status: SessionStatus;
   actualKm?: number;
+  /** Minutes of same-sport activity on the day, when the session is graded by time. */
+  actualMin?: number;
   matchedActivity?: string;
-  // Set only for custom workouts merged in from the calendar; the run plan's
-  // sessions leave it undefined. Lets the UI show the discipline instead of the
-  // run-only `type` for those rows.
-  discipline?: TrainingDiscipline;
   isCustom?: boolean;
+}
+
+/**
+ * Grade a session against the same-day activities of its own sport. Distance
+ * decides when the session prescribes km, time when it prescribes only
+ * minutes, and showing up decides when it prescribes neither (a strength
+ * session). 80% of the target counts as done, as it always has for runs.
+ */
+export function gradeSession(
+  session: Pick<PlannedSession, "km" | "durationMin">,
+  acts: StravaActivity[],
+): { status: "completed" | "partial"; actualKm: number; actualMin: number } | null {
+  if (acts.length === 0) return null;
+  const actualKm = Math.round(acts.reduce((sum, a) => sum + a.distance / 1000, 0) * 10) / 10;
+  const actualMin = Math.round(acts.reduce((sum, a) => sum + a.moving_time / 60, 0));
+  const done =
+    session.km > 0
+      ? actualKm >= session.km * 0.8
+      : session.durationMin
+        ? actualMin >= session.durationMin * 0.8
+        : true;
+  return { status: done ? "completed" : "partial", actualKm, actualMin };
 }
 
 // `trainingPlan` is this athlete's own plan, and it leads the parameter list
@@ -201,18 +253,19 @@ export function matchSessions(
   // calendar agree; the calendar skips them with the same check. With no plan
   // there is nothing to schedule — only the athlete's own custom workouts.
   const sessions = applyPlanOverrides(
-    trainingPlan?.sessions ?? [],
+    planSessions(trainingPlan),
     overrides,
   ).filter((s) => !s.hidden);
 
-  const runsByDate = new Map<string, StravaActivity[]>();
+  // Same-day activities by sport: a session is graded only against its own.
+  const byDayDiscipline = new Map<string, StravaActivity[]>();
   for (const act of activities) {
-    if (getDiscipline(act) !== "run") continue;
-    const day = act.start_date_local.split("T")[0];
-    const list = runsByDate.get(day) ?? [];
-    list.push(act);
-    runsByDate.set(day, list);
+    const key = `${act.start_date_local.split("T")[0]}|${getDiscipline(act)}`;
+    byDayDiscipline.set(key, [...(byDayDiscipline.get(key) ?? []), act]);
   }
+
+  const dateStatus = (date: string): SessionStatus =>
+    date === today ? "today" : date > today ? "upcoming" : "missed";
 
   const planResults: SessionWithStatus[] = sessions.map((session) => {
     // Skipped is decided before anything else, and deliberately outranks even
@@ -223,38 +276,15 @@ export function matchSessions(
     // easy shakeout on the same day is not a half-finished interval session.
     if (session.skipped) return { ...session, status: "skipped" as const };
 
-    const runs = runsByDate.get(session.date) ?? [];
-    const actualKm = runs.reduce((sum, r) => sum + r.distance / 1000, 0);
-
-    if (runs.length > 0) {
-      return {
-        ...session,
-        status:
-          actualKm >= session.km * 0.8
-            ? ("completed" as const)
-            : ("partial" as const),
-        actualKm: Math.round(actualKm * 10) / 10,
-        matchedActivity: runs[0].name,
-      };
-    }
-    if (session.date === today) return { ...session, status: "today" as const };
-    if (session.date > today) return { ...session, status: "upcoming" as const };
-    return { ...session, status: "missed" as const };
+    const acts = byDayDiscipline.get(`${session.date}|${session.discipline}`) ?? [];
+    const grade = gradeSession(session, acts);
+    if (grade) return { ...session, ...grade, matchedActivity: acts[0].name };
+    return { ...session, status: dateStatus(session.date) };
   });
 
-  // Custom workouts the athlete added on the calendar (any discipline). Match
-  // same-day activities of the *same* discipline for status, so an added workout
-  // shows up in the plan list and is graded like a plan session.
-  const kmByDayDiscipline = new Map<string, number>();
-  const nameByDayDiscipline = new Map<string, string>();
-  for (const act of activities) {
-    const key = `${act.start_date_local.split("T")[0]}|${getDiscipline(act)}`;
-    kmByDayDiscipline.set(key, (kmByDayDiscipline.get(key) ?? 0) + act.distance / 1000);
-    if (!nameByDayDiscipline.has(key)) nameByDayDiscipline.set(key, act.name);
-  }
-
+  // Custom workouts the athlete added on the calendar (any discipline), graded
+  // exactly like plan sessions so they sit in the same lists.
   const customResults: SessionWithStatus[] = customWorkouts.map((w) => {
-    const plannedKm = w.distanceKm ?? 0;
     const base: SessionWithStatus = {
       id: w.id,
       date: w.date,
@@ -263,28 +293,16 @@ export function matchSessions(
       // `type` is run-plan-specific and unused for custom rows (the UI shows
       // `discipline` instead); "easy" is a benign placeholder to satisfy the type.
       type: "easy",
-      km: plannedKm,
+      km: w.distanceKm ?? 0,
       discipline: w.discipline,
+      ...(w.durationMin ? { durationMin: w.durationMin } : {}),
       isCustom: true,
       status: "upcoming",
     };
-
-    const key = `${w.date}|${w.discipline}`;
-    const actualKm = kmByDayDiscipline.get(key);
-    if (actualKm !== undefined) {
-      // Duration-only workouts (no planned km) count as done once a matching
-      // activity exists; otherwise use the same 80%-of-planned threshold.
-      const done = plannedKm > 0 ? actualKm >= plannedKm * 0.8 : true;
-      return {
-        ...base,
-        status: done ? "completed" : "partial",
-        actualKm: Math.round(actualKm * 10) / 10,
-        matchedActivity: nameByDayDiscipline.get(key),
-      };
-    }
-    if (w.date === today) return { ...base, status: "today" };
-    if (w.date > today) return { ...base, status: "upcoming" };
-    return { ...base, status: "missed" };
+    const acts = byDayDiscipline.get(`${w.date}|${w.discipline}`) ?? [];
+    const grade = gradeSession(base, acts);
+    if (grade) return { ...base, ...grade, matchedActivity: acts[0].name };
+    return { ...base, status: dateStatus(w.date) };
   });
 
   return [...planResults, ...customResults].sort((a, b) =>
@@ -296,6 +314,13 @@ export interface PlannedVsActualWeek {
   weekStart: string;
   plannedKm: number;
   actualKm: number;
+  /**
+   * The same comparison in minutes. A multi-sport plan's km do not add up to
+   * anything (a ride's km dwarf a swim's), so its chart reads time. A session
+   * without a duration contributes nothing to planned minutes.
+   */
+  plannedMin: number;
+  actualMin: number;
   isCurrentWeek: boolean;
   isFuture: boolean;
 }
@@ -307,14 +332,14 @@ export function plannedVsActualByWeek(
   today: string = localToday(),
   customWorkouts: CustomWorkoutInput[] = [],
 ): PlannedVsActualWeek[] {
-  const sessions = applyPlanOverrides(trainingPlan?.sessions ?? [], overrides);
+  const sessions = applyPlanOverrides(planSessions(trainingPlan), overrides);
 
-  // Which disciplines are planned each week — the plan's own discipline plus
-  // any discipline the athlete added a custom workout for that week. Actual km
+  // Which disciplines are planned each week: each session's own sport, plus
+  // any sport the athlete added a custom workout for that week. Actual volume
   // is then counted only for a week's planned disciplines, so the comparison
-  // stays apples-to-apples once non-run workouts enter the picture.
-  const planDiscipline = trainingPlan?.discipline ?? "";
+  // stays apples-to-apples.
   const plannedByWeek = new Map<string, number>();
+  const plannedMinByWeek = new Map<string, number>();
   const disciplinesByWeek = new Map<string, Set<string>>();
   const addDiscipline = (week: string, discipline: string) => {
     const set = disciplinesByWeek.get(week) ?? new Set<string>();
@@ -330,19 +355,23 @@ export function plannedVsActualByWeek(
     if (s.hidden) continue;
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
     plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + s.km);
-    addDiscipline(week, planDiscipline);
+    plannedMinByWeek.set(week, (plannedMinByWeek.get(week) ?? 0) + (s.durationMin ?? 0));
+    addDiscipline(week, s.discipline);
   }
   for (const w of customWorkouts) {
     const week = getWeekStart(new Date(w.date + "T12:00:00"));
     plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + (w.distanceKm ?? 0));
+    plannedMinByWeek.set(week, (plannedMinByWeek.get(week) ?? 0) + (w.durationMin ?? 0));
     addDiscipline(week, w.discipline);
   }
 
   const actualByWeek = new Map<string, number>();
+  const actualMinByWeek = new Map<string, number>();
   for (const act of activities) {
     const week = getWeekStart(activityDay(act.start_date_local));
     if (!disciplinesByWeek.get(week)?.has(getDiscipline(act))) continue;
     actualByWeek.set(week, (actualByWeek.get(week) ?? 0) + act.distance / 1000);
+    actualMinByWeek.set(week, (actualMinByWeek.get(week) ?? 0) + act.moving_time / 60);
   }
 
   const currentWeek = getWeekStart(new Date(today + "T12:00:00"));
@@ -353,6 +382,8 @@ export function plannedVsActualByWeek(
       weekStart,
       plannedKm: Math.round((plannedByWeek.get(weekStart) ?? 0) * 10) / 10,
       actualKm: Math.round((actualByWeek.get(weekStart) ?? 0) * 10) / 10,
+      plannedMin: Math.round(plannedMinByWeek.get(weekStart) ?? 0),
+      actualMin: Math.round(actualMinByWeek.get(weekStart) ?? 0),
       isCurrentWeek: weekStart === currentWeek,
       isFuture: weekStart > currentWeek,
     }));
@@ -433,8 +464,8 @@ export function isPlanComplete(
  */
 export interface MisdatedSession {
   session: SessionWithStatus;
-  /** The run that looks like it satisfied it. */
-  activity: { id: number; name: string; date: string; km: number };
+  /** The same-sport activity that looks like it satisfied it. */
+  activity: { id: number; name: string; date: string; km: number; minutes: number };
   /** Days from planned to actual: -1 ran a day early, +1 a day late. */
   offsetDays: number;
   /**
@@ -489,12 +520,11 @@ export function findMisdatedSessions(
     customWorkouts,
   );
 
-  const discipline = trainingPlan.discipline;
+  // Keyed by day and sport: a missed swim is only ever matched to a swim.
   const byDate = new Map<string, StravaActivity[]>();
   for (const act of activities) {
-    if (getDiscipline(act) !== discipline) continue;
-    const day = act.start_date_local.split("T")[0];
-    byDate.set(day, [...(byDate.get(day) ?? []), act]);
+    const key = `${act.start_date_local.split("T")[0]}|${getDiscipline(act)}`;
+    byDate.set(key, [...(byDate.get(key) ?? []), act]);
   }
 
   // An activity that already credits a session on its own date is spoken for.
@@ -503,7 +533,7 @@ export function findMisdatedSessions(
   const claimed = new Set<number>();
   for (const s of graded) {
     if (s.status !== "completed" && s.status !== "partial") continue;
-    for (const act of byDate.get(s.date) ?? []) claimed.add(act.id);
+    for (const act of byDate.get(`${s.date}|${s.discipline}`) ?? []) claimed.add(act.id);
   }
 
   const found: MisdatedSession[] = [];
@@ -522,11 +552,17 @@ export function findMisdatedSessions(
       null;
 
     for (const offset of offsets) {
-      const onDay = (byDate.get(shiftDate(session.date, offset)) ?? []).filter(
-        (act) => !claimed.has(act.id),
-      );
+      const onDay = (
+        byDate.get(`${shiftDate(session.date, offset)}|${session.discipline}`) ?? []
+      ).filter((act) => !claimed.has(act.id));
+      // Distance when the session prescribes it, time when it prescribes only
+      // minutes, and nothing to go on otherwise.
       const ratio = (act: StravaActivity) =>
-        session.km > 0 ? act.distance / 1000 / session.km : 0;
+        session.km > 0
+          ? act.distance / 1000 / session.km
+          : session.durationMin
+            ? act.moving_time / 60 / session.durationMin
+            : 0;
 
       // A full match on this day beats a partial on this day; only if neither
       // exists do we look a day further out.
@@ -549,6 +585,7 @@ export function findMisdatedSessions(
         name: picked.act.name,
         date: picked.act.start_date_local.split("T")[0],
         km: Math.round((picked.act.distance / 1000) * 10) / 10,
+        minutes: Math.round(picked.act.moving_time / 60),
       },
       offsetDays: picked.offset,
       confidence: picked.confidence,

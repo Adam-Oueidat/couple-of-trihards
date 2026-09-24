@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MisdatedSession } from "@trihards/core";
+import { formatDuration, type MisdatedSession } from "@trihards/core";
 import type { PlanEdits } from "./usePlanEdits";
 
 const DATE_FMT = new Intl.DateTimeFormat("en-US", {
@@ -102,20 +102,26 @@ export function MisdatedReview({ candidates, edits }: Props) {
 
   function Row({ candidate }: { candidate: MisdatedSession }) {
     const { session, activity, offsetDays, confidence } = candidate;
+    // Measured the way the session is prescribed: km when it has them, else time.
+    const byKm = session.km > 0;
+    const planned = byKm ? `${session.km} km` : formatDuration(session.durationMin ?? 0);
+    const done = byKm ? `${activity.km} km` : formatDuration(activity.minutes);
+    const share = byKm ? activity.km / session.km : activity.minutes / (session.durationMin || 1);
+    const verb = { run: "ran", ride: "rode", swim: "swam", strength: "trained" }[session.discipline];
     const busy = applying === session.id;
     return (
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3 p-3 rounded-lg border border-gray-800 bg-gray-950/50">
         <div className="flex-1 min-w-[16rem]">
           <p className="text-sm font-medium text-white truncate">{session.name}</p>
           <p className="text-gray-500 text-xs">
-            planned {fmt(session.date)} · {session.km} km
+            planned {fmt(session.date)} · {planned}
           </p>
           <p className="text-gray-400 text-xs mt-1.5">
-            ran <span className="text-white">{activity.km} km</span> on{" "}
+            {verb} <span className="text-white">{done}</span> on{" "}
             {fmt(activity.date)}{" "}
             <span className="text-gray-600">
               — {offsetLabel(offsetDays)}
-              {confidence === "partial" && `, ${Math.round((activity.km / session.km) * 100)}% of planned`}
+              {confidence === "partial" && `, ${Math.round(share * 100)}% of planned`}
             </span>
           </p>
           <p className="text-gray-600 text-xs truncate">&ldquo;{activity.name}&rdquo;</p>

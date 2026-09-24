@@ -5,6 +5,7 @@ import type { PlannedSession } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
+import { sessionLabel } from "./session-label";
 import { SKIPPED_BADGE, SKIPPED_CHIP, type CalendarDayActions } from "./types";
 
 export type DragPayload =
@@ -47,7 +48,6 @@ export function MonthGrid({
   onDayDragOver,
   onDayDragLeave,
   onDayDrop,
-  planDiscipline,
   setForm,
   openSessionEditor,
   openWorkoutEditor,
@@ -144,7 +144,7 @@ export function MonthGrid({
                         }
                         onDragEnd={endDrag}
                         title={
-                          `${s.name} (${s.km}km, ${s.type})` +
+                          `${sessionLabel(s)} (${s.type})` + (s.notes ? `\n${s.notes}` : "") +
                           (moved ? ` — moved from ${s.movedFrom}` : "") +
                           (skipped
                             ? `\nSkipped${s.skipReason ? `: ${s.skipReason}` : " (no reason given)"}`
@@ -152,11 +152,11 @@ export function MonthGrid({
                           "\nClick to edit · Drag to reschedule"
                         }
                         className={`px-1.5 py-0.5 rounded border text-[10px] leading-tight flex items-center gap-1 cursor-pointer ${
-                          skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[planDiscipline]
+                          skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[s.discipline]
                         } ${
                           skipped
                             ? "line-through"
-                            : done?.has(planDiscipline) && s.date <= today
+                            : done?.has(s.discipline) && s.date <= today
                               ? ""
                               : s.date < today
                                 ? "opacity-50 line-through"
@@ -165,9 +165,9 @@ export function MonthGrid({
                           moved ? "ring-1 ring-orange-500/40" : ""
                         }`}
                       >
-                        <DisciplineGlyph discipline={planDiscipline} size={10} className="flex-shrink-0 opacity-80" />
+                        <DisciplineGlyph discipline={s.discipline} size={10} className="flex-shrink-0 opacity-80" />
                         <span className="truncate flex-1">
-                          {s.km}km {s.name}
+                          {sessionLabel(s)}
                         </span>
                         {skipped && (
                           <span className={`${SKIPPED_BADGE} px-1 text-[8px] no-underline`}>

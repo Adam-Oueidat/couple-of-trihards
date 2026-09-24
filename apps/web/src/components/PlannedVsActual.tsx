@@ -21,7 +21,7 @@ import {
   isPlanComplete,
 } from "@trihards/core";
 import type { TrainingPlan } from "@trihards/core";
-import { getWeekStart } from "@trihards/core";
+import { formatDuration, getWeekStart } from "@trihards/core";
 import type { PlanEdits } from "./usePlanEdits";
 import { PlanCompleteCard, type PlanDetailView } from "./PlanCompleteCard";
 import { MissedSessions } from "./MissedSessions";
@@ -119,11 +119,15 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
     [allSessions, selected]
   );
 
+  // A multi-sport plan's km do not add up to anything (a ride's dwarf a
+  // swim's), so it is charted in hours; a single-sport plan keeps its km.
+  const byTime = plan?.discipline === "multi";
+  const hours = (min: number) => Math.round((min / 60) * 10) / 10;
   const chartData = weeks.map((w, i) => ({
     weekStart: w.weekStart,
     week: formatWeekLabel(w.weekStart),
-    Planned: w.plannedKm,
-    Actual: w.isFuture ? null : w.actualKm,
+    Planned: byTime ? hours(w.plannedMin) : w.plannedKm,
+    Actual: w.isFuture ? null : byTime ? hours(w.actualMin) : w.actualKm,
     isFuture: w.isFuture,
     isSelected: i === selectedIdx,
   }));
@@ -192,7 +196,7 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
           <BarChart data={chartData} margin={{ top: 0, right: 0, left: -10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
             <XAxis dataKey="week" tick={{ fill: "#9ca3af", fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} axisLine={false} tickLine={false} unit="km" />
+            <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} axisLine={false} tickLine={false} unit={byTime ? "h" : "km"} />
             <Tooltip
               contentStyle={{
                 backgroundColor: "#1f2937",
@@ -251,8 +255,17 @@ export function PlannedVsActual({ activities, plan, edits, onUploadNew }: Props)
             {selected && (
               <p className="text-gray-500 text-xs mt-0.5">
                 {formatWeekRange(selected.weekStart)} ·{" "}
-                {selected.plannedKm.toFixed(1)} km planned
-                {!selected.isFuture && ` · ${selected.actualKm.toFixed(1)} km actual`}
+                {byTime ? (
+                  <>
+                    {formatDuration(selected.plannedMin)} planned
+                    {!selected.isFuture && ` · ${formatDuration(selected.actualMin)} actual`}
+                  </>
+                ) : (
+                  <>
+                    {selected.plannedKm.toFixed(1)} km planned
+                    {!selected.isFuture && ` · ${selected.actualKm.toFixed(1)} km actual`}
+                  </>
+                )}
               </p>
             )}
           </div>

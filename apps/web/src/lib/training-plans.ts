@@ -170,7 +170,7 @@ export async function saveTrainingPlan(
       userId,
       name: raw.name,
       source: raw.source,
-      discipline: raw.discipline as "swim" | "ride" | "run",
+      discipline: raw.discipline as "swim" | "ride" | "run" | "multi",
       startDate: raw.startDate,
       raceDate: raw.raceDate,
       raceName: raw.raceName,

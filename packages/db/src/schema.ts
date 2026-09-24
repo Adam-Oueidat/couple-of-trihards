@@ -193,6 +193,7 @@ export const planOverrides = sqliteTable(
     name: text("name"),
     type: text("type"),
     km: real("km"),
+    durationMin: integer("duration_min"),
   },
   (t) => [primaryKey({ columns: [t.userId, t.sessionId] })],
 );
@@ -222,7 +223,8 @@ export const trainingPlans = sqliteTable(
     name: text("name").notNull(),
     // Where the plan came from: "Runna", "Coach", the uploaded file's origin.
     source: text("source").notNull(),
-    discipline: text("discipline", { enum: ["swim", "ride", "run"] }).notNull(),
+    // "multi" when sessions carry their own sports (a triathlon plan).
+    discipline: text("discipline", { enum: ["swim", "ride", "run", "multi"] }).notNull(),
     startDate: text("start_date").notNull(),
     raceDate: text("race_date").notNull(),
     raceName: text("race_name").notNull(),

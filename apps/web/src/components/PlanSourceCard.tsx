@@ -310,6 +310,10 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
 }
 
 function PlanDisciplinePill({ discipline }: { discipline: string }) {
+  // A multi-sport plan has no one sport to badge; its sessions carry their own.
+  if (discipline === "multi") {
+    return <Pill className="border-orange-500/30 bg-orange-500/10 text-orange-400">Multi-sport</Pill>;
+  }
   const resolved: Discipline =
     discipline === "ride" || discipline === "swim" ? discipline : "run";
   return (

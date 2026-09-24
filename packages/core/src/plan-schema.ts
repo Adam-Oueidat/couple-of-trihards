@@ -4,6 +4,7 @@ import {
   type RawTrainingPlan,
   type SessionType,
 } from "./plan";
+import type { TrainingDiscipline } from "./recap";
 
 // Validation for authored training plans. Two callers share it: the PDF
 // ingestion route (which must never persist whatever the model happened to
@@ -14,6 +15,9 @@ import {
 export const MAX_PLAN_SESSIONS = 1000;
 const MAX_NAME_LENGTH = 120;
 const MAX_KM = 500;
+/** A full-distance race day, with room to spare. */
+const MAX_MINUTES = 1000;
+const MAX_NOTES_LENGTH = 400;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -47,8 +51,9 @@ export const TRAINING_PLAN_JSON_SCHEMA: Record<string, unknown> = {
     },
     discipline: {
       type: "string",
-      enum: ["run", "ride", "swim"],
-      description: "The single discipline this plan prescribes.",
+      enum: ["run", "ride", "swim", "multi"],
+      description:
+        "The plan's discipline: run, ride or swim when every session is that sport, multi when sessions mix sports (triathlon plans).",
     },
     startDate: {
       type: "string",
@@ -71,7 +76,7 @@ export const TRAINING_PLAN_JSON_SCHEMA: Record<string, unknown> = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["date", "name", "type", "km"],
+        required: ["date", "name", "type", "km", "discipline", "durationMin", "notes"],
         properties: {
           date: {
             type: "string",
@@ -92,7 +97,21 @@ export const TRAINING_PLAN_JSON_SCHEMA: Record<string, unknown> = {
           km: {
             type: "number",
             description:
-              "Total session distance in kilometres. Convert from miles when needed; estimate from duration and pace when the document gives only a duration.",
+              "Total session distance in kilometres. Convert from miles when needed. For a single-sport run plan, estimate from duration and pace when the document gives only a duration; otherwise use 0 when no distance is given.",
+          },
+          discipline: {
+            type: "string",
+            enum: ["swim", "ride", "run", "strength"],
+            description: "The session's sport. A brick is two sessions on the same date: the ride, then the run.",
+          },
+          durationMin: {
+            type: "number",
+            description: "Planned duration in minutes, or 0 when the document gives none.",
+          },
+          notes: {
+            type: "string",
+            description:
+              "How to do the session in one or two short sentences (targets, intervals, zones), or an empty string.",
           },
         },
       },
@@ -134,6 +153,22 @@ function requireSessionType(value: unknown, field: string): SessionType {
   return value as SessionType;
 }
 
+const SESSION_DISCIPLINES: readonly TrainingDiscipline[] = ["swim", "ride", "run", "strength"];
+
+function requireSessionDiscipline(value: unknown, field: string): TrainingDiscipline {
+  if (typeof value !== "string" || !SESSION_DISCIPLINES.includes(value as TrainingDiscipline)) {
+    fail(`${field} must be one of: ${SESSION_DISCIPLINES.join(", ")}`);
+  }
+  return value as TrainingDiscipline;
+}
+
+function optionalMinutes(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "number" || !Number.isFinite(value)) fail(`${field} must be a number`);
+  if (value < 0 || value > MAX_MINUTES) fail(`${field} must be between 0 and ${MAX_MINUTES}`);
+  return Math.round(value) || undefined;
+}
+
 function requireKm(value: unknown, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     fail(`${field} must be a number`);
@@ -157,8 +192,8 @@ export function parseRawTrainingPlan(input: unknown): RawTrainingPlan {
   const name = requireString(o.name, "name");
   const source = requireString(o.source, "source", 60);
   const discipline = requireString(o.discipline, "discipline", 20).toLowerCase();
-  if (discipline !== "run" && discipline !== "ride" && discipline !== "swim") {
-    fail("discipline must be run, ride, or swim");
+  if (discipline !== "run" && discipline !== "ride" && discipline !== "swim" && discipline !== "multi") {
+    fail("discipline must be run, ride, swim, or multi");
   }
   const startDate = requireDate(o.startDate, "startDate");
   const raceDate = requireDate(o.raceDate, "raceDate");
@@ -179,12 +214,23 @@ export function parseRawTrainingPlan(input: unknown): RawTrainingPlan {
       fail(`sessions[${i}] must be an object`);
     }
     const s = entry as Record<string, unknown>;
-    return {
+    const session: RawPlannedSession = {
       date: requireDate(s.date, `sessions[${i}].date`),
       name: requireString(s.name, `sessions[${i}].name`),
       type: requireSessionType(s.type, `sessions[${i}].type`),
       km: requireKm(s.km, `sessions[${i}].km`),
     };
+    // Optional per-session fields; 0 and "" mean "not given".
+    if (s.discipline !== undefined && s.discipline !== null) {
+      session.discipline = requireSessionDiscipline(s.discipline, `sessions[${i}].discipline`);
+    } else if (discipline === "multi") {
+      fail(`sessions[${i}].discipline is required in a multi-sport plan`);
+    }
+    const durationMin = optionalMinutes(s.durationMin, `sessions[${i}].durationMin`);
+    if (durationMin) session.durationMin = durationMin;
+    const notes = typeof s.notes === "string" ? s.notes.trim().slice(0, MAX_NOTES_LENGTH) : "";
+    if (notes) session.notes = notes;
+    return session;
   });
 
   sessions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
