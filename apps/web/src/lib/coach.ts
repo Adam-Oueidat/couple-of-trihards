@@ -290,6 +290,16 @@ ${opts.priorSummary}\n`
   const plan = activePlan?.plan ?? null;
   const sessions = matchSessions(plan, activities, overrides, today);
 
+  // Archived goals are history: achieved or dropped. The coach sees them so it
+  // knows what the athlete has already done, but advises toward active ones only.
+  const activeGoals = goals.filter((g) => g.archivedAt == null);
+  const pastGoals = goals.filter((g) => g.archivedAt != null);
+  const pastGoalsBlock = pastGoals.length
+    ? `\n## Past goals (archived by the athlete: achieved or no longer pursued; context only, do not advise toward them)\n${pastGoals
+        .map((g) => `- ${g.text} (archived ${new Date(g.archivedAt! * 1000).toISOString().slice(0, 10)})`)
+        .join("\n")}`
+    : "";
+
   const pastSessions = sessions.filter((s) => s.date <= today).slice(-10);
   const upcomingSessions = sessions
     .filter((s) => s.date > today)
@@ -432,7 +442,8 @@ ${thresholdLine}
 ${formatPBs(pbs)}
 
 ## Athlete goals
-${goals.map((g) => `- ${g.text}`).join("\n") || "No explicit goals set (assume: complete the goal race well)"}
+${activeGoals.map((g) => `- ${g.text}`).join("\n") || "No explicit goals set (assume: complete the goal race well)"}
+${pastGoalsBlock}
 
 ## Current training load
 ${

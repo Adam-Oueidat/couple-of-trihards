@@ -20,6 +20,21 @@ export async function addGoal(userId: string, text: unknown): Promise<Goal> {
   return row;
 }
 
+/** Archives a goal (keeping it to look back on) or restores it to active. */
+export async function setGoalArchived(
+  userId: string,
+  id: string,
+  archived: boolean,
+): Promise<Goal | null> {
+  const db = getDb();
+  const [row] = await db
+    .update(goals)
+    .set({ archivedAt: archived ? Math.floor(Date.now() / 1000) : null })
+    .where(and(eq(goals.id, id), eq(goals.userId, userId)))
+    .returning();
+  return row ?? null;
+}
+
 export async function deleteGoal(userId: string, id: string): Promise<boolean> {
   const db = getDb();
   const deleted = await db

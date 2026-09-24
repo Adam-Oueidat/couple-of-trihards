@@ -1,0 +1,1 @@
+ALTER TABLE `goals` ADD `archived_at` integer;
