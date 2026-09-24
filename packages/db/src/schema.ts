@@ -141,6 +141,9 @@ export const goals = sqliteTable("goals", {
     .references(() => users.id, { onDelete: "cascade" }),
   text: text("text").notNull(),
   createdAt: createdAt(),
+  // Unix seconds when the athlete archived it: done with, but kept to look
+  // back on. Null while the goal is active.
+  archivedAt: integer("archived_at"),
 });
 
 export const customWorkouts = sqliteTable(
