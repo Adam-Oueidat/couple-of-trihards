@@ -6,7 +6,7 @@ import Link from "next/link";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import type { SyncState } from "@/lib/strava";
-import { TrainingLoadPoint, type BlockRecap, type PlanRecap, type QualityRecap, type TrainingPlan } from "@trihards/core";
+import { TrainingLoadPoint, type BlockRecap, type RunThreshold, type PlanRecap, type QualityRecap, type TrainingPlan } from "@trihards/core";
 import type { PlanSummary } from "@/lib/training-plans";
 import type { PlanOverrideMap } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
@@ -39,7 +39,7 @@ const TrainingLoadChart = dynamic(
 import { ActivityList } from "./ActivityList";
 import { OverviewHero } from "./OverviewHero";
 import { TrainingRecap } from "./TrainingRecap";
-import { NextUpTab } from "./NextUpTab";
+import { FeedTab } from "./FeedTab";
 import { SectionLabel } from "./SectionLabel";
 import { LogoutButton } from "./LogoutButton";
 // The coach panel is behind a button and nobody sees it on first paint, but it
@@ -102,9 +102,40 @@ interface Props {
   /** Workouts the athlete (or the coach) added outside the plan. */
   customWorkouts: CustomWorkout[];
   isAdmin: boolean;
+  /** Athlete-local YYYY-MM-DD, as the server resolved it. */
+  today: string;
+  /** Same estimate the coach quotes; null when nothing recent sets it. */
+  runThreshold: RunThreshold | null;
+  /** Saved coach analyses, keyed by Strava activity id. */
+  analyses: Record<number, string>;
 }
 
-type Tab = "overview" | "next" | "plan" | "calendar" | "activities";
+type Tab = "feed" | "plan" | "calendar" | "activities" | "recap" | "fitness" | "goals";
+
+const PRIMARY: { id: Tab; label: string }[] = [
+  { id: "feed", label: "Feed" },
+  { id: "plan", label: "Plan" },
+  { id: "calendar", label: "Calendar" },
+  { id: "activities", label: "Activities" },
+];
+
+// Read a few times a block rather than daily, so they sit under their own
+// heading in the sidebar and behind "More" on a phone.
+const INSIGHT: { id: Tab; label: string }[] = [
+  { id: "recap", label: "Recap" },
+  { id: "fitness", label: "Fitness profile" },
+  { id: "goals", label: "Goals" },
+];
+
+const TITLES: Record<Tab, string> = {
+  feed: "Feed",
+  plan: "Plan",
+  calendar: "Calendar",
+  activities: "Activities",
+  recap: "Recap",
+  fitness: "Fitness profile",
+  goals: "Goals",
+};
 
 // "Synced …" label from a real sync timestamp (Unix millis). Only ever called
 // from async callbacks (never during render), so Date.now() stays out of the
@@ -121,8 +152,8 @@ function formatAgo(syncedAt: number): string {
   return `${days}d ago`;
 }
 
-export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, qualityRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin }: Props) {
-  const [tab, setTab] = useState<Tab>("overview");
+export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, qualityRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin, today, runThreshold, analyses }: Props) {
+  const [tab, setTab] = useState<Tab>("feed");
   // The plan-upload dialog is opened from two places — the plan card itself
   // and "Upload your next plan" on a finished plan — so the shell owns it.
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -132,6 +163,9 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
   // only its visibility changes — exactly as before. All that has moved is when
   // that first mount happens.
   const [coachMounted, setCoachMounted] = useState(false);
+  // What was typed into the ask bar, handed to the coach panel to send.
+  const [queued, setQueued] = useState<{ id: number; text: string } | null>(null);
+  const [ask, setAsk] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [pending, startTransition] = useTransition();
 
@@ -194,11 +228,8 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
     });
   }
 
-  // Phone-only overflow menu. The four tabs stay on screen — they are the
-  // primary navigation and hiding them behind a tap would be a downgrade —
-  // but Admin, the theme toggle and Sign out together take ~190px of a
-  // 428px-wide row, squeezing the tabs until their labels overflow. They
-  // live in here instead. Never opens above `sm`: the trigger is `sm:hidden`.
+  // Phone-only "More" sheet: the insight pages, Admin, theme and Sign out,
+  // which the sidebar shows on larger screens.
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -213,269 +244,341 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
   const recentWeeks = weeklyVolume.slice(-8);
   const recentLoad = trainingLoad.slice(-60);
 
+  function go(next: Tab) {
+    setTab(next);
+    setMenuOpen(false);
+  }
+
+  function openCoach(text?: string) {
+    setCoachMounted(true);
+    setCoachOpen(true);
+    if (text) setQueued({ id: Date.now(), text });
+  }
+
+  const syncStatus = (
+    <div className="flex flex-wrap items-center gap-2 font-data text-[11px] text-gray-500">
+      {agoLabel && (
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${syncState === "unreachable" ? "bg-orange-500" : "bg-[var(--ok)]"} ${pending ? "animate-pulse" : ""}`}
+            aria-hidden="true"
+          />
+          {syncState === "unreachable" ? (
+            <span title="Strava could not be reached for the last sync. These are your previous sync's activities.">
+              Strava unreachable
+            </span>
+          ) : syncState === "refreshing" ? (
+            <span title="Showing your last sync while a fresh one runs in the background. Reload in a moment to see it.">
+              Syncing…
+            </span>
+          ) : (
+            <>Synced {agoLabel}</>
+          )}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={refresh}
+        disabled={pending}
+        aria-label="Sync data from Strava"
+        className="ml-auto cursor-pointer rounded-[8px] border border-gray-800 px-2.5 py-1 text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {pending ? "Syncing…" : "Sync"}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between max-sm:flex-wrap max-sm:gap-y-3">
-          <div className="flex items-center gap-3">
+    <div className="min-h-screen bg-gray-950 text-white md:grid md:grid-cols-[220px_minmax(0,1fr)]">
+      {/* Sidebar: md and up. */}
+      <aside className="sticky top-0 hidden h-screen flex-col gap-1 border-r border-gray-800 px-3.5 py-6 md:flex">
+        <Link
+          href="/dashboard"
+          aria-label="TriLog — go to dashboard"
+          className="mb-5 cursor-pointer rounded px-2.5 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+        >
+          <span className="font-display text-2xl font-bold uppercase leading-none tracking-wide text-white">
+            Tri<span className="text-orange-500">Log</span>
+          </span>
+        </Link>
+
+        <nav className="flex flex-col gap-1" aria-label="Main">
+          {PRIMARY.map((item) => (
+            <NavItem key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
+              {item.label}
+            </NavItem>
+          ))}
+          <p className="px-2.5 pb-1.5 pt-5 font-data text-[11px] uppercase tracking-[0.16em] text-gray-600">
+            Insight
+          </p>
+          {INSIGHT.map((item) => (
+            <NavItem key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
+              {item.label}
+            </NavItem>
+          ))}
+          {isAdmin && (
+            <Link
+              href="/admin/licenses"
+              className="mt-3 rounded-[8px] px-2.5 py-2 text-sm font-medium text-orange-300 transition-colors hover:bg-orange-500/10 cursor-pointer"
+            >
+              Admin
+            </Link>
+          )}
+        </nav>
+
+        <div className="mt-auto space-y-3">
+          <div className="px-2.5">{syncStatus}</div>
+          <div className="flex items-center gap-2.5 border-t border-gray-800 px-2.5 pt-3">
             {athlete.profile && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={athlete.profile}
-                alt={athlete.firstname}
-                className="w-9 h-9 rounded-full border-2 border-orange-500"
+                alt=""
+                className="h-7 w-7 rounded-full border-2 border-orange-500"
               />
             )}
-            <div>
-              <Link
-                href="/dashboard"
-                aria-label="TriLog — go to dashboard"
-                className="inline-block cursor-pointer transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 rounded"
-              >
-                <h1 className="font-display font-bold text-xl text-white leading-none uppercase tracking-wide">
-                  Tri<span className="text-orange-500">Log</span>
-                </h1>
-              </Link>
-              <p className="text-gray-400 text-xs">
-                {athlete.firstname} {athlete.lastname}
-              </p>
-            </div>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-gray-400">
+              {athlete.firstname} {athlete.lastname?.[0] ? `${athlete.lastname[0]}.` : ""}
+            </span>
+            <ThemeToggle />
           </div>
+          <div className="px-2.5">
+            <LogoutButton />
+          </div>
+        </div>
+      </aside>
 
+      <div className="min-w-0">
+        {/* Phone header. */}
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-gray-800 bg-gray-950/95 px-4 py-3 backdrop-blur md:hidden">
+          <Link href="/dashboard" aria-label="TriLog — go to dashboard" className="cursor-pointer">
+            <span className="font-display text-xl font-bold uppercase leading-none tracking-wide text-white">
+              Tri<span className="text-orange-500">Log</span>
+            </span>
+          </Link>
+          <div className="min-w-0 flex-1">{syncStatus}</div>
+        </header>
+
+        <main className="mx-auto max-w-[1080px] px-4 pb-44 pt-6 md:px-8 md:pb-28 md:pt-8">
+          {tab !== "feed" && (
+            <h1 className="mb-6 font-display text-4xl font-bold uppercase leading-none tracking-wide text-white">
+              {TITLES[tab]}
+            </h1>
+          )}
+
+          {tab === "feed" ? (
+            <FeedTab
+              activities={activities}
+              weeklyVolume={weeklyVolume}
+              currentWeek={currentWeek}
+              trainingLoad={recentLoad}
+              today={today}
+              plan={plan.plan}
+              runThreshold={runThreshold}
+              analyses={analyses}
+              onUploadPlan={() => {
+                go("plan");
+                setUploadOpen(true);
+              }}
+              onShowActivities={() => go("activities")}
+            />
+          ) : tab === "plan" ? (
+            <div className="space-y-6">
+              <PlanSourceCard
+                plan={plan.plan}
+                summary={plan.summary}
+                onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
+                uploadOpen={uploadOpen}
+                onUploadOpenChange={setUploadOpen}
+              />
+              <PlannedVsActual
+                activities={planActivities}
+                plan={plan.plan}
+                edits={edits}
+                onUploadNew={() => setUploadOpen(true)}
+              />
+            </div>
+          ) : tab === "calendar" ? (
+            <CalendarTab activities={planActivities} plan={plan.plan} edits={edits} />
+          ) : tab === "activities" ? (
+            <div className="rounded-[14px] border border-gray-800 bg-gray-900 p-5">
+              <p className="mb-4 font-data text-[11px] uppercase tracking-[0.12em] text-gray-500">
+                Last 12 weeks
+              </p>
+              <ActivityList activities={activities} sortable />
+            </div>
+          ) : tab === "recap" ? (
+            <div className="space-y-6">
+              <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="rounded-[14px] border border-gray-800 bg-gray-900 p-5">
+                  <SectionLabel>Weekly Volume</SectionLabel>
+                  <WeeklyVolumeChart data={recentWeeks} />
+                </div>
+                <div className="rounded-[14px] border border-gray-800 bg-gray-900 p-5">
+                  <SectionLabel>Training Load · ATL / CTL / TSB</SectionLabel>
+                  <TrainingLoadChart data={recentLoad} />
+                </div>
+              </div>
+              {/* Defaults to the six-week block view: the plan view is one
+                  click away, and the plan page already carries the finished
+                  plan's headline adherence. */}
+              <TrainingRecap block={blockRecap} plan={planRecap} quality={qualityRecap} />
+            </div>
+          ) : tab === "fitness" ? (
+            <div className="max-w-2xl">
+              <FitnessProfile />
+            </div>
+          ) : (
+            <div className="max-w-2xl">
+              <GoalsCard />
+            </div>
+          )}
+        </main>
+
+        {/* Ask bar: the way into the coach from every page. Typing and
+            sending opens the panel with the question already asked. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = ask.trim();
+            setAsk("");
+            openCoach(text || undefined);
+          }}
+          className={`fixed inset-x-4 bottom-[84px] z-30 mx-auto flex max-w-[1016px] items-center gap-2 rounded-[14px] border border-gray-800 bg-gray-900 py-2 pl-4 pr-2 shadow-2xl shadow-black/40 md:bottom-5 md:left-[calc(220px+2rem)] md:right-8 ${
+            coachOpen ? "hidden" : ""
+          }`}
+        >
+          <input
+            value={ask}
+            onChange={(e) => setAsk(e.target.value)}
+            aria-label="Ask your coach"
+            placeholder="Ask your coach anything…"
+            className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+          />
+          <button
+            type="submit"
+            className="cursor-pointer rounded-[10px] bg-orange-500 px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] transition-colors hover:bg-orange-400"
+          >
+            Ask
+          </button>
+        </form>
+      </div>
+
+      {/* Phone tab bar. */}
+      <nav
+        aria-label="Main"
+        className="fixed inset-x-0 bottom-0 z-30 flex justify-around border-t border-gray-800 bg-gray-950/95 px-2 pb-[calc(env(safe-area-inset-bottom)+10px)] pt-2 backdrop-blur md:hidden"
+      >
+        {PRIMARY.map((item) => (
+          <TabButton key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
+            {item.label}
+          </TabButton>
+        ))}
+        <TabButton
+          active={menuOpen || INSIGHT.some((i) => i.id === tab)}
+          onClick={() => setMenuOpen((o) => !o)}
+          ariaExpanded={menuOpen}
+        >
+          More
+        </TabButton>
+      </nav>
+
+      {menuOpen && (
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-label="More">
           <button
             type="button"
-            onClick={() => setMenuOpen((o) => !o)}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-menu"
-            aria-label={menuOpen ? "Close menu" : "Open menu"}
-            className="sm:hidden flex flex-col items-center justify-center gap-[3px] w-10 h-10 -mr-1 rounded-lg border border-gray-800 cursor-pointer"
-          >
-            <span
-              className={`block w-4 h-px bg-gray-300 transition-transform ${
-                menuOpen ? "translate-y-[4px] rotate-45" : ""
-              }`}
-            />
-            <span
-              className={`block w-4 h-px bg-gray-300 transition-opacity ${
-                menuOpen ? "opacity-0" : ""
-              }`}
-            />
-            <span
-              className={`block w-4 h-px bg-gray-300 transition-transform ${
-                menuOpen ? "-translate-y-[4px] -rotate-45" : ""
-              }`}
-            />
-          </button>
-
-          <div className="flex items-center gap-4 max-sm:w-full max-sm:gap-2">
-            <nav className="flex gap-1 bg-gray-800 rounded-lg p-1 max-sm:flex-1">
-              {(["overview", "next", "plan", "calendar", "activities"] as Tab[]).map((t) => (
-                <button
-                  type="button"
-                  key={t}
-                  onClick={() => {
-                    setTab(t);
-                    setMenuOpen(false);
-                  }}
-                  className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors max-sm:flex-1 max-sm:px-2 max-sm:py-2.5 max-sm:text-xs ${
-                    tab === t
-                      ? "bg-orange-500 text-white"
-                      : "text-gray-400 hover:text-white"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </nav>
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+            className="absolute inset-0 cursor-pointer bg-black/50"
+          />
+          <div className="absolute inset-x-0 bottom-0 space-y-1 rounded-t-[14px] border-t border-gray-800 bg-gray-900 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
+            {INSIGHT.map((item) => (
+              <NavItem key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
+                {item.label}
+              </NavItem>
+            ))}
             {isAdmin && (
               <Link
                 href="/admin/licenses"
-                className="px-3 py-1.5 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-medium transition-colors cursor-pointer max-sm:hidden"
+                onClick={() => setMenuOpen(false)}
+                className="block rounded-[8px] px-2.5 py-2 text-sm font-medium text-orange-300 cursor-pointer"
               >
                 Admin
               </Link>
             )}
-            <div className="max-sm:hidden sm:contents">
+            <div className="flex items-center justify-between border-t border-gray-800 px-2.5 pt-3">
               <ThemeToggle />
               <LogoutButton />
             </div>
-          </div>
-
-          {menuOpen && (
-            <div
-              id="mobile-menu"
-              className="sm:hidden w-full flex items-center justify-end gap-3 pt-3 border-t border-gray-800"
-            >
-              {isAdmin && (
-                <Link
-                  href="/admin/licenses"
-                  onClick={() => setMenuOpen(false)}
-                  className="mr-auto px-3 py-2 rounded-md border border-orange-500/40 bg-orange-500/10 text-orange-300 text-sm font-medium cursor-pointer"
-                >
-                  Admin
-                </Link>
-              )}
-              <ThemeToggle />
-              <LogoutButton />
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {/* Sync-status strip: keeps data freshness next to the data it governs,
-            instead of crowding the global header. */}
-        <div className="mb-5 flex items-center justify-end gap-3 text-xs">
-          {agoLabel && (
-            <span className="inline-flex items-center gap-2 uppercase tracking-wider text-gray-500">
-              <span
-                className={`h-1.5 w-1.5 rounded-full bg-orange-500 ${pending ? "animate-pulse" : ""}`}
-                aria-hidden="true"
-              />
-              Synced {agoLabel}
-            </span>
-          )}
-          {syncState === "refreshing" && (
-            <span
-              className="inline-flex items-center rounded-full bg-gray-800 px-3 py-1 font-medium uppercase tracking-wider text-gray-400"
-              title="Showing your last sync while a fresh one runs in the background. Reload in a moment to see it."
-            >
-              Syncing
-            </span>
-          )}
-          {syncState === "unreachable" && (
-            <span
-              className="inline-flex items-center rounded-full bg-orange-500/10 px-3 py-1 font-medium uppercase tracking-wider text-orange-400"
-              title="Strava could not be reached for the last sync. These are your previous sync's activities."
-            >
-              Strava unreachable
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={refresh}
-            disabled={pending}
-            aria-label="Sync data from Strava"
-            className="group inline-flex items-center gap-1.5 rounded-full border border-gray-800 px-3 py-1.5 font-medium uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={`h-3.5 w-3.5 transition-transform duration-500 motion-reduce:transition-none ${
-                pending ? "animate-spin motion-reduce:animate-none" : "group-hover:-rotate-180"
-              }`}
-              aria-hidden="true"
-            >
-              <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-              <path d="M21 3v6h-6" />
-            </svg>
-            {pending ? "Syncing…" : "Sync"}
-          </button>
-        </div>
-
-        {tab === "overview" ? (
-          <div className="space-y-6">
-            <OverviewHero currentWeek={currentWeek} trainingLoad={recentLoad} />
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <SectionLabel>Weekly Volume</SectionLabel>
-                <WeeklyVolumeChart data={recentWeeks} />
-              </div>
-
-              <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <SectionLabel>Training Load · ATL / CTL / TSB</SectionLabel>
-                <TrainingLoadChart data={recentLoad} />
-              </div>
-            </div>
-
-            <GoalsCard />
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-2xl p-5">
-                <SectionLabel>Recent Activities</SectionLabel>
-                <ActivityList activities={activities.slice(0, 5)} />
-              </div>
-              <FitnessProfile />
-            </div>
-          </div>
-        ) : tab === "next" ? (
-          <NextUpTab />
-        ) : tab === "plan" ? (
-          <div className="space-y-6">
-            <PlanSourceCard
-              plan={plan.plan}
-              summary={plan.summary}
-              onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
-              uploadOpen={uploadOpen}
-              onUploadOpenChange={setUploadOpen}
-            />
-
-            <PlannedVsActual
-              activities={planActivities}
-              plan={plan.plan}
-              edits={edits}
-              onUploadNew={() => setUploadOpen(true)}
-            />
-
-            {/* The retrospective sits under the plan's own cards rather than on
-                Overview, which is a daily glance and was getting crowded. This
-                is a tab you open deliberately, which is the right register for
-                a summary you read a few times a block.
-
-                It defaults to the six-week block view even here: when the
-                active plan is also the most recently finished one, PlanCompleteCard
-                above is already showing that plan's headline adherence, and
-                opening on the plan view would stack two summaries of the same
-                race. The plan read stays one click away. */}
-            <TrainingRecap block={blockRecap} plan={planRecap} quality={qualityRecap} />
-          </div>
-        ) : tab === "calendar" ? (
-          <CalendarTab activities={planActivities} plan={plan.plan} edits={edits} />
-        ) : (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4">
-              All Activities (last 12 weeks)
-            </h2>
-            <ActivityList activities={activities} sortable />
-          </div>
-        )}
-      </main>
-
-      {/* Coach panel: mounted on the first open, and kept mounted from then on
-          so the conversation survives tab switches and panel toggles; after
-          that only its visibility changes. */}
-      {coachMounted && (
-        <div
-          className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[420px] p-4 pl-0 pb-20 ${
-            coachOpen ? "" : "hidden"
-          }`}
-        >
-          <div className="h-full shadow-2xl shadow-black/60">
-            <CoachChat />
           </div>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => {
-          setCoachMounted(true);
-          setCoachOpen((o) => !o);
-        }}
-        className={`fixed bottom-5 right-5 z-50 px-5 py-3 rounded-full text-sm font-bold shadow-xl transition-colors cursor-pointer ${
-          coachOpen
-            ? "bg-gray-700 hover:bg-gray-600 text-white"
-            : "bg-orange-500 hover:bg-orange-400 text-white"
-        }`}
-      >
-        {coachOpen ? "Close coach" : "Coach"}
-      </button>
+      {/* Coach panel: mounted on the first open and kept mounted after, so the
+          conversation survives page switches and closing the panel. */}
+      {coachMounted && (
+        <div
+          className={`fixed inset-y-0 right-0 z-50 w-full p-4 sm:w-[420px] sm:pl-0 ${
+            coachOpen ? "" : "hidden"
+          }`}
+        >
+          <div className="h-full shadow-2xl shadow-black/60">
+            <CoachChat queued={queued} onClose={() => setCoachOpen(false)} />
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function NavItem({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+      className={`flex w-full cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left text-sm font-medium transition-colors ${
+        active ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-900 hover:text-white"
+      }`}
+    >
+      {active && <span className="-ml-1.5 h-4 w-[3px] rounded-sm bg-orange-500" aria-hidden />}
+      {children}
+    </button>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  ariaExpanded,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  ariaExpanded?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={ariaExpanded}
+      aria-current={active && ariaExpanded === undefined ? "page" : undefined}
+      className={`flex cursor-pointer flex-col items-center gap-1 px-2 py-1 text-[11px] font-semibold ${
+        active ? "text-white" : "text-gray-500"
+      }`}
+    >
+      <span className={`h-1 w-6 rounded-sm ${active ? "bg-orange-500" : "bg-gray-800"}`} aria-hidden />
+      {children}
+    </button>
   );
 }

@@ -41,7 +41,16 @@ function localTimeZone(): string | undefined {
   }
 }
 
-export function CoachChat() {
+interface Props {
+  /**
+   * A message typed into the dashboard's ask bar, to send as soon as the panel
+   * is ready. `id` changes per submission so the same text can be asked twice.
+   */
+  queued?: { id: number; text: string } | null;
+  onClose?: () => void;
+}
+
+export function CoachChat({ queued = null, onClose }: Props = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   // The active conversation id is only sent with requests, never rendered — a
   // ref avoids re-rendering the whole chat each time it changes.
@@ -60,7 +69,7 @@ export function CoachChat() {
   // we leave the panel fresh and let the next message open a new one. The
   // browser clock is the athlete's real timezone, so it is the most accurate
   // day-boundary signal.
-  useSWR<ChatHistory>("/api/chat/history", fetcher, {
+  const { isLoading: historyLoading } = useSWR<ChatHistory>("/api/chat/history", fetcher, {
     revalidateOnFocus: false,
     revalidateOnReconnect: false,
     // Seeded from onSuccess rather than an effect that mirrors `data` into
@@ -95,6 +104,18 @@ export function CoachChat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Waits for today's history first: sending before it lands would start a
+  // second conversation and then have the history overwrite the reply.
+  const sentQueuedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!queued || historyLoading || sentQueuedRef.current === queued.id) return;
+    sentQueuedRef.current = queued.id;
+    void send(queued.text);
+    // send is recreated every render; the ref above is what keeps this to one
+    // send per queued id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queued, historyLoading]);
 
   async function send(text: string) {
     const content = text.trim();
@@ -150,7 +171,7 @@ export function CoachChat() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-[14px] overflow-hidden">
       <div className="px-5 py-3 border-b border-gray-800 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
@@ -160,16 +181,28 @@ export function CoachChat() {
             Grounded in your last 12 months of Strava data
           </p>
         </div>
-        {messages.length > 0 && (
-          <button
-            type="button"
-            onClick={clearChat}
-            disabled={loading}
-            className="shrink-0 text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-full px-3 py-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            New chat
-          </button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={clearChat}
+              disabled={loading}
+              className="text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-[8px] px-3 py-1 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              New chat
+            </button>
+          )}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close coach"
+              className="text-xs text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-600 rounded-[8px] px-3 py-1 transition-colors cursor-pointer"
+            >
+              Close
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-4">
@@ -184,7 +217,7 @@ export function CoachChat() {
                   type="button"
                   key={s}
                   onClick={() => send(s)}
-                  className="text-left text-sm text-gray-300 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-gray-600 rounded-lg px-4 py-2.5 transition-colors cursor-pointer"
+                  className="text-left text-sm text-gray-300 bg-gray-800 hover:bg-gray-750 border border-gray-700 hover:border-gray-600 rounded-[10px] px-4 py-2.5 transition-colors cursor-pointer"
                 >
                   {s}
                 </button>
@@ -199,9 +232,9 @@ export function CoachChat() {
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
+              className={`max-w-[80%] rounded-[14px] px-4 py-2.5 text-sm whitespace-pre-wrap leading-relaxed ${
                 m.role === "user"
-                  ? "bg-orange-500 text-white"
+                  ? "bg-orange-500 text-[var(--accent-fg)]"
                   : "bg-gray-800 text-gray-200 border border-gray-700"
               }`}
             >
@@ -236,12 +269,12 @@ export function CoachChat() {
           onChange={(e) => setInput(e.target.value)}
           aria-label="Message to your coach"
           placeholder="Ask your coach..."
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+          className="flex-1 bg-gray-800 border border-gray-700 rounded-[10px] px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
         />
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="px-5 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer"
+          className="px-5 py-2.5 bg-orange-500 hover:bg-orange-400 disabled:opacity-40 disabled:cursor-not-allowed text-[var(--accent-fg)] text-sm font-semibold rounded-[10px] transition-colors cursor-pointer"
         >
           Send
         </button>

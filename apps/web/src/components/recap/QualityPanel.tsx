@@ -249,7 +249,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
           type="button"
           onClick={scan}
           disabled={scanning}
-          className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
+          className="cursor-pointer rounded-[10px] border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
         >
           {scanning
             ? "Reading sessions…"
@@ -308,7 +308,7 @@ export function QualityPanel({ recap: seed }: { recap: QualityRecap }) {
                 type="button"
                 onClick={() => setOpenSession(i)}
                 aria-pressed={i === openSession}
-                className={`cursor-pointer rounded-full border px-3 py-1 font-data text-[11px] transition-colors ${
+                className={`cursor-pointer rounded-[8px] border px-3 py-1 font-data text-[11px] transition-colors ${
                   i === openSession
                     ? "border-orange-500 bg-orange-500/15 text-orange-300"
                     : "border-gray-700 text-gray-500 hover:border-gray-600 hover:text-gray-300"

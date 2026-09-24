@@ -157,7 +157,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
   );
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5">
       {plan && summary ? (
         <>
           <SectionLabel
@@ -230,7 +230,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/70 cursor-default"
           />
-          <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-7">
+          <div className="relative bg-gray-900 border border-gray-800 rounded-[14px] w-full max-w-md p-7">
             <button
               type="button"
               aria-label="Close"

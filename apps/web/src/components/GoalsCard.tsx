@@ -8,7 +8,11 @@ import { SectionLabel } from "./SectionLabel";
 
 export const GOALS_KEY = "/api/goals";
 
-export function GoalsCard() {
+/**
+ * `compact` is the feed's side panel: the heading and list stay, the
+ * explanation goes, and the input's example shrinks to fit 300px.
+ */
+export function GoalsCard({ compact = false }: { compact?: boolean } = {}) {
   // No refreshKey prop any more: Sync revalidates this key directly.
   const { data, mutate } = useSWR<Goal[]>(GOALS_KEY, fetcher, {
     revalidateOnFocus: false,
@@ -47,11 +51,17 @@ export function GoalsCard() {
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
-      <SectionLabel className="mb-1">Goals</SectionLabel>
-      <p className="text-gray-600 text-xs mb-4 pl-[14px]">
-        Your AI coach reads these and aligns all advice and analysis with them.
-      </p>
+    <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5">
+      {compact ? (
+        <h2 className="font-data text-[11px] uppercase tracking-[0.12em] text-gray-500 mb-3">Goals</h2>
+      ) : (
+        <>
+          <SectionLabel className="mb-1">Goals</SectionLabel>
+          <p className="text-gray-600 text-xs mb-4 pl-[14px]">
+            Your AI coach reads these and aligns all advice and analysis with them.
+          </p>
+        </>
+      )}
 
       {goals.length > 0 && (
         <ul className="space-y-2 mb-4">
@@ -86,9 +96,13 @@ export function GoalsCard() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           aria-label="New goal"
-          placeholder='e.g. "Sub 1:45 at Copenhagen Half" or "Build toward a 70.3 next season"'
+          placeholder={
+            compact
+              ? "Add a goal"
+              : 'e.g. "Sub 1:45 at Copenhagen Half" or "Build toward a 70.3 next season"'
+          }
           maxLength={300}
-          className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
+          className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-orange-500"
         />
         <button
           type="submit"

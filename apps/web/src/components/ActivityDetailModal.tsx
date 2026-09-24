@@ -134,7 +134,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
         onClick={onClose}
         className="absolute inset-0 bg-black/70 cursor-default"
       />
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+      <div className="relative bg-gray-900 border border-gray-800 rounded-[14px] w-full max-w-3xl max-h-[85vh] overflow-y-auto">
         <div className="sticky top-0 bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-white font-bold text-lg leading-tight">

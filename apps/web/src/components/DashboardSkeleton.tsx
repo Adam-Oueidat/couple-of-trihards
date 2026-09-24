@@ -7,84 +7,79 @@
  * lets the server flush this shell immediately and stream the real dashboard in
  * behind it. First paint stops depending on how long the database takes.
  *
- * It deliberately mirrors the real Overview layout — same card shapes, same
- * 240px chart heights, same grid — so the swap is a fill-in rather than a
- * re-layout. A skeleton that does not match its content just moves the jank.
+ * It deliberately mirrors the real Feed layout — sidebar, week strip, the
+ * suggestion card, activity cards and the side panel — so the swap is a
+ * fill-in rather than a re-layout. A skeleton that does not match its content just moves the jank.
  */
 function Block({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded bg-white/5 ${className}`} />;
 }
 
-function Card({ children }: { children: React.ReactNode }) {
+function Card({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">{children}</div>
+    <div className={`rounded-[14px] border border-gray-800 bg-gray-900 p-5 ${className}`}>{children}</div>
   );
 }
 
 export function DashboardSkeleton() {
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="border-b border-gray-800 bg-gray-900">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between max-sm:flex-wrap max-sm:gap-y-3">
-          <div className="flex items-center gap-3">
-            <Block className="h-9 w-9 rounded-full" />
-            <div className="space-y-1.5">
-              {/* The wordmark is static, so it can be real rather than a bar —
-                  the header is identical in both states and never flickers. */}
-              <h1 className="font-display font-bold text-xl text-white leading-none uppercase tracking-wide">
-                Tri<span className="text-orange-500">Log</span>
-              </h1>
-              <Block className="h-3 w-24" />
-            </div>
-          </div>
-          <div className="flex items-center gap-4 max-sm:w-full max-sm:gap-2">
-            <Block className="h-9 w-[292px] rounded-lg max-sm:flex-1 max-sm:w-auto" />
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gray-950 text-white md:grid md:grid-cols-[220px_minmax(0,1fr)]">
+      <aside className="sticky top-0 hidden h-screen flex-col gap-1 border-r border-gray-800 px-3.5 py-6 md:flex">
+        {/* The wordmark is static, so it can be real rather than a bar. */}
+        <span className="mb-5 px-2.5 font-display text-2xl font-bold uppercase leading-none tracking-wide text-white">
+          Tri<span className="text-orange-500">Log</span>
+        </span>
+        {[0, 1, 2, 3].map((i) => (
+          <Block key={i} className="mx-2.5 my-2 h-4 w-24" />
+        ))}
+        <Block className="mx-2.5 mb-2 mt-6 h-3 w-14" />
+        {[0, 1, 2].map((i) => (
+          <Block key={i} className="mx-2.5 my-2 h-4 w-28" />
+        ))}
+      </aside>
 
-      <main className="max-w-7xl mx-auto px-4 py-6" aria-busy="true">
-        <div className="mb-5 flex items-center justify-end gap-3">
-          <Block className="h-7 w-24 rounded-full" />
-        </div>
+      <div className="min-w-0">
+        <header className="flex items-center border-b border-gray-800 px-4 py-3 md:hidden">
+          <span className="font-display text-xl font-bold uppercase leading-none tracking-wide text-white">
+            Tri<span className="text-orange-500">Log</span>
+          </span>
+        </header>
 
-        <div className="space-y-6">
-          <Block className="h-[268px] w-full rounded-2xl" />
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <Block className="h-3 w-32" />
-              <Block className="mt-4 h-[240px] w-full rounded-lg" />
+        <main
+          className="mx-auto grid max-w-[1080px] gap-8 px-4 pb-44 pt-6 md:px-8 md:pb-28 md:pt-8 xl:grid-cols-[minmax(0,1fr)_300px]"
+          aria-busy="true"
+        >
+          <div className="space-y-4">
+            <Block className="h-9 w-40" />
+            <Block className="h-2.5 w-full" />
+            <Block className="h-3 w-56" />
+            <Block className="mt-4 h-3 w-40" />
+            <Card className="space-y-4">
+              <Block className="h-5 w-32 rounded-full" />
+              <Block className="h-9 w-3/4" />
+              <Block className="h-24 w-full rounded-lg" />
             </Card>
-            <Card>
-              <Block className="h-3 w-48" />
-              <Block className="mt-4 h-[240px] w-full rounded-lg" />
-            </Card>
-          </div>
-
-          <Card>
-            <Block className="h-3 w-20" />
-            <Block className="mt-4 h-16 w-full rounded-lg" />
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <Card>
-                <Block className="h-3 w-36" />
-                <div className="mt-4 space-y-3">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <Block key={i} className="h-12 w-full rounded-lg" />
-                  ))}
-                </div>
+            {[0, 1].map((i) => (
+              <Card key={i} className="space-y-3">
+                <Block className="h-5 w-14 rounded-full" />
+                <Block className="h-5 w-1/2" />
+                <Block className="h-4 w-2/3" />
               </Card>
-            </div>
+            ))}
+          </div>
+          <div className="space-y-4">
             <Card>
-              <Block className="h-3 w-28" />
-              <Block className="mt-4 h-40 w-full rounded-lg" />
+              <Block className="h-3 w-16" />
+              <Block className="mt-3 h-9 w-28" />
+              <Block className="mt-4 h-20 w-full" />
+            </Card>
+            <Card>
+              <Block className="h-3 w-24" />
+              <Block className="mt-3 h-16 w-full" />
             </Card>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

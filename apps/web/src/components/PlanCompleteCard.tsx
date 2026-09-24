@@ -63,7 +63,7 @@ export function PlanCompleteCard({
   const weeks = weeksBetween(plan.startDate, plan.raceDate);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-5">
+    <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-6 mb-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <span className="font-display uppercase tracking-[0.2em] text-[13px] leading-none text-gray-400">
@@ -115,7 +115,7 @@ export function PlanCompleteCard({
             type="button"
             onClick={() => onViewChange(view === "notDone" ? "none" : "notDone")}
             aria-expanded={view === "notDone"}
-            className="cursor-pointer rounded-full border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-red-300 transition-colors hover:border-red-500/70 hover:bg-red-500/20"
+            className="cursor-pointer rounded-[10px] border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-red-300 transition-colors hover:border-red-500/70 hover:bg-red-500/20"
           >
             {view === "notDone" ? "Hide not done" : `Show ${notDone} not done`}
           </button>
@@ -124,7 +124,7 @@ export function PlanCompleteCard({
           type="button"
           onClick={() => onViewChange(view === "all" ? "none" : "all")}
           aria-expanded={view === "all"}
-          className="cursor-pointer rounded-full border border-gray-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
+          className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-300 transition-colors hover:border-gray-600 hover:text-white"
         >
           {view === "all" ? "Hide sessions" : `Show all ${adherence.total} sessions`}
         </button>
@@ -132,7 +132,7 @@ export function PlanCompleteCard({
           <button
             type="button"
             onClick={onUploadNew}
-            className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20"
+            className="cursor-pointer rounded-[10px] border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20"
           >
             Upload your next plan
           </button>
