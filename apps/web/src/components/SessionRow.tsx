@@ -1,4 +1,4 @@
-import type { SessionWithStatus } from "@trihards/core";
+import { formatDuration, type SessionWithStatus } from "@trihards/core";
 
 // Locale and field order are carried over verbatim from the week list this was
 // extracted from — the rows must keep formatting dates exactly as before.
@@ -54,17 +54,26 @@ export function SessionRow({ session }: { session: SessionWithStatus }) {
         </p>
         <p className="text-gray-500 text-xs">
           {formatSessionDate(session.date)} ·{" "}
-          {session.isCustom ? session.discipline : session.type.replace("_", " ")}
+          {session.isCustom
+            ? session.discipline
+            : `${session.discipline} · ${session.type.replace("_", " ")}`}
           {session.status === "skipped" && ` · ${session.skipReason ?? "no reason given"}`}
         </p>
       </div>
       <div className="text-right flex-shrink-0">
-        <p className="text-white text-sm font-semibold">
-          {session.actualKm !== undefined
-            ? `${session.actualKm} / ${session.km} km`
-            : `${session.km} km`}
-        </p>
+        <p className="text-white text-sm font-semibold">{sessionVolume(session)}</p>
       </div>
     </div>
   );
+}
+
+/** Done against planned, in whatever the session prescribes: km, else minutes. */
+function sessionVolume(s: SessionWithStatus): string {
+  if (s.km > 0) return s.actualKm !== undefined ? `${s.actualKm} / ${s.km} km` : `${s.km} km`;
+  if (s.durationMin) {
+    return s.actualMin !== undefined
+      ? `${formatDuration(s.actualMin)} / ${formatDuration(s.durationMin)}`
+      : formatDuration(s.durationMin);
+  }
+  return s.actualMin !== undefined ? formatDuration(s.actualMin) : "—";
 }

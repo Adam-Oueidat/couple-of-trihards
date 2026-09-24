@@ -1,9 +1,10 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { SESSION_TYPES, type SessionType } from "@trihards/core";
+import { SESSION_TYPES, type SessionType, type TrainingDiscipline } from "@trihards/core";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
+import { sessionLabel } from "./session-label";
 
 export interface EditSessionFormState {
   sessionId: string;
@@ -12,9 +13,14 @@ export interface EditSessionFormState {
   name: string;
   type: SessionType;
   km: number;
+  /** Planned minutes; 0 when the session prescribes none. */
+  durationMin: number;
+  /** The session's sport. Not editable: a different sport is a different session. */
+  discipline: TrainingDiscipline;
+  notes?: string;
   skipped: boolean;
   skipReason: string;
-  base: { name: string; type: SessionType; km: number } | null;
+  base: { name: string; type: SessionType; km: number; durationMin?: number } | null;
 }
 
 interface Props {
@@ -22,7 +28,6 @@ interface Props {
   setEditSessionForm: Dispatch<SetStateAction<EditSessionFormState | null>>;
   editSessionSaving: boolean;
   editSessionError: string | null;
-  planDiscipline: "swim" | "ride" | "run";
   hasSessionEdits: boolean;
   onSave: () => void;
   onRemove: () => void;
@@ -42,7 +47,6 @@ export function EditSessionModal({
   setEditSessionForm,
   editSessionSaving,
   editSessionError,
-  planDiscipline,
   hasSessionEdits,
   onSave,
   onRemove,
@@ -74,17 +78,17 @@ export function EditSessionModal({
         <div className="space-y-4">
           <div className="flex items-center gap-2 bg-gray-950/60 border border-gray-800 rounded-lg px-3 py-2">
             <DisciplineGlyph
-              discipline={planDiscipline}
+              discipline={editSessionForm.discipline}
               size={14}
               className="flex-shrink-0"
             />
             <span className="text-xs text-gray-500 flex-1 truncate">
               {editSessionForm.base
-                ? `Plan: ${editSessionForm.base.km}km ${editSessionForm.base.name}`
+                ? `Plan: ${sessionLabel(editSessionForm.base)}`
                 : "Plan session"}
             </span>
             <span
-              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL[planDiscipline]}`}
+              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-shrink-0 ${DISCIPLINE_PILL[editSessionForm.discipline]}`}
             >
               {editSessionForm.type.replace("_", " ")}
             </span>
@@ -104,7 +108,13 @@ export function EditSessionModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {editSessionForm.notes && (
+            <p className="rounded-lg border border-gray-800 px-3 py-2 text-xs leading-relaxed text-gray-400">
+              {editSessionForm.notes}
+            </p>
+          )}
+
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label htmlFor="session-type" className="block text-xs text-gray-500 mb-1">
                 Type
@@ -143,6 +153,26 @@ export function EditSessionModal({
                 type="number"
                 min={0}
                 step="0.1"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="session-duration" className="block text-xs text-gray-500 mb-1">
+                Duration (min)
+              </label>
+              <input
+                id="session-duration"
+                value={editSessionForm.durationMin || ""}
+                placeholder="—"
+                onChange={(e) =>
+                  setEditSessionForm({
+                    ...editSessionForm,
+                    durationMin: e.target.value === "" ? 0 : Number(e.target.value),
+                  })
+                }
+                type="number"
+                min={0}
+                step="5"
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500"
               />
             </div>

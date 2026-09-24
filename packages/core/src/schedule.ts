@@ -40,7 +40,7 @@ const LIVE_STATUSES = new Set<SessionStatus>(["completed", "partial", "today", "
 const PENDING_STATUSES = new Set<SessionStatus>(["today", "upcoming"]);
 
 export function disciplineOf(s: SessionWithStatus): TrainingDiscipline {
-  // Plan sessions are run sessions: the plans this app ingests are run plans.
+  // Every session carries its sport; the fallback only covers hand-built data.
   return s.discipline ?? "run";
 }
 
@@ -94,6 +94,7 @@ export function expectedSessionTss(
   const discipline = disciplineOf(s);
   const minutes =
     durationMin ??
+    s.durationMin ??
     (s.km > 0
       ? discipline === "swim"
         ? s.km * 25
@@ -106,7 +107,8 @@ export function expectedSessionTss(
   // counts; intensity sessions pack more load into each minute.
   const isRace = !s.isCustom && (s.type === "race" || s.type === "time_trial");
   const isLong = discipline === "run" && (s.km >= LONG_RUN_KM || (!s.isCustom && s.type === "long"));
-  let factor = discipline === "ride" ? 0.8 : 1;
+  // Same per-minute weights estimateTSS uses for done activities.
+  let factor = discipline === "ride" ? 0.8 : discipline === "strength" ? 0.6 : 1;
   if (isRace) factor *= 1.5;
   else if (!isLong && isHardSession(s)) factor *= 1.3;
   return Math.round(minutes * factor);

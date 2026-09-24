@@ -5,6 +5,7 @@ import { StravaActivity } from "@trihards/core";
 import { getDiscipline } from "@trihards/core";
 import {
   applyPlanOverrides,
+  planSessions as sessionsOfPlan,
   type PlannedSession,
   type TrainingPlan,
 } from "@trihards/core";
@@ -120,16 +121,10 @@ export function CalendarTab({ activities, plan, edits }: Props) {
   const weeks = monthGrid(year, month);
   const today = toDateStr(new Date());
 
-  // The plan prescribes a single discipline, so plan chips and their
-  // completion check follow it rather than assuming every plan is a run plan.
-  const planDiscipline: "swim" | "ride" | "run" =
-    plan?.discipline === "ride" || plan?.discipline === "swim"
-      ? plan.discipline
-      : "run";
-
   // Apply overrides to plan sessions to get current scheduled dates
   const planSessions = useMemo(
-    () => applyPlanOverrides(plan?.sessions ?? [], overrides),
+    // planSessions gives every session its sport, whatever shape the plan came in.
+    () => applyPlanOverrides(sessionsOfPlan(plan), overrides),
     [plan, overrides]
   );
 
@@ -321,6 +316,7 @@ export function CalendarTab({ activities, plan, edits }: Props) {
             name: existing?.name,
             type: existing?.type,
             km: existing?.km,
+            durationMin: existing?.durationMin,
             skipped: existing?.skipped,
             skipReason: existing?.skipReason,
           }),
@@ -433,10 +429,13 @@ export function CalendarTab({ activities, plan, edits }: Props) {
       name: s.name,
       type: s.type,
       km: s.km,
+      durationMin: s.durationMin ?? 0,
+      discipline: s.discipline,
+      notes: s.notes,
       skipped: s.skipped === true,
       skipReason: s.skipReason ?? "",
       base: planned
-        ? { name: planned.name, type: planned.type, km: planned.km }
+        ? { name: planned.name, type: planned.type, km: planned.km, durationMin: planned.durationMin }
         : null,
     });
     setEditSessionError(null);
@@ -452,6 +451,10 @@ export function CalendarTab({ activities, plan, edits }: Props) {
     }
     if (!Number.isFinite(form.km) || form.km < 0) {
       setEditSessionError("Distance must be a non-negative number.");
+      return;
+    }
+    if (!Number.isFinite(form.durationMin) || form.durationMin < 0 || form.durationMin > 1000) {
+      setEditSessionError("Duration must be between 0 and 1000 minutes.");
       return;
     }
 
@@ -471,6 +474,8 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           name: base && name === base.name ? undefined : name,
           type: base && form.type === base.type ? undefined : form.type,
           km: base && form.km === base.km ? undefined : form.km,
+          durationMin:
+            base && form.durationMin === (base.durationMin ?? 0) ? undefined : form.durationMin,
           skipped: form.skipped,
           skipReason: form.skipped ? form.skipReason : undefined,
         }),
@@ -575,7 +580,6 @@ export function CalendarTab({ activities, plan, edits }: Props) {
         onDayDragOver={onDayDragOver}
         onDayDragLeave={onDayDragLeave}
         onDayDrop={onDayDrop}
-        planDiscipline={planDiscipline}
         setForm={setForm}
         openSessionEditor={openSessionEditor}
         openWorkoutEditor={openWorkoutEditor}
@@ -594,7 +598,6 @@ export function CalendarTab({ activities, plan, edits }: Props) {
         agendaDays={agendaDays}
         today={today}
         agendaDefaultDate={agendaDefaultDate}
-        planDiscipline={planDiscipline}
         setForm={setForm}
         openSessionEditor={openSessionEditor}
         openWorkoutEditor={openWorkoutEditor}
@@ -642,7 +645,6 @@ export function CalendarTab({ activities, plan, edits }: Props) {
           setEditSessionForm={setEditSessionForm}
           editSessionSaving={editSessionSaving}
           editSessionError={editSessionError}
-          planDiscipline={planDiscipline}
           hasSessionEdits={hasSessionEdits}
           onSave={saveSessionEdits}
           onRemove={hideSession}

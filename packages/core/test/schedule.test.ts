@@ -74,7 +74,10 @@ function custom(date: string, name: string, over: Partial<CustomWorkoutInput> = 
   return { id: `w-${nextId++}`, date, discipline: "run", name, distanceKm: 10, ...over };
 }
 
-function planWith(sessions: Omit<PlannedSession, "id" | "originalDate">[], raceDate = day(40)): TrainingPlan {
+type SessionSpec = Omit<PlannedSession, "id" | "originalDate" | "discipline"> &
+  Partial<Pick<PlannedSession, "discipline">>;
+
+function planWith(sessions: SessionSpec[], raceDate = day(40)): TrainingPlan {
   return {
     name: "Block",
     source: "runna",
@@ -82,7 +85,7 @@ function planWith(sessions: Omit<PlannedSession, "id" | "originalDate">[], raceD
     startDate: day(-30),
     raceDate,
     raceName: "Race",
-    sessions: sessions.map((s, i) => ({ ...s, id: `p${i}`, originalDate: s.date })),
+    sessions: sessions.map((s, i) => ({ discipline: "run", ...s, id: `p${i}`, originalDate: s.date })),
   };
 }
 

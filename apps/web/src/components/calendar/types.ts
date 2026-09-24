@@ -9,7 +9,6 @@ import type { AddFormState } from "./AddWorkoutModal";
  * repeating six props each.
  */
 export interface CalendarDayActions {
-  planDiscipline: "swim" | "ride" | "run";
   setForm: Dispatch<SetStateAction<AddFormState | null>>;
   openSessionEditor: (s: PlannedSession) => void;
   openWorkoutEditor: (w: CustomWorkout) => void;

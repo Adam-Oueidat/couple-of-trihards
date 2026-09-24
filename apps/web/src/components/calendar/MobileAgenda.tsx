@@ -4,6 +4,7 @@ import type { PlannedSession } from "@trihards/core";
 import type { CustomWorkout } from "@/lib/workouts";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
+import { sessionLabel } from "./session-label";
 import { SKIPPED_BADGE, SKIPPED_CHIP, type CalendarDayActions } from "./types";
 
 // Built once at module scope rather than per render: constructing an
@@ -40,7 +41,6 @@ export function MobileAgenda({
   agendaDays,
   today,
   agendaDefaultDate,
-  planDiscipline,
   setForm,
   openSessionEditor,
   openWorkoutEditor,
@@ -118,11 +118,11 @@ export function MobileAgenda({
                           type="button"
                           onClick={() => openSessionEditor(s)}
                           className={`flex-1 min-w-0 px-2.5 py-2 rounded-lg border text-xs leading-tight flex items-center gap-2 text-left cursor-pointer ${
-                            skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[planDiscipline]
+                            skipped ? SKIPPED_CHIP : DISCIPLINE_PILL[s.discipline]
                           } ${
                             skipped
                               ? ""
-                              : done?.has(planDiscipline) && s.date <= today
+                              : done?.has(s.discipline) && s.date <= today
                                 ? ""
                                 : s.date < today
                                   ? "opacity-50 line-through"
@@ -130,7 +130,7 @@ export function MobileAgenda({
                           } ${moved ? "ring-1 ring-orange-500/40" : ""}`}
                         >
                           <DisciplineGlyph
-                            discipline={planDiscipline}
+                            discipline={s.discipline}
                             size={12}
                             className="flex-shrink-0 opacity-80"
                           />
@@ -138,7 +138,7 @@ export function MobileAgenda({
                             <span
                               className={`block truncate ${skipped ? "line-through" : ""}`}
                             >
-                              {s.km}km {s.name}
+                              {sessionLabel(s)}
                             </span>
                             {/* The reason sits under the name rather than in a
                                 tooltip: there is no hover on a phone. */}

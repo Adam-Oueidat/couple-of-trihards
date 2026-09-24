@@ -309,9 +309,21 @@ ${opts.priorSummary}\n`
     .filter((s) => s.date > today)
     .slice(0, 7);
 
+  // "run, tempo, 10km, 50min" — the sport first, then whatever the session
+  // prescribes. A strength session may prescribe nothing measurable.
+  const prescription = (s: { discipline?: string; type: string; km: number; durationMin?: number }) =>
+    [s.discipline, s.type, s.km > 0 ? `${s.km}km` : null, s.durationMin ? `${s.durationMin}min` : null]
+      .filter(Boolean)
+      .join(", ");
+
   const sessionLine = (s: (typeof sessions)[number]) => {
     const actual =
-      s.actualKm !== undefined ? ` (actual: ${s.actualKm}km)` : "";
+      s.actualKm !== undefined
+        ? s.km > 0 || !s.durationMin
+          ? ` (actual: ${s.actualKm}km${s.actualMin ? `, ${s.actualMin}min` : ""})`
+          : ` (actual: ${s.actualMin}min)`
+        : "";
+    const notes = s.notes ? ` — ${s.notes}` : "";
     // The reason rides along on the session's own line as well as in the block
     // below, so the coach never has to cross-reference two lists to know why a
     // session in the adherence window is marked skipped.
@@ -321,7 +333,7 @@ ${opts.priorSummary}\n`
         : "";
     // The id is what move_session takes. Without it the coach can describe a
     // session but not act on one.
-    return `- ${s.date} [${s.status}] ${s.name} (${s.type}, ${s.km}km)${actual}${skip} [id: ${s.id}]`;
+    return `- ${s.date} [${s.status}] ${s.name} (${prescription(s)})${actual}${notes}${skip} [id: ${s.id}]`;
   };
 
   // Sessions that look like they were simply done on the wrong day, worked out
@@ -332,15 +344,15 @@ ${opts.priorSummary}\n`
   // act on.
   const misdated = findMisdatedSessions(plan, activities, overrides, today);
   const misdatedSection = misdated.length
-    ? `\n## Sessions that look mis-dated (a matching ${plan?.discipline ?? "run"} exists within a day)
+    ? `\n## Sessions that look mis-dated (a same-sport activity exists within a day)
 These are graded "missed" only because the athlete trained on the adjacent day.
 Raise them, and if they confirm, call move_session to put each one on the day it
 actually happened. Do not move anything they have not agreed to.
 ${misdated
   .map(
     (m) =>
-      `- [id: ${m.session.id}] ${m.session.date} "${m.session.name}" (${m.session.km}km) — ` +
-      `"${m.activity.name}" ${m.activity.km}km on ${m.activity.date} ` +
+      `- [id: ${m.session.id}] ${m.session.date} "${m.session.name}" (${prescription(m.session)}) — ` +
+      `"${m.activity.name}" ${m.activity.km}km/${m.activity.minutes}min on ${m.activity.date} ` +
       `(${m.offsetDays > 0 ? "+" : ""}${m.offsetDays} day)`,
   )
   .join("\n")}`
@@ -356,7 +368,7 @@ ${misdated
         .map((o) => {
           const session = plan.sessions.find((s) => s.id === o.sessionId);
           const label = session
-            ? `${session.name} (${session.type}, ${session.km}km)`
+            ? `${session.name} (${prescription(session)})`
             : o.sessionId;
           return `- ${o.newDate} "${label}": ${o.skipReason ?? "no reason given"}`;
         })
