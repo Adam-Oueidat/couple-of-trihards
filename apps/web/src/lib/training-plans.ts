@@ -86,6 +86,13 @@ async function latestRow(userId: string): Promise<TrainingPlanRow | null> {
  * A plan that had already finished contributes nothing.
  */
 async function overlappedPredecessor(userId: string, latest: TrainingPlanRow): Promise<TrainingPlan | null> {
+  return (await overlappedPredecessorRow(userId, latest))?.plan ?? null;
+}
+
+async function overlappedPredecessorRow(
+  userId: string,
+  latest: TrainingPlanRow,
+): Promise<{ row: TrainingPlanRow; raw: RawTrainingPlan; plan: TrainingPlan } | null> {
   const db = getDb();
   const [row] = await db
     .select()
@@ -96,10 +103,11 @@ async function overlappedPredecessor(userId: string, latest: TrainingPlanRow): P
     .offset(1);
   if (!row) return null;
   try {
-    const plan = buildTrainingPlan(parseRawTrainingPlan(rowToRawPlan(row)));
+    const raw = parseRawTrainingPlan(rowToRawPlan(row));
+    const plan = buildTrainingPlan(raw);
     const end = plan.sessions[plan.sessions.length - 1]?.date ?? plan.raceDate;
     const savedOn = new Date(latest.createdAt * 1000).toISOString().slice(0, 10);
-    return end >= savedOn && plan.startDate < latest.startDate ? plan : null;
+    return end >= savedOn && plan.startDate < latest.startDate ? { row, raw, plan } : null;
   } catch {
     return null;
   }
@@ -227,6 +235,39 @@ export async function saveTrainingPlan(
     sessions: raw.sessions.length,
   });
   return rowToSummary(row, true);
+}
+
+export interface StoredPlan {
+  id: string;
+  raw: RawTrainingPlan;
+}
+
+/**
+ * The plans behind the athlete's schedule exactly as stored: the latest one,
+ * and the one before it when its sessions carry on until the latest starts.
+ * What coach adjustments read and rewrite.
+ */
+export async function getAdjustablePlans(
+  userId: string,
+): Promise<{ latest: StoredPlan; carried: StoredPlan | null } | null> {
+  const row = await latestRow(userId);
+  if (!row) return null;
+  try {
+    const latest = { id: row.id, raw: parseRawTrainingPlan(rowToRawPlan(row)) };
+    const before = await overlappedPredecessorRow(userId, row);
+    return { latest, carried: before ? { id: before.row.id, raw: before.raw } : null };
+  } catch {
+    return null;
+  }
+}
+
+/** Replaces a plan's sessions (and its discipline, which can become "multi"). */
+export async function replacePlanSessions(userId: string, planId: string, raw: RawTrainingPlan): Promise<void> {
+  const next = parseRawTrainingPlan(raw);
+  await getDb()
+    .update(trainingPlans)
+    .set({ sessions: next.sessions, discipline: next.discipline as "swim" | "ride" | "run" | "multi" })
+    .where(and(eq(trainingPlans.id, planId), eq(trainingPlans.userId, userId)));
 }
 
 export async function deleteTrainingPlan(
