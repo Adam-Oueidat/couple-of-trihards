@@ -24,6 +24,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Migrate BEFORE the new image ships. App Runner serves the new code
+      # from the moment it is pushed, and prod shares this database with dev,
+      # so a column the code expects must already exist. Unapplied migrations
+      # broke every dashboard render twice (0006, 0007) before this step
+      # existed. Keep migrations additive (new nullable columns, new tables):
+      # the old code is still serving while this runs.
+      - uses: pnpm/action-setup@v4 # reads packageManager from package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter @trihards/db...
+      - name: Apply database migrations
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          if [ -z "$TURSO_DATABASE_URL" ] || [ -z "$TURSO_AUTH_TOKEN" ]; then
+            echo "::error::TURSO_DATABASE_URL and TURSO_AUTH_TOKEN repo secrets are required to migrate before deploying."
+            exit 1
+          fi
+          pnpm --filter @trihards/db migrate
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
