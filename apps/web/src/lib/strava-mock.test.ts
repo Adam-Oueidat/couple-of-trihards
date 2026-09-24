@@ -17,8 +17,16 @@ describe("dev Strava mock gating", () => {
     expect(isMockAccessToken(MOCK_ACCESS_TOKEN)).toBe(false);
   });
 
+  it("is off against a remote database, even under next dev", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("TURSO_DATABASE_URL", "libsql://example.turso.io");
+    expect(devMockEnabled()).toBe(false);
+    expect(isMockAccessToken(MOCK_ACCESS_TOKEN)).toBe(false);
+  });
+
   it("only answers the mock token", () => {
     vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("TURSO_DATABASE_URL", "file:.data/local.db");
     expect(isMockAccessToken(MOCK_ACCESS_TOKEN)).toBe(true);
     expect(isMockAccessToken("a-real-strava-token")).toBe(false);
   });

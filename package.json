@@ -5,6 +5,7 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:mock": "TURSO_DATABASE_URL=file:$PWD/apps/web/.data/local.db pnpm --filter @trihards/db migrate && pnpm --filter @trihards/web dev:mock",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
