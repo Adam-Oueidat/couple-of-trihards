@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
 import { isAdminAthlete, resolveSession, type ResolvedSession } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 import { DashboardSkeleton } from "@/components/DashboardSkeleton";
@@ -19,6 +20,7 @@ import {
   type WeeklyVolume,
 } from "@trihards/core";
 import { DashboardClient } from "@/components/DashboardClient";
+import { TAB_TITLES, tabFromSegments } from "@/components/dashboard-tabs";
 import { athleteOffsetMs, resolveToday } from "@/lib/coach-dates";
 import { getActiveTrainingPlan, getLatestFinishedPlan } from "@/lib/training-plans";
 import { getOverrides } from "@/lib/plan-overrides";
@@ -41,7 +43,20 @@ const DISPLAY_WEEKS = 12;
  * milliseconds; everything expensive lives in DashboardData, behind the
  * Suspense boundary, and streams in after the shell has already painted.
  */
-export default async function DashboardPage() {
+interface PageProps {
+  params: Promise<{ tab?: string[] }>;
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const tab = tabFromSegments((await params).tab);
+  return { title: tab && tab !== "feed" ? `${TAB_TITLES[tab]} · TriLog` : "TriLog" };
+}
+
+export default async function DashboardPage({ params }: PageProps) {
+  // /dashboard is the feed; /dashboard/<page> is one of the sidebar pages.
+  // Anything else is not a page.
+  if (!tabFromSegments((await params).tab)) notFound();
+
   const session = await getSession();
   if (!session.tokens) redirect("/");
 
