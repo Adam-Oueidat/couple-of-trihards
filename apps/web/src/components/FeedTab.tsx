@@ -390,7 +390,13 @@ const THRESHOLD_SOURCE: Record<RunThreshold["source"], string> = {
   "steady-effort": "from a threshold-HR run",
 };
 
-function ThresholdsCard({ runThreshold }: { runThreshold: RunThreshold | null }) {
+export function ThresholdsCard({
+  runThreshold,
+  showWeight = false,
+}: {
+  runThreshold: RunThreshold | null;
+  showWeight?: boolean;
+}) {
   // Shares the Fitness page's cache entry, so this is no extra request once
   // either has loaded.
   const { data } = useSWR<{ athlete: { ftp?: number | null; weight?: number | null } | null }>(
@@ -415,6 +421,7 @@ function ThresholdsCard({ runThreshold }: { runThreshold: RunThreshold | null })
         />
         <RailRow label="Ride FTP" value={ftp ? `${ftp} W` : "—"} />
         {ftp && weight ? <RailRow label="W/kg" value={(ftp / weight).toFixed(2)} /> : null}
+        {showWeight && weight ? <RailRow label="Weight" value={`${weight} kg`} /> : null}
       </dl>
       {runThreshold && (
         <p className="mt-1 text-[11px] text-gray-600">Run pace {THRESHOLD_SOURCE[runThreshold.source]}</p>

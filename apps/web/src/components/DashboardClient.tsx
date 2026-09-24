@@ -41,7 +41,6 @@ import { OverviewHero } from "./OverviewHero";
 import { TrainingRecap } from "./TrainingRecap";
 import { FeedTab } from "./FeedTab";
 import { SectionLabel } from "./SectionLabel";
-import { LogoutButton } from "./LogoutButton";
 // The coach panel is behind a button and nobody sees it on first paint, but it
 // used to be imported statically AND mounted on every load — so its JS sat in
 // the initial bundle and its history fetch (/api/chat/history) ran on every
@@ -58,8 +57,9 @@ const PlannedVsActual = dynamic(
 );
 import { CalendarTab } from "./CalendarTab";
 import { PlanSourceCard } from "./PlanSourceCard";
-import { GoalsCard, GOALS_KEY } from "./GoalsCard";
-import { FitnessProfile, FITNESS_KEY } from "./FitnessProfile";
+import { GOALS_KEY } from "./GoalsCard";
+import { FITNESS_KEY } from "./FitnessProfile";
+import { ProfileTab } from "./ProfileTab";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
@@ -110,21 +110,14 @@ interface Props {
   analyses: Record<number, string>;
 }
 
-type Tab = "feed" | "plan" | "calendar" | "activities" | "recap" | "fitness" | "goals";
+type Tab = "feed" | "plan" | "calendar" | "activities" | "recap" | "profile";
 
 const PRIMARY: { id: Tab; label: string }[] = [
   { id: "feed", label: "Feed" },
   { id: "plan", label: "Plan" },
   { id: "calendar", label: "Calendar" },
   { id: "activities", label: "Activities" },
-];
-
-// Read a few times a block rather than daily, so they sit under their own
-// heading in the sidebar and behind "More" on a phone.
-const INSIGHT: { id: Tab; label: string }[] = [
   { id: "recap", label: "Recap" },
-  { id: "fitness", label: "Fitness profile" },
-  { id: "goals", label: "Goals" },
 ];
 
 const TITLES: Record<Tab, string> = {
@@ -133,8 +126,7 @@ const TITLES: Record<Tab, string> = {
   calendar: "Calendar",
   activities: "Activities",
   recap: "Recap",
-  fitness: "Fitness profile",
-  goals: "Goals",
+  profile: "Profile",
 };
 
 // "Synced …" label from a real sync timestamp (Unix millis). Only ever called
@@ -228,25 +220,11 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
     });
   }
 
-  // Phone-only "More" sheet: the insight pages, Admin, theme and Sign out,
-  // which the sidebar shows on larger screens.
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setMenuOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
-
   const recentWeeks = weeklyVolume.slice(-8);
   const recentLoad = trainingLoad.slice(-60);
 
   function go(next: Tab) {
     setTab(next);
-    setMenuOpen(false);
   }
 
   function openCoach(text?: string) {
@@ -308,42 +286,26 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               {item.label}
             </NavItem>
           ))}
-          <p className="px-2.5 pb-1.5 pt-5 font-data text-[11px] uppercase tracking-[0.16em] text-gray-600">
-            Insight
-          </p>
-          {INSIGHT.map((item) => (
-            <NavItem key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
-              {item.label}
-            </NavItem>
-          ))}
-          {isAdmin && (
-            <Link
-              href="/admin/licenses"
-              className="mt-3 rounded-[8px] px-2.5 py-2 text-sm font-medium text-orange-300 transition-colors hover:bg-orange-500/10 cursor-pointer"
-            >
-              Admin
-            </Link>
-          )}
         </nav>
 
         <div className="mt-auto space-y-3">
           <div className="px-2.5">{syncStatus}</div>
-          <div className="flex items-center gap-2.5 border-t border-gray-800 px-2.5 pt-3">
-            {athlete.profile && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={athlete.profile}
-                alt=""
-                className="h-7 w-7 rounded-full border-2 border-orange-500"
-              />
-            )}
-            <span className="min-w-0 flex-1 truncate text-[13px] text-gray-400">
-              {athlete.firstname} {athlete.lastname?.[0] ? `${athlete.lastname[0]}.` : ""}
-            </span>
+          <div className="flex items-center gap-2 border-t border-gray-800 pt-3">
+            {/* The athlete's own page: thresholds, fitness, goals, account. */}
+            <button
+              type="button"
+              onClick={() => go("profile")}
+              aria-current={tab === "profile" ? "page" : undefined}
+              className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-[8px] px-2.5 py-2 text-left transition-colors ${
+                tab === "profile" ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-900 hover:text-white"
+              }`}
+            >
+              <Avatar athlete={athlete} size="sm" />
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
+                {athlete.firstname} {athlete.lastname?.[0] ? `${athlete.lastname[0]}.` : ""}
+              </span>
+            </button>
             <ThemeToggle />
-          </div>
-          <div className="px-2.5">
-            <LogoutButton />
           </div>
         </div>
       </aside>
@@ -357,6 +319,15 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
             </span>
           </Link>
           <div className="min-w-0 flex-1">{syncStatus}</div>
+          <button
+            type="button"
+            onClick={() => go("profile")}
+            aria-label="Profile"
+            aria-current={tab === "profile" ? "page" : undefined}
+            className="shrink-0 cursor-pointer rounded-full"
+          >
+            <Avatar athlete={athlete} size="sm" />
+          </button>
         </header>
 
         <main className="mx-auto max-w-[1080px] px-4 pb-44 pt-6 md:px-8 md:pb-28 md:pt-8">
@@ -425,14 +396,8 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
                   plan's headline adherence. */}
               <TrainingRecap block={blockRecap} plan={planRecap} quality={qualityRecap} />
             </div>
-          ) : tab === "fitness" ? (
-            <div className="max-w-2xl">
-              <FitnessProfile />
-            </div>
           ) : (
-            <div className="max-w-2xl">
-              <GoalsCard />
-            </div>
+            <ProfileTab athlete={athlete} runThreshold={runThreshold} isAdmin={isAdmin} />
           )}
         </main>
 
@@ -475,45 +440,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
             {item.label}
           </TabButton>
         ))}
-        <TabButton
-          active={menuOpen || INSIGHT.some((i) => i.id === tab)}
-          onClick={() => setMenuOpen((o) => !o)}
-          ariaExpanded={menuOpen}
-        >
-          More
-        </TabButton>
       </nav>
-
-      {menuOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-label="More">
-          <button
-            type="button"
-            aria-label="Close menu"
-            onClick={() => setMenuOpen(false)}
-            className="absolute inset-0 cursor-pointer bg-black/50"
-          />
-          <div className="absolute inset-x-0 bottom-0 space-y-1 rounded-t-[14px] border-t border-gray-800 bg-gray-900 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)]">
-            {INSIGHT.map((item) => (
-              <NavItem key={item.id} active={tab === item.id} onClick={() => go(item.id)}>
-                {item.label}
-              </NavItem>
-            ))}
-            {isAdmin && (
-              <Link
-                href="/admin/licenses"
-                onClick={() => setMenuOpen(false)}
-                className="block rounded-[8px] px-2.5 py-2 text-sm font-medium text-orange-300 cursor-pointer"
-              >
-                Admin
-              </Link>
-            )}
-            <div className="flex items-center justify-between border-t border-gray-800 px-2.5 pt-3">
-              <ThemeToggle />
-              <LogoutButton />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Coach panel: mounted on the first open and kept mounted after, so the
           conversation survives page switches and closing the panel. */}
@@ -559,20 +486,17 @@ function NavItem({
 function TabButton({
   active,
   onClick,
-  ariaExpanded,
   children,
 }: {
   active: boolean;
   onClick: () => void;
-  ariaExpanded?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-expanded={ariaExpanded}
-      aria-current={active && ariaExpanded === undefined ? "page" : undefined}
+      aria-current={active ? "page" : undefined}
       className={`flex cursor-pointer flex-col items-center gap-1 px-2 py-1 text-[11px] font-semibold ${
         active ? "text-white" : "text-gray-500"
       }`}
@@ -580,5 +504,28 @@ function TabButton({
       <span className={`h-1 w-6 rounded-sm ${active ? "bg-orange-500" : "bg-gray-800"}`} aria-hidden />
       {children}
     </button>
+  );
+}
+
+/** The athlete's Strava photo, or their initial when Strava has none. */
+function Avatar({
+  athlete,
+  size,
+}: {
+  athlete: { firstname: string; profile: string };
+  size: "sm";
+}) {
+  const box = size === "sm" ? "h-7 w-7 text-[13px]" : "";
+  if (athlete.profile) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={athlete.profile} alt="" className={`${box} rounded-full border-2 border-orange-500`} />;
+  }
+  return (
+    <span
+      className={`${box} flex shrink-0 items-center justify-center rounded-full border-2 border-orange-500 font-display font-bold uppercase text-white`}
+      aria-hidden
+    >
+      {athlete.firstname[0]}
+    </span>
   );
 }
