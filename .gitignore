@@ -47,3 +47,4 @@ next-env.d.ts
 
 # Git worktrees Claude Code agents create for isolated work
 .claude/worktrees/
+.playwright-mcp/
