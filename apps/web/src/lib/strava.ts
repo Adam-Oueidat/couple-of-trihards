@@ -361,6 +361,9 @@ function toStravaActivity(a: StravaActivity): StravaActivity {
     weighted_average_watts: a.weighted_average_watts,
     trainer: a.trainer,
     manual: a.manual,
+    // Strava's race tag. The run-threshold estimate and the feed's race
+    // highlight both read it, so dropping it here hid every tagged race.
+    workout_type: a.workout_type,
   };
 }
 
