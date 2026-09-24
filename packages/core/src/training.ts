@@ -5,7 +5,17 @@ export function getDiscipline(activity: StravaActivity): Discipline {
   if (t === "Run" || t === "VirtualRun" || t === "TrailRun") return "run";
   if (t === "Ride" || t === "VirtualRide" || t === "GravelRide" || t === "MountainBikeRide" || t === "EBikeRide") return "ride";
   if (t === "Swim" || t === "OpenWaterSwim") return "swim";
+  if (t === "WeightTraining" || t === "Crossfit" || t === "Workout" || t === "HighIntensityIntervalTraining")
+    return "strength";
   return "other";
+}
+
+/**
+ * Swim, ride and run: the sports whose heart rate and pace describe aerobic
+ * fitness. Strength counts toward time and load but not toward those reads.
+ */
+export function isEnduranceDiscipline(d: Discipline): d is "run" | "ride" | "swim" {
+  return d === "run" || d === "ride" || d === "swim";
 }
 
 // Today's calendar date (YYYY-MM-DD) built from local Y/M/D parts — NOT
@@ -67,6 +77,7 @@ export function groupByWeek(activities: StravaActivity[]): WeeklyVolume[] {
         runTime: 0,
         rideTime: 0,
         swimTime: 0,
+        strengthTime: 0,
       });
     }
 
@@ -84,6 +95,8 @@ export function groupByWeek(activities: StravaActivity[]): WeeklyVolume[] {
       // keep swim in meters
       week.swim += act.distance;
       week.swimTime += mins;
+    } else if (discipline === "strength") {
+      week.strengthTime += mins;
     }
   }
 
@@ -105,7 +118,9 @@ export function estimateTSS(act: StravaActivity): number {
   // Rough proxy: 1 TSS per minute of easy effort
   const mins = act.moving_time / 60;
   const discipline = getDiscipline(act);
-  const intensityFactor = discipline === "ride" ? 0.8 : 1.0;
+  // Without a suffer score, a minute of lifting is not a minute of running:
+  // most of a strength session is rest between sets.
+  const intensityFactor = discipline === "ride" ? 0.8 : discipline === "strength" ? 0.6 : 1.0;
   return Math.round(mins * intensityFactor);
 }
 

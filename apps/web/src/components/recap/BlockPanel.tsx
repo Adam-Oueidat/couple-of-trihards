@@ -5,25 +5,27 @@ import {
   readBlock,
   timeShare,
   type BlockRecap,
-  type TriDiscipline,
+  type TrainingDiscipline,
 } from "@trihards/core";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { BlockStrip } from "./BlockStrip";
 import { Delta, MeterBar, Reads, Readout, Rule, pctChange } from "./parts";
 
-const DISCIPLINE_COLOR: Record<TriDiscipline, string> = {
+const DISCIPLINE_COLOR: Record<TrainingDiscipline, string> = {
   swim: "var(--swim)",
   ride: "var(--ride)",
   run: "var(--run)",
+  strength: "var(--strength)",
 };
 
-const DISCIPLINE_LABEL: Record<TriDiscipline, string> = {
+const DISCIPLINE_LABEL: Record<TrainingDiscipline, string> = {
   swim: "Swim",
   ride: "Ride",
   run: "Run",
+  strength: "Strength",
 };
 
-const ORDER: TriDiscipline[] = ["swim", "ride", "run"];
+const ORDER: TrainingDiscipline[] = ["swim", "ride", "run", "strength"];
 
 export function BlockPanel({ recap }: { recap: BlockRecap }) {
   const insights = readBlock(recap);
@@ -133,7 +135,7 @@ export function BlockPanel({ recap }: { recap: BlockRecap }) {
                 <div className="mt-1.5 font-data text-[11px] text-gray-500">
                   {now.sessions === 0
                     ? "nothing logged"
-                    : `${formatDuration(now.minutes)} · ${now.km.toFixed(1)} km · ${now.sessions} session${now.sessions === 1 ? "" : "s"}`}
+                    : `${formatDuration(now.minutes)}${key === "strength" ? "" : ` · ${now.km.toFixed(1)} km`} · ${now.sessions} session${now.sessions === 1 ? "" : "s"}`}
                 </div>
               </div>
               <div className="text-right">

@@ -1,5 +1,5 @@
 import { StravaActivity, AthleteZones } from "./types/strava";
-import { getDiscipline, localToday, formatSecondsAsClock, formatDuration } from "./training";
+import { getDiscipline, isEnduranceDiscipline, localToday, formatSecondsAsClock, formatDuration } from "./training";
 import { BLOCK_DAYS } from "./recap";
 import type { Insight, InsightTone } from "./recap";
 import {
@@ -148,7 +148,7 @@ export function buildQualityRecap(input: QualityRecapInput): QualityRecap {
   const runsInMix = input.activities.filter(
     (a) =>
       inWindow(a.start_date_local.split("T")[0], mixFrom, mixTo) &&
-      getDiscipline(a) !== "other" &&
+      isEnduranceDiscipline(getDiscipline(a)) &&
       a.average_heartrate,
   );
   const profileById = new Map(input.profiles.map((p) => [p.activityId, p]));

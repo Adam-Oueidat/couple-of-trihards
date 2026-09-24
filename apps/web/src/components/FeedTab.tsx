@@ -50,6 +50,7 @@ const DISCIPLINE: Record<Discipline, { label: string; color: string }> = {
   swim: { label: "Swim", color: "var(--swim)" },
   ride: { label: "Ride", color: "var(--ride)" },
   run: { label: "Run", color: "var(--run)" },
+  strength: { label: "Strength", color: "var(--strength)" },
   other: { label: "Other", color: "var(--text-muted)" },
 };
 
@@ -236,7 +237,8 @@ function WeekStrip({
   const prior = weeklyVolume.filter((w) => w.weekStart < currentWeek.weekStart).slice(-4);
   const avg = (fn: (w: WeeklyVolume) => number) =>
     prior.length ? prior.reduce((s, w) => s + fn(w), 0) / prior.length : 0;
-  const total = TRIAD.reduce((s, d) => s + d.time(currentWeek), 0);
+  // Strength has no volume to fill a segment with, but it is training time.
+  const total = TRIAD.reduce((s, d) => s + d.time(currentWeek), 0) + currentWeek.strengthTime;
 
   return (
     <section className="space-y-2.5">

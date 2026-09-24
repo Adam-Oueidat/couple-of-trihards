@@ -8,7 +8,8 @@ interface Props {
 
 // SVG path data is inlined (rather than loaded via <img>) so the icons
 // inherit currentColor from the parent and tint with the discipline color.
-// Source files live in /public/{swim,bike,run}.svg.
+// Source files live in /public/{swim,bike,run}.svg; the strength dumbbell is
+// drawn here.
 export function DisciplineGlyph({ discipline, size = 16, className = "" }: Props) {
   const baseProps = {
     width: size,
@@ -43,6 +44,14 @@ export function DisciplineGlyph({ discipline, size = 16, className = "" }: Props
       <svg {...baseProps} viewBox="0 0 210 178">
         <path d="M203 67L190 74L188 74L181 77L171 78L167 75L157 58L149 49L136 42L130 41L129 40L125 40L124 39L108 39L103 41L99 41L98 42L95 42L94 43L86 45L76 50L66 57L59 64L59 65L55 69L53 74L71 62L73 62L80 58L82 58L86 56L89 56L94 54L98 54L99 53L108 53L109 54L116 55L117 57L103 78L100 81L94 91L86 101L85 104L82 107L73 122L70 125L68 129L62 135L62 136L51 147L37 157L21 165L18 165L17 166L6 169L6 170L9 170L10 171L24 171L25 170L31 170L32 169L39 168L40 167L51 164L61 159L73 151L79 145L80 145L87 138L87 137L89 136L96 126L100 122L133 122L137 125L136 130L134 132L134 134L131 138L129 143L113 167L112 170L115 170L119 168L130 160L141 149L152 134L154 129L158 123L158 120L159 119L159 114L158 113L158 111L156 108L153 106L148 104L138 103L137 102L123 102L121 100L123 97L137 82L137 81L146 73L148 74L153 83L159 89L162 91L170 92L171 91L177 90L185 86L192 81L196 77L197 77L197 76L202 71Z" />
         <path d="M163 6L155 9L150 15L148 20L148 32L152 40L157 45L161 47L169 47L171 46L178 38L178 36L180 32L180 19L178 14L174 9L167 6Z" />
+      </svg>
+    );
+  }
+  if (discipline === "strength") {
+    // A dumbbell, drawn as plain rectangles to match the filled style above.
+    return (
+      <svg {...baseProps} viewBox="0 0 24 24">
+        <path d="M1 8.5h2v7H1z M3 4.5h4.5v15H3z M7.5 10h9v4h-9z M16.5 4.5H21v15h-4.5z M21 8.5h2v7h-2z" />
       </svg>
     );
   }

@@ -235,7 +235,8 @@ export async function buildTrainingContext(
       (w) =>
         `- Week of ${w.weekStart}: swim ${(w.swim / 1000).toFixed(1)}km/${Math.round(w.swimTime)}min, ` +
         `ride ${w.ride.toFixed(1)}km/${Math.round(w.rideTime)}min, ` +
-        `run ${w.run.toFixed(1)}km/${Math.round(w.runTime)}min`,
+        `run ${w.run.toFixed(1)}km/${Math.round(w.runTime)}min, ` +
+        `strength ${Math.round(w.strengthTime)}min`,
     )
     .join("\n");
 
@@ -248,7 +249,10 @@ export async function buildTrainingContext(
     const hr = a.average_heartrate
       ? `, avg HR ${a.average_heartrate.toFixed(0)}`
       : "";
-    return `- ${a.start_date_local.split("T")[0]} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
+    const day = a.start_date_local.split("T")[0];
+    // Strength has no distance or pace worth quoting; time and effort only.
+    if (d === "strength") return `- ${day} strength: "${a.name}" ${Math.round(a.moving_time / 60)}min${hr}`;
+    return `- ${day} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
   };
 
   const recentLines = activities.slice(0, 20).map(activityLine).join("\n");
@@ -515,9 +519,11 @@ function formatPaceFromSpeed(metersPerSecond: number): string {
 export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
   const discipline = getDiscipline(detail);
   const dist =
-    discipline === "swim"
-      ? `${detail.distance.toFixed(0)}m`
-      : `${(detail.distance / 1000).toFixed(2)}km`;
+    discipline === "strength"
+      ? "no distance (strength session)"
+      : discipline === "swim"
+        ? `${detail.distance.toFixed(0)}m`
+        : `${(detail.distance / 1000).toFixed(2)}km`;
 
   const splits = detail.splits_metric
     ?.map(

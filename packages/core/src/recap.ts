@@ -40,6 +40,15 @@ export type TriDiscipline = "swim" | "ride" | "run";
 
 export const TRI_DISCIPLINES: readonly TriDiscipline[] = ["swim", "ride", "run"];
 
+/**
+ * Everything that counts as training time: the three legs plus strength.
+ * Totals, daily breakdowns and time shares use this; insights about a leg
+ * "falling off" and the endurance-only reads stay on TRI_DISCIPLINES.
+ */
+export type TrainingDiscipline = TriDiscipline | "strength";
+
+export const TRAINING_DISCIPLINES: readonly TrainingDiscipline[] = ["swim", "ride", "run", "strength"];
+
 export interface DisciplineTotals {
   km: number;
   minutes: number;
@@ -51,7 +60,7 @@ export interface BlockTotals {
   minutes: number;
   elevation: number;
   tss: number;
-  byDiscipline: Record<TriDiscipline, DisciplineTotals>;
+  byDiscipline: Record<TrainingDiscipline, DisciplineTotals>;
 }
 
 export interface RecapDay {
@@ -61,7 +70,7 @@ export interface RecapDay {
   tss: number;
   minutes: number;
   /** The discipline that took the most time this day; null on a rest day. */
-  dominant: TriDiscipline | null;
+  dominant: TrainingDiscipline | null;
   /** Fitness (CTL) at the end of this day. */
   ctl: number;
 }
@@ -130,6 +139,7 @@ function emptyTotals(): BlockTotals {
       swim: { km: 0, minutes: 0, sessions: 0 },
       ride: { km: 0, minutes: 0, sessions: 0 },
       run: { km: 0, minutes: 0, sessions: 0 },
+      strength: { km: 0, minutes: 0, sessions: 0 },
     },
   };
 }
@@ -175,7 +185,7 @@ function finalizeTotals(totals: BlockTotals): BlockTotals {
   totals.minutes = round1(totals.minutes);
   totals.elevation = Math.round(totals.elevation);
   totals.tss = Math.round(totals.tss);
-  for (const key of TRI_DISCIPLINES) {
+  for (const key of TRAINING_DISCIPLINES) {
     const d = totals.byDiscipline[key];
     d.minutes = round1(d.minutes);
     d.km = round1(d.km);
@@ -255,7 +265,7 @@ export function buildBlockRecap(
     const acts = byDay.get(date) ?? [];
     let tss = 0;
     let minutes = 0;
-    const timeByDiscipline: Record<TriDiscipline, number> = { swim: 0, ride: 0, run: 0 };
+    const timeByDiscipline: Record<TrainingDiscipline, number> = { swim: 0, ride: 0, run: 0, strength: 0 };
     for (const act of acts) {
       const discipline = getDiscipline(act);
       if (discipline === "other") continue;
@@ -263,8 +273,8 @@ export function buildBlockRecap(
       minutes += act.moving_time / 60;
       timeByDiscipline[discipline] += act.moving_time / 60;
     }
-    let dominant: TriDiscipline | null = null;
-    for (const key of TRI_DISCIPLINES) {
+    let dominant: TrainingDiscipline | null = null;
+    for (const key of TRAINING_DISCIPLINES) {
       if (timeByDiscipline[key] > 0 && (!dominant || timeByDiscipline[key] > timeByDiscipline[dominant])) {
         dominant = key;
       }
@@ -332,7 +342,8 @@ export function buildBlockRecap(
     const day = act.start_date_local.split("T")[0];
     if (!inWindow(day, start, end)) continue;
     const discipline = getDiscipline(act);
-    if (discipline === "other") continue;
+    // The longest endurance session: an hour in the gym is not a long day.
+    if (discipline === "other" || discipline === "strength") continue;
     if (!longestSession || act.moving_time / 60 > longestSession.minutes) {
       longestSession = {
         name: act.name,
@@ -365,11 +376,11 @@ export function buildBlockRecap(
 }
 
 /** Share of a block's training time taken by each discipline, as percentages. */
-export function timeShare(totals: BlockTotals): Record<TriDiscipline, number> {
+export function timeShare(totals: BlockTotals): Record<TrainingDiscipline, number> {
   const total = totals.minutes;
-  const share = { swim: 0, ride: 0, run: 0 };
+  const share = { swim: 0, ride: 0, run: 0, strength: 0 };
   if (total <= 0) return share;
-  for (const key of TRI_DISCIPLINES) {
+  for (const key of TRAINING_DISCIPLINES) {
     share[key] = Math.round((totals.byDiscipline[key].minutes / total) * 100);
   }
   return share;
@@ -614,10 +625,11 @@ function hours(minutes: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-const DISCIPLINE_LABEL: Record<TriDiscipline, string> = {
+const DISCIPLINE_LABEL: Record<TrainingDiscipline, string> = {
   swim: "Swim",
   ride: "Ride",
   run: "Run",
+  strength: "Strength",
 };
 
 /**
