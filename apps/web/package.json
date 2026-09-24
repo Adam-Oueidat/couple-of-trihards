@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:mock": "TURSO_DATABASE_URL=file:.data/local.db next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

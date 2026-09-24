@@ -35,9 +35,18 @@ export const MOCK_ATHLETE = {
   lastname: "Athlete",
 };
 
-/** Only `next dev`. `next start` and tests run with another NODE_ENV. */
+/**
+ * Only under `next dev`, and only against a local database file.
+ *
+ * The first condition keeps it out of production builds. The second matters as
+ * much: the everyday dev server points at the live Turso database, so a mock
+ * sign-in there would write a fake athlete, licence and cache rows into
+ * production. `pnpm dev:mock` runs the dev server on apps/web/.data/local.db.
+ */
 export function devMockEnabled(): boolean {
-  return process.env.NODE_ENV === "development";
+  if (process.env.NODE_ENV !== "development") return false;
+  const url = process.env.TURSO_DATABASE_URL ?? "";
+  return url.startsWith("file:") || url === ":memory:";
 }
 
 export function isMockAccessToken(token: string): boolean {
