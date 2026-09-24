@@ -59,10 +59,23 @@ export const PLAN_PARSE_MODEL =
 export const PLAN_PARSE_FALLBACK_MODEL =
   process.env.PLAN_PARSE_FALLBACK_MODEL ?? "claude-opus-5";
 
+/**
+ * Writes a whole training plan from the athlete's request and data. The
+ * hardest reasoning the app asks for — months of periodisation in one pass —
+ * so it gets the strongest model, run in the background (see plan-drafts).
+ */
+export const PLAN_BUILD_MODEL =
+  process.env.PLAN_BUILD_MODEL ?? "claude-opus-5-5";
+
+/** Same role as PLAN_PARSE_FALLBACK_MODEL, for plan building. */
+export const PLAN_BUILD_FALLBACK_MODEL =
+  process.env.PLAN_BUILD_FALLBACK_MODEL ?? "claude-opus-5";
+
 /** Every pinned role, for `pnpm models:check` to report against. */
 export const PINNED_MODELS = {
   COACH_MODEL,
   ANALYSIS_MODEL,
   SUMMARY_MODEL,
   PLAN_PARSE_MODEL,
+  PLAN_BUILD_MODEL,
 } as const;

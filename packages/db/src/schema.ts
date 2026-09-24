@@ -400,6 +400,29 @@ export const scanState = sqliteTable(
   (t) => [primaryKey({ columns: [t.userId, t.kind] })],
 );
 
+// A plan the coach is writing, or has written, before the athlete saves it.
+// Generation runs in the background (it can outlast a request timeout), so
+// the request, progress and result live here and the page polls for them.
+// `input` and `result` are JSON; the result is re-validated before it is saved.
+export const planDrafts = sqliteTable(
+  "plan_drafts",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "ready", "failed", "saved", "discarded"] }).notNull(),
+    input: text("input", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+    result: text("result", { mode: "json" }).$type<Record<string, unknown>>(),
+    error: text("error"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at")
+      .notNull()
+      .$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  (t) => [index("plan_drafts_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type License = typeof licenses.$inferSelect;
@@ -420,6 +443,7 @@ export type StravaCacheEntry = typeof stravaCache.$inferSelect;
 export type ActivityQualityRow = typeof activityQuality.$inferSelect;
 export type NewActivityQualityRow = typeof activityQuality.$inferInsert;
 export type ScanStateRow = typeof scanState.$inferSelect;
+export type PlanDraftRow = typeof planDrafts.$inferSelect;
 
 // Suppress unused-import warning for `sql` if no schema entry uses it.
 void sql;

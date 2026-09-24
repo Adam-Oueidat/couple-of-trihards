@@ -79,6 +79,32 @@ async function latestRow(userId: string): Promise<TrainingPlanRow | null> {
  * athlete's sessions ("Drop Set" intervals) into another athlete's coaching,
  * and a corrupt stored row degrades to "no plan" for the same reason.
  */
+/**
+ * The plan before the latest one, when it was still running on the day the
+ * latest one was saved: its sessions up to the new start stay the athlete's
+ * schedule, whether it overlapped the new plan or ended the day before it.
+ * A plan that had already finished contributes nothing.
+ */
+async function overlappedPredecessor(userId: string, latest: TrainingPlanRow): Promise<TrainingPlan | null> {
+  const db = getDb();
+  const [row] = await db
+    .select()
+    .from(trainingPlans)
+    .where(eq(trainingPlans.userId, userId))
+    .orderBy(desc(trainingPlans.createdAt), desc(trainingPlans.id))
+    .limit(1)
+    .offset(1);
+  if (!row) return null;
+  try {
+    const plan = buildTrainingPlan(parseRawTrainingPlan(rowToRawPlan(row)));
+    const end = plan.sessions[plan.sessions.length - 1]?.date ?? plan.raceDate;
+    const savedOn = new Date(latest.createdAt * 1000).toISOString().slice(0, 10);
+    return end >= savedOn && plan.startDate < latest.startDate ? plan : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getActiveTrainingPlan(
   userId: string,
 ): Promise<ActiveTrainingPlan | null> {
@@ -89,7 +115,25 @@ export async function getActiveTrainingPlan(
     // Re-validate on read: the JSON column may have been written by an older
     // version of the app, and a malformed plan must not break the dashboard.
     const raw = parseRawTrainingPlan(rowToRawPlan(row));
-    return { summary: rowToSummary(row, true), plan: buildTrainingPlan(raw) };
+    const plan = buildTrainingPlan(raw);
+    // "The old plan ends when the new one starts": its sessions before the new
+    // start carry on, so the weeks in between are not left empty. Session ids
+    // are unchanged, so the athlete's edits to them still apply.
+    const before = await overlappedPredecessor(userId, row);
+    if (before) {
+      const carried = before.sessions.filter((s) => s.date < plan.startDate);
+      const sports = new Set([...carried, ...plan.sessions].map((s) => s.discipline));
+      return {
+        summary: rowToSummary(row, true),
+        plan: {
+          ...plan,
+          discipline: sports.size > 1 ? "multi" : plan.discipline,
+          startDate: before.startDate,
+          sessions: [...carried, ...plan.sessions],
+        },
+      };
+    }
+    return { summary: rowToSummary(row, true), plan };
   } catch (err) {
     log.error("stored plan failed validation; treating this athlete as having no plan", {
       userId,

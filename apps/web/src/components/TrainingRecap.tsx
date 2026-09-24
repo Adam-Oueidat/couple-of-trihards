@@ -65,7 +65,7 @@ export function TrainingRecap({ block, plan, quality }: Props) {
             {active === "block"
               ? range
               : active === "plan"
-                ? plan?.raceName
+                ? plan?.raceName || plan?.name
                 : "how hard, how fast, how it went"}
           </span>
         </div>

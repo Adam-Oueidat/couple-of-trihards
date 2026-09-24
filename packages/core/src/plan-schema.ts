@@ -197,7 +197,8 @@ export function parseRawTrainingPlan(input: unknown): RawTrainingPlan {
   }
   const startDate = requireDate(o.startDate, "startDate");
   const raceDate = requireDate(o.raceDate, "raceDate");
-  const raceName = requireString(o.raceName, "raceName");
+  // Empty when the plan builds to no race: it simply ends on raceDate.
+  const raceName = o.raceName === "" ? "" : requireString(o.raceName, "raceName");
 
   if (raceDate < startDate) fail("raceDate must be on or after startDate");
 

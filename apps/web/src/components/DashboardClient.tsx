@@ -58,6 +58,8 @@ const PlannedVsActual = dynamic(
 );
 import { CalendarTab } from "./CalendarTab";
 import { PlanSourceCard } from "./PlanSourceCard";
+import { CreatePlanDialog } from "./plan-draft/CreatePlanDialog";
+import { PlanDraftPanel } from "./plan-draft/PlanDraftPanel";
 import { GOALS_KEY } from "./GoalsCard";
 import { FITNESS_KEY } from "./FitnessProfile";
 import { ProfileTab } from "./ProfileTab";
@@ -145,6 +147,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
   // The plan-upload dialog is opened from two places — the plan card itself
   // and "Upload your next plan" on a finished plan — so the shell owns it.
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   // Latches on the first open and never clears: the panel still has to survive
   // tab switches and being closed again, so once mounted it stays mounted and
@@ -359,13 +362,21 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
             />
           ) : tab === "plan" ? (
             <div className="space-y-6">
+              {/* A draft the coach is writing, or has written, sits above the
+                  current plan until it is saved or thrown away. */}
+              <PlanDraftPanel
+                onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
+                onStartOver={() => setCreateOpen(true)}
+              />
               <PlanSourceCard
                 plan={plan.plan}
                 summary={plan.summary}
                 onPlanChange={(next, summary) => setPlan({ plan: next, summary })}
                 uploadOpen={uploadOpen}
                 onUploadOpenChange={setUploadOpen}
+                onCreate={() => setCreateOpen(true)}
               />
+              {createOpen && <CreatePlanDialog onClose={() => setCreateOpen(false)} />}
               <PlannedVsActual
                 activities={planActivities}
                 plan={plan.plan}

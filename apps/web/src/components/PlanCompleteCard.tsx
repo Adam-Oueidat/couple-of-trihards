@@ -70,7 +70,7 @@ export function PlanCompleteCard({
             Plan complete
           </span>
           <h3 className="font-display text-2xl uppercase tracking-wide text-white leading-tight mt-3 truncate">
-            {plan.raceName}
+            {plan.raceName || plan.name}
           </h3>
           <p className="text-gray-500 text-xs mt-1">
             {DATE_FMT.format(new Date(plan.raceDate + "T12:00:00"))} · {weeks}-week plan

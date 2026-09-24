@@ -24,7 +24,7 @@
 
   --run: #4d7c0f;
   --ride: #1d4ed8;
-  --swim: #0e7a72;
+  --swim: #008a7e; /* chroma-floor pass; was #0e7a72 */
   --strength: #7e3fb8;
 
   /* Heart-rate zones: a cool→hot intensity ramp, independent of the discipline

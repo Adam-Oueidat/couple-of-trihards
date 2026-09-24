@@ -145,7 +145,9 @@ export function calcTrainingLoad(
   today: string = localToday(),
   expectedTss?: Map<string, number>,
 ): TrainingLoadPoint[] {
-  if (activities.length === 0) return [];
+  // Planned load alone is enough to project from: a new athlete's first plan
+  // still has a fitness curve.
+  if (activities.length === 0 && !expectedTss?.size) return [];
 
   const dailyTSS = new Map<string, number>();
   for (const act of activities) {
