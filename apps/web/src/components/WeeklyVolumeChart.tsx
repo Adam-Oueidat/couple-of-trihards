@@ -175,7 +175,7 @@ export function WeeklyVolumeChart({ data }: Props) {
             type="button"
             key={d.key}
             onClick={() => toggle(d.key)}
-            className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+            className={`px-3 py-1 rounded-[8px] text-xs font-semibold border transition-all cursor-pointer inline-flex items-center gap-1.5 ${
               enabled[d.key]
                 ? "border-transparent text-gray-900"
                 : "border-gray-700 text-gray-500 bg-transparent"

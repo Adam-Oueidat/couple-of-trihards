@@ -125,7 +125,7 @@ export function MisdatedReview({ candidates, edits }: Props) {
             type="button"
             onClick={() => accept(candidate)}
             disabled={busy}
-            className="cursor-pointer rounded-full border border-green-500/40 bg-green-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-green-300 transition-colors hover:border-green-500/70 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="cursor-pointer rounded-[10px] border border-green-500/40 bg-green-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-green-300 transition-colors hover:border-green-500/70 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {busy ? "Moving…" : "That was it"}
           </button>
@@ -135,7 +135,7 @@ export function MisdatedReview({ candidates, edits }: Props) {
               setDismissed((prev) => new Set(prev).add(session.id))
             }
             disabled={busy}
-            className="cursor-pointer rounded-full border border-gray-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-50"
+            className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:opacity-50"
           >
             No
           </button>
@@ -160,7 +160,7 @@ export function MisdatedReview({ candidates, edits }: Props) {
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20"
+          className="cursor-pointer rounded-[10px] border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20"
         >
           {open ? "Hide" : `Review ${live.length} possible match${live.length === 1 ? "" : "es"}`}
         </button>

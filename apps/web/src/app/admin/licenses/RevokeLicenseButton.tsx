@@ -44,7 +44,7 @@ export function RevokeLicenseButton({ licenseId, keyPrefix, boundLabel }: Props)
             onClick={() => !pending && setOpen(false)}
             className="absolute inset-0 bg-black/60 cursor-default"
           />
-          <div className="relative w-full max-w-sm rounded-2xl border border-gray-800 bg-gray-900 p-6 text-white shadow-2xl">
+          <div className="relative w-full max-w-sm rounded-[14px] border border-gray-800 bg-gray-900 p-6 text-white shadow-2xl">
             <h3 className="mb-2 text-base font-semibold">Revoke license?</h3>
             <p className="mb-1 text-sm text-gray-300">
               <span className="font-mono">{keyPrefix}-…</span>

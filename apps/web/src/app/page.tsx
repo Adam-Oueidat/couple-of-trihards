@@ -24,7 +24,7 @@ export default async function Home({
           <p className="text-gray-400 text-lg">Triathlon training dashboard</p>
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-8 shadow-2xl">
           <div className="flex justify-center mb-6">
             <div className="grid grid-cols-3 gap-4 text-center w-full">
               {[

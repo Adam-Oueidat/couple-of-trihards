@@ -48,11 +48,11 @@ const PRIORITY: Record<SuggestionPriority, { label: string; cls: string }> = {
   optional: { label: "If you want", cls: "border-gray-800 bg-gray-950 text-gray-500" },
 };
 
-const DAY_FMT = new Intl.DateTimeFormat("en-GB", {
-  weekday: "long",
-  day: "numeric",
-  month: "short",
-});
+const DAY_FMT = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+const WEEKDAY_FMT = new Intl.DateTimeFormat("en-GB", { weekday: "long" });
+
+const STEP_BTN =
+  "cursor-pointer rounded-md border border-gray-800 px-2 py-0.5 font-data text-[12px] text-gray-400 transition-colors hover:border-gray-700 hover:text-white disabled:cursor-default disabled:opacity-30";
 
 /** A hard pick waiting on the athlete's answer to what it clashes with. */
 interface Pending {
@@ -171,7 +171,7 @@ export function NextUpTab() {
 
   if (error) {
     return (
-      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+      <div className="rounded-[14px] border border-gray-800 bg-gray-900 p-6">
         <p className="text-sm text-gray-500">Could not work out what to suggest.</p>
       </div>
     );
@@ -179,7 +179,7 @@ export function NextUpTab() {
 
   if (!data) {
     return (
-      <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6">
+      <div className="rounded-[14px] border border-gray-800 bg-gray-900 p-6">
         <p className="animate-pulse text-sm text-gray-500">Reading your training…</p>
       </div>
     );
@@ -187,80 +187,90 @@ export function NextUpTab() {
 
   const viewing = data.date;
   const isToday = viewing === data.today;
+  const viewingDate = new Date(`${viewing}T12:00:00`);
+  const dayWord = isToday
+    ? "Today"
+    : viewing === shiftDate(data.today, 1)
+      ? "Tomorrow"
+      : WEEKDAY_FMT.format(viewingDate);
 
   return (
-    <div className="space-y-6">
-      <section className="overflow-hidden rounded-2xl border border-gray-800 bg-gray-900">
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-gray-800 px-6 py-4 sm:px-7">
-          <SectionLabel className="mb-0">
-            {isToday ? "What to train today" : "What to train"}
-          </SectionLabel>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Stops at today: a day that has gone cannot be trained, and the
-                API clamps anything earlier back to today anyway. */}
-            <button
-              type="button"
-              onClick={() => {
-                const previous = shiftDate(viewing, -1);
-                changeDay(previous === data.today ? null : previous);
-              }}
-              disabled={isToday}
-              className="cursor-pointer rounded-full border border-gray-700 px-3 py-1 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default disabled:opacity-40"
-            >
-              ← Previous day
-            </button>
-            <button
-              type="button"
-              onClick={() => changeDay(null)}
-              disabled={isToday}
-              className="cursor-pointer rounded-full border border-gray-700 px-3 py-1 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default disabled:opacity-40"
-            >
+    <div className="space-y-4">
+      {/* The feed's day divider for this section. It names the day being
+          viewed, so it has to live here with the stepper that changes it. */}
+      <div className="flex items-center gap-3 pt-2">
+        <span className="shrink-0 font-data text-[12px] uppercase tracking-[0.1em] text-gray-500">
+          {dayWord} · {DAY_FMT.format(viewingDate)}
+        </span>
+        <span className="h-px flex-1 bg-gray-800" aria-hidden />
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Stops at today: a day that has gone cannot be trained, and the
+              API clamps anything earlier back to today anyway. */}
+          <button
+            type="button"
+            onClick={() => {
+              const previous = shiftDate(viewing, -1);
+              changeDay(previous === data.today ? null : previous);
+            }}
+            disabled={isToday}
+            aria-label="Previous day"
+            className={STEP_BTN}
+          >
+            ←
+          </button>
+          {!isToday && (
+            <button type="button" onClick={() => changeDay(null)} className={STEP_BTN}>
               Today
             </button>
-            <button
-              type="button"
-              onClick={() => changeDay(shiftDate(viewing, 1))}
-              className="cursor-pointer rounded-full border border-gray-700 px-3 py-1 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
-            >
-              Next day →
-            </button>
-          </div>
-        </div>
-
-        <div className="px-6 pt-4 sm:px-7">
-          <span className="font-data text-[11px] text-gray-500">
-            {DAY_FMT.format(new Date(`${viewing}T12:00:00`))}
-            {isToday ? " · today" : ""}
-          </span>
-        </div>
-
-        <div className="space-y-4 p-6 pt-4 sm:p-7 sm:pt-4">
-          {notice && notice.lines.length > 0 && (
-            <div
-              className={`rounded-xl border px-5 py-3 ${
-                notice.error
-                  ? "border-[var(--err)]/40 bg-[var(--err)]/5"
-                  : "border-gray-800 bg-gray-950/50"
-              }`}
-            >
-              {notice.lines.map((line) => (
-                <p
-                  key={line}
-                  className={`text-[13px] leading-snug ${notice.error ? "text-[var(--err)]" : "text-gray-300"}`}
-                >
-                  {line}
-                </p>
-              ))}
-            </div>
           )}
-          {data.suggestions.map((s) => {
+          <button
+            type="button"
+            onClick={() => changeDay(shiftDate(viewing, 1))}
+            aria-label="Next day"
+            className={STEP_BTN}
+          >
+            →
+          </button>
+        </div>
+      </div>
+
+      {notice && notice.lines.length > 0 && (
+        <div
+          className={`rounded-[10px] border px-5 py-3 ${
+            notice.error
+              ? "border-[var(--err)]/40 bg-[var(--err)]/5"
+              : "border-gray-800 bg-gray-900"
+          }`}
+        >
+          {notice.lines.map((line) => (
+            <p
+              key={line}
+              className={`text-[13px] leading-snug ${notice.error ? "text-[var(--err)]" : "text-gray-300"}`}
+            >
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
+          {data.suggestions.length === 0 && (
+            <p className="rounded-[14px] border border-gray-800 bg-gray-900 p-5 text-sm text-gray-500">
+              Nothing to suggest for this day. Ask your coach if you want something anyway.
+            </p>
+          )}
+          {data.suggestions.map((s, index) => {
             const badge = PRIORITY[s.priority];
+            // The top pick leads the feed; the rest are alternatives under it.
+            const lead = index === 0;
             const state = added[s.id];
             const asking = pending?.suggestionId === s.id ? pending : null;
             return (
               <div
                 key={s.id}
-                className="rounded-xl border border-gray-800 bg-gray-950/50 p-5"
+                className={`rounded-[14px] border p-5 sm:p-6 ${
+                  lead
+                    ? "border-orange-500/25 bg-gradient-to-br from-gray-800 to-gray-900 to-70%"
+                    : "border-gray-800 bg-gray-900"
+                }`}
               >
                 <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                   <div className="min-w-0">
@@ -280,7 +290,11 @@ export function NextUpTab() {
                         </span>
                       )}
                     </div>
-                    <h3 className="mt-2 font-display text-xl leading-tight text-white">
+                    <h3
+                      className={`mt-2.5 font-display font-bold uppercase leading-none tracking-wide text-white ${
+                        lead ? "text-3xl sm:text-4xl" : "text-xl"
+                      }`}
+                    >
                       {s.headline}
                     </h3>
                   </div>
@@ -347,7 +361,11 @@ export function NextUpTab() {
                       type="button"
                       onClick={() => addToCalendar(s)}
                       disabled={adding !== null || state === viewing}
-                      className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
+                      className={`cursor-pointer rounded-[10px] px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-default disabled:opacity-60 ${
+                        lead
+                          ? "bg-orange-500 text-[var(--accent-fg)] hover:bg-orange-400"
+                          : "border border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white"
+                      }`}
                     >
                       {adding === s.id
                         ? "Adding…"
@@ -365,8 +383,6 @@ export function NextUpTab() {
               </div>
             );
           })}
-        </div>
-      </section>
     </div>
   );
 }
@@ -392,7 +408,7 @@ function ConflictPrompt({
   const changesSomething = Object.values(pending.choices).some((a) => a !== "keep");
 
   return (
-    <div className="mt-4 space-y-4 rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+    <div className="mt-4 space-y-4 rounded-[10px] border border-orange-500/30 bg-orange-500/5 p-4">
       <SectionLabel className="mb-0">Before this goes on your calendar</SectionLabel>
 
       {pending.conflicts.map((c) => {
@@ -411,7 +427,7 @@ function ConflictPrompt({
                     aria-checked={selected}
                     onClick={() => onChoose(c.sessionId, o.action)}
                     disabled={busy}
-                    className={`cursor-pointer rounded-full border px-3 py-1 font-display text-[12px] uppercase tracking-wider transition-colors disabled:cursor-default ${
+                    className={`cursor-pointer rounded-[8px] border px-3 py-1 font-display text-[12px] uppercase tracking-wider transition-colors disabled:cursor-default ${
                       selected
                         ? "border-orange-500 bg-orange-500/20 text-orange-200"
                         : "border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white"
@@ -434,7 +450,7 @@ function ConflictPrompt({
           type="button"
           onClick={onConfirm}
           disabled={busy}
-          className="cursor-pointer rounded-full border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
+          className="cursor-pointer rounded-[10px] border border-orange-500/40 bg-orange-500/10 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-orange-300 transition-colors hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-default disabled:opacity-60"
         >
           {busy ? "Updating…" : changesSomething ? "Add and apply" : "Add anyway"}
         </button>
@@ -442,7 +458,7 @@ function ConflictPrompt({
           type="button"
           onClick={onCancel}
           disabled={busy}
-          className="cursor-pointer rounded-full border border-gray-700 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default"
+          className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-1.5 font-display text-[12px] uppercase tracking-wider text-gray-400 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default"
         >
           Cancel
         </button>

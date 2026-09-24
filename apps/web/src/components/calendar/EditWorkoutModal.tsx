@@ -41,7 +41,7 @@ export function EditWorkoutModal({
         onClick={() => setEditWorkoutForm(null)}
         className="absolute inset-0 bg-black/70 cursor-default"
       />
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md p-7">
+      <div className="relative bg-gray-900 border border-gray-800 rounded-[14px] w-full max-w-md p-7">
         <button
           type="button"
           aria-label="Close"
@@ -77,7 +77,7 @@ export function EditWorkoutModal({
                 type="button"
                 key={d}
                 onClick={() => setEditWorkoutForm({ ...editWorkoutForm, discipline: d })}
-                className={`flex-1 py-1.5 rounded-full text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 rounded-[8px] text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
                   editWorkoutForm.discipline === d
                     ? DISCIPLINE_PILL[d]
                     : "border-gray-700 text-gray-500"

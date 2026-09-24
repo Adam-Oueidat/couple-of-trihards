@@ -46,7 +46,7 @@ export function TrainingRecap({ block, plan, quality }: Props) {
   )}`;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-gray-800 bg-gray-900">
+    <section className="relative overflow-hidden rounded-[14px] border border-gray-800 bg-gray-900">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-gray-800 px-6 py-4 sm:px-7">
         <div className="flex items-baseline gap-3">
           <span

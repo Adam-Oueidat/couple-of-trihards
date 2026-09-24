@@ -34,7 +34,7 @@ export function AddWorkoutModal({ form, setForm, saving, error, onSubmit }: Prop
         onClick={() => setForm(null)}
         className="absolute inset-0 bg-black/70 cursor-default"
       />
-      <div className="relative bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-sm p-6">
+      <div className="relative bg-gray-900 border border-gray-800 rounded-[14px] w-full max-w-sm p-6">
         <h3 className="text-white font-bold mb-4">
           Add workout ·{" "}
           {new Date(form.date + "T12:00:00").toLocaleDateString("en-US", {
@@ -51,7 +51,7 @@ export function AddWorkoutModal({ form, setForm, saving, error, onSubmit }: Prop
                 type="button"
                 key={d}
                 onClick={() => setForm({ ...form, discipline: d })}
-                className={`flex-1 py-1.5 rounded-full text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 rounded-[8px] text-xs font-semibold border capitalize transition-colors cursor-pointer inline-flex items-center justify-center gap-1.5 ${
                   form.discipline === d
                     ? DISCIPLINE_PILL[d]
                     : "border-gray-700 text-gray-500"

@@ -141,7 +141,7 @@ export function FitnessProfile() {
 
   if (error) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5">
         <p className="text-gray-500 text-sm">Could not load fitness profile.</p>
       </div>
     );
@@ -149,7 +149,7 @@ export function FitnessProfile() {
 
   if (!data) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5">
         <p className="text-gray-500 text-sm animate-pulse">Loading fitness profile...</p>
       </div>
     );
@@ -165,7 +165,7 @@ export function FitnessProfile() {
   if (wkg) profileStats.push({ label: "W/kg", value: wkg.toFixed(2) });
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 space-y-4">
+    <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5 space-y-4">
       <SectionLabel className="mb-0">Fitness Profile</SectionLabel>
 
       {profileStats.length > 0 && (
@@ -245,7 +245,7 @@ export function FitnessProfile() {
             type="button"
             onClick={syncYear}
             disabled={syncing}
-            className="px-2 py-0.5 rounded-full border border-gray-700 bg-gray-950/60 text-[10px] text-gray-400 hover:text-white hover:border-gray-600 disabled:opacity-50 disabled:cursor-default cursor-pointer transition-colors"
+            className="px-2 py-0.5 rounded-[8px] border border-gray-700 bg-gray-950/60 text-[10px] text-gray-400 hover:text-white hover:border-gray-600 disabled:opacity-50 disabled:cursor-default cursor-pointer transition-colors"
           >
             {syncing ? "Scanning..." : "Scan year"}
           </button>

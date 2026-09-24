@@ -27,7 +27,7 @@ interface Props {
 // tone, so the verdict carries meaning rather than decoration.
 type Tone = "ok" | "accent" | "warn" | "err";
 
-function readForm(tsb: number): { word: string; note: string; tone: Tone } {
+export function readForm(tsb: number): { word: string; note: string; tone: Tone } {
   if (tsb >= 15)
     return { word: "Tapered", note: "race-ready legs", tone: "ok" };
   if (tsb >= 5) return { word: "Fresh", note: "rested and ready", tone: "ok" };
@@ -38,7 +38,7 @@ function readForm(tsb: number): { word: string; note: string; tone: Tone } {
   return { word: "Overreached", note: "ease off soon", tone: "err" };
 }
 
-const TONE_VAR: Record<Tone, string> = {
+export const TONE_VAR: Record<Tone, string> = {
   ok: "var(--ok)",
   accent: "var(--accent)",
   warn: "var(--warn)",
@@ -49,7 +49,7 @@ const TONE_VAR: Record<Tone, string> = {
 // inside the track.
 const GAUGE_MIN = -30;
 const GAUGE_MAX = 30;
-function gaugePercent(tsb: number): number {
+export function gaugePercent(tsb: number): number {
   const clamped = Math.min(GAUGE_MAX, Math.max(GAUGE_MIN, tsb));
   return ((clamped - GAUGE_MIN) / (GAUGE_MAX - GAUGE_MIN)) * 100;
 }
@@ -110,7 +110,7 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
     : 0;
 
   return (
-    <section className="hero-rise relative overflow-hidden rounded-2xl border border-gray-800 bg-gray-900">
+    <section className="hero-rise relative overflow-hidden rounded-[14px] border border-gray-800 bg-gray-900">
       {/* Signature accent rule across the top edge */}
       <span
         className="absolute inset-x-0 top-0 h-px"

@@ -39,7 +39,7 @@ export default function DashboardError({
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-16">
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-xl">
+        <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-8 max-w-xl">
           <span className="inline-block rounded-full bg-orange-500/10 text-orange-400 text-xs font-medium px-3 py-1">
             Couldn&apos;t load your training data
           </span>
@@ -57,7 +57,7 @@ export default function DashboardError({
           <div className="flex items-center gap-3 mt-6">
             <button
               onClick={() => unstable_retry()}
-              className="cursor-pointer rounded-full bg-orange-500 hover:bg-orange-600 transition-colors text-white font-medium px-5 py-2"
+              className="cursor-pointer rounded-[10px] bg-orange-500 hover:bg-orange-600 transition-colors text-white font-medium px-5 py-2"
             >
               Try again
             </button>
@@ -65,7 +65,7 @@ export default function DashboardError({
               href="https://status.strava.com"
               target="_blank"
               rel="noreferrer"
-              className="cursor-pointer rounded-full border border-gray-700 hover:border-gray-600 transition-colors text-gray-300 font-medium px-5 py-2"
+              className="cursor-pointer rounded-[10px] border border-gray-700 hover:border-gray-600 transition-colors text-gray-300 font-medium px-5 py-2"
             >
               Strava status
             </a>

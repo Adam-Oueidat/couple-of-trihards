@@ -11,6 +11,9 @@ import {
   buildBlockRecap,
   buildPlanRecap,
   buildQualityRecap,
+  estimateRunThreshold,
+  observedMaxHr,
+  resolveZoneModel,
   TRAINING_HISTORY_WEEKS,
   type PlanRecap,
   type WeeklyVolume,
@@ -21,6 +24,7 @@ import { getActiveTrainingPlan, getLatestFinishedPlan } from "@/lib/training-pla
 import { getOverrides } from "@/lib/plan-overrides";
 import { getQualityProfiles } from "@/lib/quality-scan";
 import { getWorkouts } from "@/lib/workouts";
+import { getRecentAnalyses } from "@/lib/analyses";
 
 // What the activity lists, calendar, and plan tabs render. The full year of
 // history backs the training-load calculation only — we slice down to this
@@ -79,13 +83,21 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
   // place anything at all, so fetching them here rather than from the client on
   // mount is what lets those tabs paint their final layout on the first frame
   // instead of showing the un-moved plan and snapping a moment later.
-  const [{ activities: history, fetchedAt, syncState }, activePlan, planOverrides, customWorkouts] =
-    await Promise.all([
-      getActivitiesWithDailySync(resolved, TRAINING_HISTORY_WEEKS),
-      getActiveTrainingPlan(resolved.userId),
-      getOverrides(resolved.userId),
-      getWorkouts(resolved.userId),
-    ]);
+  // The feed puts the coach's saved read under each recent activity, so the
+  // latest analyses come down with the rest rather than one request per card.
+  const [
+    { activities: history, fetchedAt, syncState },
+    activePlan,
+    planOverrides,
+    customWorkouts,
+    recentAnalyses,
+  ] = await Promise.all([
+    getActivitiesWithDailySync(resolved, TRAINING_HISTORY_WEEKS),
+    getActiveTrainingPlan(resolved.userId),
+    getOverrides(resolved.userId),
+    getWorkouts(resolved.userId),
+    getRecentAnalyses(resolved.userId, 30).catch(() => []),
+  ]);
 
   // This is a server component, so a bare `new Date()` is the server's UTC clock
   // — which has already rolled to tomorrow during the athlete's evening in any
@@ -120,6 +132,20 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
     zones: athleteZones,
     today,
   });
+
+  // The same estimate the coach quotes and the workout charts draw at 100%,
+  // so the feed's thresholds card can never disagree with either.
+  const runThreshold = estimateRunThreshold({
+    plan: activePlan?.plan ?? null,
+    activities: history,
+    overrides: planOverrides,
+    customWorkouts,
+    today,
+    zones: resolveZoneModel(athleteZones, observedMaxHr(history)),
+    profiles: qualityProfiles,
+  });
+  const analyses: Record<number, string> = {};
+  for (const a of recentAnalyses) analyses[a.activityId] ??= a.text;
 
   const finishedPlan = await getLatestFinishedPlan(resolved.userId, today);
   const planRecap: PlanRecap | null = finishedPlan
@@ -202,6 +228,9 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
       planOverrides={planOverrides}
       customWorkouts={customWorkouts}
       isAdmin={isAdminAthlete(resolved.stravaAthleteId)}
+      today={today}
+      runThreshold={runThreshold}
+      analyses={analyses}
     />
   );
 }
