@@ -29,12 +29,8 @@ export function DashboardSkeleton() {
         <span className="mb-5 px-2.5 font-display text-2xl font-bold uppercase leading-none tracking-wide text-white">
           Tri<span className="text-orange-500">Log</span>
         </span>
-        {[0, 1, 2, 3].map((i) => (
+        {[0, 1, 2, 3, 4].map((i) => (
           <Block key={i} className="mx-2.5 my-2 h-4 w-24" />
-        ))}
-        <Block className="mx-2.5 mb-2 mt-6 h-3 w-14" />
-        {[0, 1, 2].map((i) => (
-          <Block key={i} className="mx-2.5 my-2 h-4 w-28" />
         ))}
       </aside>
 

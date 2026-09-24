@@ -75,7 +75,11 @@ function shiftDate(date: string, days: number): string {
  * with it, where one handed a bare ordering can only obey or ignore. So every
  * card leads with the verdict and carries its evidence underneath.
  */
-export function NextUpTab() {
+/**
+ * `context` is a one-line read of the athlete's load ("Form +12 · fatigue
+ * down 4 a day"), shown under the reason for the top pick.
+ */
+export function NextUpTab({ context }: { context?: string } = {}) {
   const [date, setDate] = useState<string | null>(null);
   const key = date ? `/api/suggestions?date=${date}` : "/api/suggestions";
   const { data, error, mutate } = useSWR<Payload>(key, fetcher, {
@@ -88,11 +92,17 @@ export function NextUpTab() {
   // What the last add actually changed, read back to the athlete. Held above
   // the list because the card that caused it can drop out of the new ranking.
   const [notice, setNotice] = useState<{ lines: string[]; error?: boolean } | null>(null);
+  // Which alternative is expanded (or `<id>:steps` for the lead's step list),
+  // and whether the alternatives are shown at all.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [showOthers, setShowOthers] = useState(false);
 
   // A proposal was worked out for one day; it means nothing on another.
   function changeDay(next: string | null) {
     setPending(null);
     setNotice(null);
+    setOpenId(null);
+    setShowOthers(false);
     setDate(next);
   }
 
@@ -194,6 +204,91 @@ export function NextUpTab() {
       ? "Tomorrow"
       : WEEKDAY_FMT.format(viewingDate);
 
+  const [lead, ...others] = data.suggestions;
+
+  // Why, shape, and the add button; the step list only when asked for, since
+  // the chart already says what the session is.
+  function suggestionBody(s: Suggestion, isLead: boolean) {
+    const state = added[s.id];
+    const asking = pending?.suggestionId === s.id ? pending : null;
+    const showSteps = openId === `${s.id}:steps` || !isLead;
+    return (
+      <>
+        {/* The evidence, always. A ranking you cannot argue with is one
+            you can only obey or ignore. */}
+        {!isLead && <p className="mt-2 max-w-3xl text-[13px] leading-snug text-gray-500">{s.why}</p>}
+
+        {s.session && s.session.blocks.length > 0 && (
+          <div className="mt-3">
+            <WorkoutProfile
+              blocks={s.session.blocks}
+              threshold={s.session.threshold}
+              name={s.session.name}
+            />
+          </div>
+        )}
+
+        {s.session && s.session.steps.length > 0 && showSteps && (
+          <div className="mt-3 space-y-1.5">
+            {s.session.steps.map((step, i) => (
+              <div
+                key={i}
+                className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 max-sm:grid-cols-1 max-sm:gap-0.5"
+              >
+                <span className="font-data text-[11px] uppercase tracking-wider text-gray-600">
+                  {step.label}
+                </span>
+                <span className="text-[13px] text-gray-300">{step.detail}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {asking && (
+          <ConflictPrompt
+            pending={asking}
+            busy={adding === s.id}
+            onChoose={(sessionId, action) =>
+              setPending({ ...asking, choices: { ...asking.choices, [sessionId]: action } })
+            }
+            onConfirm={() => accept(s, asking.choices)}
+            onCancel={() => setPending(null)}
+          />
+        )}
+
+        {s.session && !asking && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => addToCalendar(s)}
+              disabled={adding !== null || state === viewing}
+              className={`cursor-pointer rounded-[10px] px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-default disabled:opacity-60 ${
+                isLead
+                  ? "bg-orange-500 text-[var(--accent-fg)] hover:bg-orange-400"
+                  : "border border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white"
+              }`}
+            >
+              {adding === s.id ? "Adding…" : state === viewing ? "On your calendar" : "Add to calendar"}
+            </button>
+            {isLead && s.session.steps.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setOpenId(showSteps ? null : `${s.id}:steps`)}
+                aria-expanded={showSteps}
+                className="cursor-pointer text-sm text-gray-500 transition-colors hover:text-white"
+              >
+                {showSteps ? "Hide steps" : "Show steps"}
+              </button>
+            )}
+            {state === "error" && (
+              <span className="font-data text-[11px] text-[var(--err)]">Could not add it. Try again.</span>
+            )}
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {/* The feed's day divider for this section. It names the day being
@@ -257,132 +352,61 @@ export function NextUpTab() {
               Nothing to suggest for this day. Ask your coach if you want something anyway.
             </p>
           )}
-          {data.suggestions.map((s, index) => {
-            const badge = PRIORITY[s.priority];
-            // The top pick leads the feed; the rest are alternatives under it.
-            const lead = index === 0;
-            const state = added[s.id];
-            const asking = pending?.suggestionId === s.id ? pending : null;
-            return (
-              <div
-                key={s.id}
-                className={`rounded-[14px] border p-5 sm:p-6 ${
-                  lead
-                    ? "border-orange-500/25 bg-gradient-to-br from-gray-800 to-gray-900 to-70%"
-                    : "border-gray-800 bg-gray-900"
-                }`}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-data text-[10px] uppercase tracking-wider ${badge.cls}`}
-                      >
-                        {badge.label}
-                      </span>
-                      {s.session && (
-                        <span
-                          className="inline-flex items-center gap-1.5 font-data text-[11px] uppercase tracking-wider"
-                          style={{ color: DISCIPLINE_COLOR[s.session.discipline] }}
-                        >
-                          <DisciplineGlyph discipline={s.session.discipline} size={12} />
-                          {SUGGEST_DISCIPLINE_LABEL[s.session.discipline]}
-                        </span>
-                      )}
-                    </div>
-                    <h3
-                      className={`mt-2.5 font-display font-bold uppercase leading-none tracking-wide text-white ${
-                        lead ? "text-3xl sm:text-4xl" : "text-xl"
-                      }`}
-                    >
-                      {s.headline}
-                    </h3>
-                  </div>
-
-                  {s.session && (
-                    <div className="text-right font-data text-[11px] text-gray-500">
-                      {formatDuration(s.session.durationMin)}
-                      {s.session.distanceKm ? ` · ${s.session.distanceKm} km` : ""}
-                    </div>
-                  )}
-                </div>
-
-                {/* The evidence, always. A ranking you cannot argue with is one
-                    you can only obey or ignore. */}
-                <p className="mt-2 max-w-3xl text-[13px] leading-snug text-gray-500">
-                  {s.why}
-                </p>
-
-                {/* The session as a shape first, then the same session as
-                    words; the two are built together and say the same thing. */}
-                {s.session && s.session.blocks.length > 0 && (
-                  <div className="mt-4 border-t border-gray-800 pt-4">
-                    <WorkoutProfile
-                      blocks={s.session.blocks}
-                      threshold={s.session.threshold}
-                      name={s.session.name}
-                    />
-                  </div>
-                )}
-
-                {s.session && s.session.steps.length > 0 && (
-                  <div
-                    className={`mt-4 space-y-1.5 ${s.session.blocks.length > 0 ? "" : "border-t border-gray-800 pt-4"}`}
-                  >
-                    {s.session.steps.map((step, i) => (
-                      <div
-                        key={i}
-                        className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 max-sm:grid-cols-1 max-sm:gap-0.5"
-                      >
-                        <span className="font-data text-[11px] uppercase tracking-wider text-gray-600">
-                          {step.label}
-                        </span>
-                        <span className="text-[13px] text-gray-300">{step.detail}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {asking && (
-                  <ConflictPrompt
-                    pending={asking}
-                    busy={adding === s.id}
-                    onChoose={(sessionId, action) =>
-                      setPending({ ...asking, choices: { ...asking.choices, [sessionId]: action } })
-                    }
-                    onConfirm={() => accept(s, asking.choices)}
-                    onCancel={() => setPending(null)}
-                  />
-                )}
-
-                {s.session && !asking && (
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => addToCalendar(s)}
-                      disabled={adding !== null || state === viewing}
-                      className={`cursor-pointer rounded-[10px] px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-default disabled:opacity-60 ${
-                        lead
-                          ? "bg-orange-500 text-[var(--accent-fg)] hover:bg-orange-400"
-                          : "border border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white"
-                      }`}
-                    >
-                      {adding === s.id
-                        ? "Adding…"
-                        : state === viewing
-                          ? "On your calendar"
-                          : "Add to calendar"}
-                    </button>
-                    {state === "error" && (
-                      <span className="font-data text-[11px] text-[var(--err)]">
-                        Could not add it. Try again.
-                      </span>
-                    )}
-                  </div>
-                )}
+          {lead && (
+            <div className="grid overflow-hidden rounded-[14px] border border-orange-500/25 bg-gradient-to-br from-gray-800 to-gray-900 to-70% md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+              <div className="min-w-0 p-5">
+                <SuggestionHeader s={lead} large />
+                {suggestionBody(lead, true)}
               </div>
-            );
-          })}
+              {/* The reason gets its own panel on the pick that leads the
+                  day: it is what lets the athlete agree or argue. */}
+              <div className="flex flex-col gap-3 border-t border-gray-800 bg-gray-950/60 p-5 md:border-l md:border-t-0">
+                <p className="font-data text-[11px] uppercase tracking-[0.14em] text-orange-500">
+                  Why this, today
+                </p>
+                <p className="text-[15px] leading-relaxed text-gray-200">{lead.why}</p>
+                {context && <p className="font-data text-[12px] text-gray-500">{context}</p>}
+              </div>
+            </div>
+          )}
+
+          {/* Alternatives fold into one row so the day's completed sessions,
+              further down the feed, stay in view. */}
+          {others.length > 0 && (
+            <div className="overflow-hidden rounded-[14px] border border-gray-800 bg-gray-900">
+              <button
+                type="button"
+                onClick={() => setShowOthers((v) => !v)}
+                aria-expanded={showOthers}
+                className="flex w-full cursor-pointer items-center justify-between gap-3 px-5 py-3 text-left text-sm text-gray-400 transition-colors hover:text-white"
+              >
+                <span>
+                  {others.length} other {others.length === 1 ? "option" : "options"}
+                  <span className="ml-2 text-gray-600">
+                    {others.map((o) => o.headline).slice(0, 3).join(" · ")}
+                  </span>
+                </span>
+                <span aria-hidden>{showOthers ? "−" : "+"}</span>
+              </button>
+              {showOthers &&
+                others.map((o) => {
+                  const isOpen = openId === o.id || pending?.suggestionId === o.id;
+                  return (
+                    <div key={o.id} className="border-t border-gray-800 px-5 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setOpenId(isOpen ? null : o.id)}
+                        aria-expanded={isOpen}
+                        className="w-full cursor-pointer text-left"
+                      >
+                        <SuggestionHeader s={o} />
+                      </button>
+                      {isOpen && suggestionBody(o, false)}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
     </div>
   );
 }
@@ -463,6 +487,46 @@ function ConflictPrompt({
           Cancel
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Priority, sport, name and length: all an alternative shows until opened. */
+function SuggestionHeader({ s, large = false }: { s: Suggestion; large?: boolean }) {
+  const badge = PRIORITY[s.priority];
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-data text-[10px] uppercase tracking-wider ${badge.cls}`}
+          >
+            {badge.label}
+          </span>
+          {s.session && (
+            <span
+              className="inline-flex items-center gap-1.5 font-data text-[11px] uppercase tracking-wider"
+              style={{ color: DISCIPLINE_COLOR[s.session.discipline] }}
+            >
+              <DisciplineGlyph discipline={s.session.discipline} size={12} />
+              {SUGGEST_DISCIPLINE_LABEL[s.session.discipline]}
+            </span>
+          )}
+        </div>
+        <h3
+          className={`mt-2 font-display font-bold uppercase leading-none tracking-wide text-white ${
+            large ? "text-2xl sm:text-3xl" : "text-lg"
+          }`}
+        >
+          {s.headline}
+        </h3>
+      </div>
+      {s.session && (
+        <div className="shrink-0 text-right font-data text-[11px] text-gray-500">
+          {formatDuration(s.session.durationMin)}
+          {s.session.distanceKm ? ` · ${s.session.distanceKm} km` : ""}
+        </div>
+      )}
     </div>
   );
 }

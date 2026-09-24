@@ -131,7 +131,7 @@ export function FeedTab({
       <div className="min-w-0 space-y-4">
         <WeekStrip currentWeek={currentWeek} weeklyVolume={weeklyVolume} today={today} />
 
-        <NextUpTab />
+        <NextUpTab context={loadContext(trainingLoad)} />
 
         {days.map((day) => (
           <div key={day} className="space-y-4">
@@ -185,6 +185,19 @@ export function FeedTab({
       )}
     </div>
   );
+}
+
+/** "Form +12 · fatigue down 4 a day": where the athlete stands, in one line. */
+function loadContext(load: TrainingLoadPoint[]): string | undefined {
+  const latest = load[load.length - 1];
+  if (!latest) return undefined;
+  const earlier = load[load.length - 4];
+  const form = `Form ${latest.tsb > 0 ? "+" : ""}${latest.tsb.toFixed(0)}`;
+  if (!earlier) return form;
+  const perDay = (latest.atl - earlier.atl) / 3;
+  if (Math.abs(perDay) < 0.5) return `${form} · fatigue steady`;
+  const rate = Math.abs(perDay).toFixed(0);
+  return `${form} · fatigue ${perDay < 0 ? "down" : "up"} ${rate} a day`;
 }
 
 function DayDivider({ children }: { children: React.ReactNode }) {
@@ -390,7 +403,13 @@ const THRESHOLD_SOURCE: Record<RunThreshold["source"], string> = {
   "steady-effort": "from a threshold-HR run",
 };
 
-function ThresholdsCard({ runThreshold }: { runThreshold: RunThreshold | null }) {
+export function ThresholdsCard({
+  runThreshold,
+  showWeight = false,
+}: {
+  runThreshold: RunThreshold | null;
+  showWeight?: boolean;
+}) {
   // Shares the Fitness page's cache entry, so this is no extra request once
   // either has loaded.
   const { data } = useSWR<{ athlete: { ftp?: number | null; weight?: number | null } | null }>(
@@ -415,6 +434,7 @@ function ThresholdsCard({ runThreshold }: { runThreshold: RunThreshold | null })
         />
         <RailRow label="Ride FTP" value={ftp ? `${ftp} W` : "—"} />
         {ftp && weight ? <RailRow label="W/kg" value={(ftp / weight).toFixed(2)} /> : null}
+        {showWeight && weight ? <RailRow label="Weight" value={`${weight} kg`} /> : null}
       </dl>
       {runThreshold && (
         <p className="mt-1 text-[11px] text-gray-600">Run pace {THRESHOLD_SOURCE[runThreshold.source]}</p>

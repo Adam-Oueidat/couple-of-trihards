@@ -83,7 +83,11 @@ function formatPbRange(bests: PersonalBest[]): string | null {
 
 export const FITNESS_KEY = "/api/fitness";
 
-export function FitnessProfile() {
+/**
+ * `bodyStats={false}` drops the weight/FTP/W·kg chips, for the Profile page
+ * where the thresholds card beside it already shows them.
+ */
+export function FitnessProfile({ bodyStats = true }: { bodyStats?: boolean } = {}) {
   // No refreshKey prop any more: Sync revalidates this key directly through
   // SWR's cache, so the parent no longer threads a counter down to force a
   // refetch.
@@ -168,7 +172,7 @@ export function FitnessProfile() {
     <div className="bg-gray-900 border border-gray-800 rounded-[14px] p-5 space-y-4">
       <SectionLabel className="mb-0">Fitness Profile</SectionLabel>
 
-      {profileStats.length > 0 && (
+      {bodyStats && profileStats.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {profileStats.map((s) => (
             <span
@@ -252,8 +256,7 @@ export function FitnessProfile() {
         </div>
         {personalBests.length === 0 ? (
           <p className="text-gray-600 text-[11px] leading-snug">
-            No bests recorded for {currentYear} yet. Scan the year to read best
-            efforts from every run you&apos;ve logged since January.
+            {`No bests recorded for ${currentYear} yet. Scan the year to read best efforts from every run you've logged since January.`}
           </p>
         ) : (
           <>
