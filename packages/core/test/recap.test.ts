@@ -91,7 +91,7 @@ describe("buildBlockRecap", () => {
     expect(recap.totals.byDiscipline.ride).toMatchObject({ km: 40, minutes: 80 });
     expect(recap.totals.byDiscipline.run).toMatchObject({ km: 10, minutes: 50 });
     expect(recap.totals.minutes).toBe(170);
-    expect(timeShare(recap.totals)).toEqual({ swim: 24, ride: 47, run: 29 });
+    expect(timeShare(recap.totals)).toEqual({ swim: 24, ride: 47, run: 29, strength: 0 });
   });
 
   it("ignores activities that are not one of the three disciplines", () => {

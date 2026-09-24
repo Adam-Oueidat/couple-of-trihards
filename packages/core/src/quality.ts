@@ -1,5 +1,5 @@
 import { Discipline, Lap, StravaActivity, StreamSet, AthleteZones } from "./types/strava";
-import { getDiscipline, getWeekStart } from "./training";
+import { getDiscipline, getWeekStart, isEnduranceDiscipline } from "./training";
 
 /**
  * Training *quality* primitives — heart rate, pace and session structure.
@@ -57,7 +57,7 @@ const DEFAULT_ZONE_FRACTIONS = [0.6, 0.75, 0.83, 0.9] as const;
  */
 export function observedMaxHr(activities: StravaActivity[]): number | null {
   const maxima = activities
-    .filter((a) => getDiscipline(a) !== "other" && a.max_heartrate)
+    .filter((a) => isEnduranceDiscipline(getDiscipline(a)) && a.max_heartrate)
     .map((a) => a.max_heartrate!)
     .sort((a, b) => b - a);
   if (maxima.length === 0) return null;
@@ -845,7 +845,7 @@ export function summaryZones(
   for (const a of activities) {
     const day = a.start_date_local.split("T")[0];
     if (day < from || day > to) continue;
-    if (getDiscipline(a) === "other" || !a.average_heartrate) continue;
+    if (!isEnduranceDiscipline(getDiscipline(a)) || !a.average_heartrate) continue;
     out.sessions++;
     out.sessionAverage[hrZone(a.average_heartrate, model) - 1]++;
     if (a.max_heartrate) out.peakReached[hrZone(a.max_heartrate, model) - 1]++;

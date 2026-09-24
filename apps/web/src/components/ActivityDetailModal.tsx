@@ -97,16 +97,22 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   const laps = detail?.laps ?? [];
   const hasLaps = laps.length > 1;
 
+  // Strength has no distance or pace; its tiles start at time.
+  const hasDistance = discipline !== "strength" && activity.distance > 0;
   const stats: { label: string; value: string }[] = [
-    {
-      label: "Distance",
-      value:
-        discipline === "swim"
-          ? `${activity.distance.toFixed(0)} m`
-          : `${(activity.distance / 1000).toFixed(2)} km`,
-    },
+    ...(hasDistance
+      ? [
+          {
+            label: "Distance",
+            value:
+              discipline === "swim"
+                ? `${activity.distance.toFixed(0)} m`
+                : `${(activity.distance / 1000).toFixed(2)} km`,
+          },
+        ]
+      : []),
     { label: "Moving time", value: formatDuration(activity.moving_time / 60) },
-    { label: "Pace", value: formatPace(activity) },
+    ...(hasDistance ? [{ label: "Pace", value: formatPace(activity) }] : []),
     ...(detail?.calories
       ? [{ label: "Calories", value: `${Math.round(detail.calories)}` }]
       : []),

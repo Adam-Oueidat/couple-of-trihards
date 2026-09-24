@@ -25,6 +25,7 @@
   --run: #4d7c0f;
   --ride: #1d4ed8;
   --swim: #0e7a72;
+  --strength: #7e3fb8;
 
   /* Heart-rate zones: a cool→hot intensity ramp, independent of the discipline
      colors above so the scale reads as its own sequence (Z1 easy → Z5 max). */
@@ -63,6 +64,7 @@
   --run: #bef264;
   --ride: #60a5fa;
   --swim: #2dd4bf;
+  --strength: #c084fc;
 
   /* Heart-rate zones: cool→hot ramp, independent of the discipline colors
      above so Z2 can't drift into Z5's red. Z2 uses a deeper electric blue
@@ -116,6 +118,8 @@
   --color-blue-500: var(--ride);
   --color-cyan-400: var(--swim);
   --color-cyan-500: var(--swim);
+  --color-purple-400: var(--strength);
+  --color-purple-500: var(--strength);
 
   /* Status */
   --color-red-400: var(--err);

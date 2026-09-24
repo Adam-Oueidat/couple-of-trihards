@@ -1,6 +1,7 @@
 import seedPlanData from "./data/runna-plan.json" with { type: "json" };
 import { StravaActivity } from "./types/strava";
 import { activityDay, getDiscipline, getWeekStart, localToday } from "./training";
+import type { TrainingDiscipline } from "./recap";
 
 export type SessionType =
   | "easy"
@@ -89,7 +90,7 @@ export type PlanOverrideMap = Record<string, PlanOverride>;
 export interface CustomWorkoutInput {
   id: string;
   date: string;
-  discipline: "swim" | "ride" | "run";
+  discipline: TrainingDiscipline;
   name: string;
   distanceKm: number | null;
   /** Used to estimate the load of a workout that has not happened yet. */
@@ -177,7 +178,7 @@ export interface SessionWithStatus extends PlannedSession {
   // Set only for custom workouts merged in from the calendar; the run plan's
   // sessions leave it undefined. Lets the UI show the discipline instead of the
   // run-only `type` for those rows.
-  discipline?: "swim" | "ride" | "run";
+  discipline?: TrainingDiscipline;
   isCustom?: boolean;
 }
 

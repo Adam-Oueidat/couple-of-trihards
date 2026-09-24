@@ -1,11 +1,12 @@
 import { and, asc, eq } from "drizzle-orm";
 import { customWorkouts, getDb, type CustomWorkout } from "@trihards/db";
+import { TRAINING_DISCIPLINES, type TrainingDiscipline } from "@trihards/core";
 
 export type { CustomWorkout };
 
 export interface WorkoutInput {
   date: string;
-  discipline: "swim" | "ride" | "run";
+  discipline: TrainingDiscipline;
   name: string;
   distanceKm?: number;
   durationMin?: number;
@@ -17,7 +18,7 @@ export interface WorkoutInput {
 // the current value alone.
 export interface WorkoutPatch {
   date?: string;
-  discipline?: "swim" | "ride" | "run";
+  discipline?: TrainingDiscipline;
   name?: string;
   distanceKm?: number | null;
   durationMin?: number | null;
@@ -32,11 +33,11 @@ function validateDate(v: unknown): string {
   return v;
 }
 
-function validateDiscipline(v: unknown): "swim" | "ride" | "run" {
-  if (v !== "swim" && v !== "ride" && v !== "run") {
-    throw new Error("discipline must be swim, ride, or run");
+function validateDiscipline(v: unknown): TrainingDiscipline {
+  if (!(TRAINING_DISCIPLINES as readonly unknown[]).includes(v)) {
+    throw new Error("discipline must be swim, ride, run, or strength");
   }
-  return v;
+  return v as TrainingDiscipline;
 }
 
 function validateName(v: unknown): string {

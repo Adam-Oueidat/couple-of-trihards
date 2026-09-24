@@ -1,12 +1,13 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
+import { TRAINING_DISCIPLINES, type TrainingDiscipline } from "@trihards/core";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
 
 export interface AddFormState {
   date: string;
-  discipline: "swim" | "ride" | "run";
+  discipline: TrainingDiscipline;
   name: string;
   distanceKm: string;
   durationMin: string;
@@ -46,7 +47,7 @@ export function AddWorkoutModal({ form, setForm, saving, error, onSubmit }: Prop
 
         <div className="space-y-3">
           <div className="flex gap-2">
-            {(["swim", "ride", "run"] as const).map((d) => (
+            {TRAINING_DISCIPLINES.map((d) => (
               <button
                 type="button"
                 key={d}

@@ -8,6 +8,7 @@ import {
   type SessionWithStatus,
   type TrainingPlan,
 } from "./plan";
+import type { TrainingDiscipline } from "./recap";
 
 /**
  * What is on the calendar, read as training load.
@@ -38,7 +39,7 @@ const LIVE_STATUSES = new Set<SessionStatus>(["completed", "partial", "today", "
 /** Not yet done: the session's load is still ahead of the athlete. */
 const PENDING_STATUSES = new Set<SessionStatus>(["today", "upcoming"]);
 
-export function disciplineOf(s: SessionWithStatus): "swim" | "ride" | "run" {
+export function disciplineOf(s: SessionWithStatus): TrainingDiscipline {
   // Plan sessions are run sessions: the plans this app ingests are run plans.
   return s.discipline ?? "run";
 }
@@ -47,8 +48,9 @@ export function disciplineOf(s: SessionWithStatus): "swim" | "ride" | "run" {
 export function isHardSession(s: SessionWithStatus): boolean {
   const discipline = disciplineOf(s);
   // Swimming carries no impact load; a hard swim does not need a day's gap
-  // before a run the way a hard run does.
-  if (discipline === "swim") return false;
+  // before a run the way a hard run does. Strength is scheduled around the
+  // hard endurance days, not counted as one.
+  if (discipline === "swim" || discipline === "strength") return false;
   if (discipline === "run" && s.km >= LONG_RUN_KM) return true;
   if (s.isCustom) return HARD_NAME.test(s.name);
   return HARD_TYPES.has(s.type);

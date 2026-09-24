@@ -223,6 +223,7 @@ async function DashboardData({ resolved, athlete }: DashboardDataProps) {
     runTime: 0,
     rideTime: 0,
     swimTime: 0,
+    strengthTime: 0,
   };
 
   return (

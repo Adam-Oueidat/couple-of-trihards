@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatDuration, type BlockRecap, type TriDiscipline } from "@trihards/core";
+import { formatDuration, type BlockRecap, type TrainingDiscipline } from "@trihards/core";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 
 /**
@@ -25,16 +25,18 @@ import { DisciplineGlyph } from "../DisciplineGlyph";
  * it costs nothing at the bundle level and stays out of the charts chunk.
  */
 
-const DISCIPLINE_COLOR: Record<TriDiscipline, string> = {
+const DISCIPLINE_COLOR: Record<TrainingDiscipline, string> = {
   swim: "var(--swim)",
   ride: "var(--ride)",
   run: "var(--run)",
+  strength: "var(--strength)",
 };
 
-const DISCIPLINE_LABEL: Record<TriDiscipline, string> = {
+const DISCIPLINE_LABEL: Record<TrainingDiscipline, string> = {
   swim: "Swim",
   ride: "Ride",
   run: "Run",
+  strength: "Strength",
 };
 
 const DAY_FMT = new Intl.DateTimeFormat("en-GB", {
@@ -216,10 +218,10 @@ export function BlockStrip({ recap }: { recap: BlockRecap }) {
         ))}
       </div>
 
-      {/* Legend. Glyphs carry identity alongside colour, so the three
+      {/* Legend. Glyphs carry identity alongside colour, so the
           disciplines stay distinguishable without relying on hue. */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {(["swim", "ride", "run"] as TriDiscipline[]).map((key) => {
+        {(["swim", "ride", "run", "strength"] as TrainingDiscipline[]).map((key) => {
           const totals = recap.totals.byDiscipline[key];
           return (
             <span

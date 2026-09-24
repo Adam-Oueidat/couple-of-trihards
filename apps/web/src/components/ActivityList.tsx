@@ -51,6 +51,12 @@ const DISCIPLINE_CONFIG = {
     bg: "bg-cyan-950/50 border-cyan-900",
     badge: "bg-cyan-500/15 text-cyan-400 border-cyan-500/30",
   },
+  strength: {
+    label: "Strength",
+    color: "text-purple-400",
+    bg: "bg-purple-500/5 border-purple-500/25",
+    badge: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+  },
   other: {
     label: "Other",
     color: "text-gray-400",
@@ -151,19 +157,27 @@ export function ActivityList({ activities, sortable = false }: Props) {
 
             <div className="flex items-center gap-6 text-sm flex-shrink-0">
               <div className="text-right">
-                <p className={`font-bold ${cfg.color}`}>{formatDistance(act)}</p>
-                <p className="text-gray-500 text-xs">distance</p>
-              </div>
-              <div className="text-right hidden sm:block">
-                <p className="text-white font-medium">
-                  {formatDuration(act.moving_time / 60)}
+                {/* Strength has no distance: its headline figure is time. */}
+                <p className={`font-bold ${cfg.color}`}>
+                  {discipline === "strength" ? formatDuration(act.moving_time / 60) : formatDistance(act)}
                 </p>
-                <p className="text-gray-500 text-xs">time</p>
+                <p className="text-gray-500 text-xs">{discipline === "strength" ? "time" : "distance"}</p>
               </div>
-              <div className="text-right hidden md:block">
-                <p className="text-gray-300">{formatPace(act)}</p>
-                <p className="text-gray-500 text-xs">pace</p>
-              </div>
+              {/* Strength already leads with its time and has no pace. */}
+              {discipline !== "strength" && (
+                <>
+                  <div className="text-right hidden sm:block">
+                    <p className="text-white font-medium">
+                      {formatDuration(act.moving_time / 60)}
+                    </p>
+                    <p className="text-gray-500 text-xs">time</p>
+                  </div>
+                  <div className="text-right hidden md:block">
+                    <p className="text-gray-300">{formatPace(act)}</p>
+                    <p className="text-gray-500 text-xs">pace</p>
+                  </div>
+                </>
+              )}
               {act.average_heartrate && (
                 <div className="text-right hidden lg:block">
                   <p className="text-red-400">{act.average_heartrate.toFixed(0)} bpm</p>

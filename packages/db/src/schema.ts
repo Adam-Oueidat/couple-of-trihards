@@ -154,7 +154,7 @@ export const customWorkouts = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     date: text("date").notNull(),
-    discipline: text("discipline", { enum: ["swim", "ride", "run"] }).notNull(),
+    discipline: text("discipline", { enum: ["swim", "ride", "run", "strength"] }).notNull(),
     name: text("name").notNull(),
     distanceKm: real("distance_km"),
     durationMin: real("duration_min"),

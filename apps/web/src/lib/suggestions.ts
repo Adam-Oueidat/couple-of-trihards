@@ -116,6 +116,8 @@ export function validateSuggestedSession(input: unknown): SuggestedSession {
   if (!s || typeof s !== "object") throw new Error("session required");
   if (!KINDS.includes(s.kind as SuggestionKind)) throw new Error("unknown session kind");
   const workout = validateWorkoutInput({ ...s, date: "2000-01-01" });
+  // The suggestion engine only proposes swim, ride and run sessions.
+  if (workout.discipline === "strength") throw new Error("unknown session discipline");
   const steps = Array.isArray(s.steps)
     ? s.steps
         .filter(

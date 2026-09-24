@@ -59,7 +59,7 @@ const TOOLS: Anthropic.Tool[] = [
           description:
             "Date in YYYY-MM-DD format, computed from the date get_current_datetime returned",
         },
-        discipline: { type: "string", enum: ["swim", "ride", "run"] },
+        discipline: { type: "string", enum: ["swim", "ride", "run", "strength"] },
         name: {
           type: "string",
           description: "Short workout name, e.g. 'Easy swim - technique focus'",

@@ -84,6 +84,15 @@ const TRIAD: Array<{
   },
 ];
 
+/**
+ * The time split adds strength to the three legs: it has no km for the columns
+ * above, but its hours are part of where the week went.
+ */
+const SPLIT: Array<{ label: string; color: string; time: (w: WeeklyVolume) => number }> = [
+  ...TRIAD,
+  { label: "Strength", color: "var(--strength)", time: (w) => w.strengthTime },
+];
+
 function weekLabel(weekStart?: string): string {
   if (!weekStart) return "";
   // Parse as a local date (append time) — `new Date("YYYY-MM-DD")` is UTC
@@ -106,7 +115,7 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
   const trendArrow = ctlDelta > 1 ? "↑" : ctlDelta < -1 ? "↓" : "→";
 
   const totalTime = currentWeek
-    ? currentWeek.swimTime + currentWeek.rideTime + currentWeek.runTime
+    ? SPLIT.reduce((sum, d) => sum + d.time(currentWeek), 0)
     : 0;
 
   return (
@@ -250,7 +259,8 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
           </div>
 
           {/* Discipline balance — how this week's hours split across the
-              three sports. A triathlete reads this to spot a neglected leg. */}
+              three sports and strength. A triathlete reads this to spot a
+              neglected leg. */}
           <div className="mt-auto pt-7">
             <span className="font-data text-[10px] uppercase tracking-wider text-gray-600">
               Time split
@@ -260,7 +270,7 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
               style={{ background: "var(--inset)" }}
             >
               {totalTime > 0 &&
-                TRIAD.map((d) => {
+                SPLIT.map((d) => {
                   const pct = (d.time(currentWeek!) / totalTime) * 100;
                   return (
                     <div
@@ -271,7 +281,7 @@ export function OverviewHero({ currentWeek, trainingLoad }: Props) {
                 })}
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-data text-[11px] text-gray-500">
-              {TRIAD.map((d) => (
+              {SPLIT.map((d) => (
                 <span key={d.label}>
                   <span style={{ color: d.color }}>{d.label}</span>{" "}
                   {totalTime > 0

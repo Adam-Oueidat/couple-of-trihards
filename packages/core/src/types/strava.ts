@@ -149,7 +149,7 @@ export interface AthleteDetail extends StravaAthlete {
   measurement_preference?: string;
 }
 
-export type Discipline = "run" | "ride" | "swim" | "other";
+export type Discipline = "run" | "ride" | "swim" | "strength" | "other";
 
 export interface WeeklyVolume {
   weekStart: string; // ISO date string (Monday)
@@ -159,4 +159,6 @@ export interface WeeklyVolume {
   runTime: number; // minutes
   rideTime: number; // minutes
   swimTime: number; // minutes
+  /** Strength work has no distance worth summing; time is the measure. */
+  strengthTime: number; // minutes
 }

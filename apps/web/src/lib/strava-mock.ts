@@ -22,7 +22,7 @@ import type {
  *
  * The data is generated, not recorded: a year of swim/ride/run training
  * building to a half marathon four days before "today", then an easy recovery
- * week, so the dashboard has form, load, a race and recent sessions to show.
+ * week, with two short strength sessions most weeks, so the dashboard has form, load, a race and recent sessions to show.
  * It is deterministic for a given day.
  */
 
@@ -60,7 +60,7 @@ const FTP = 250;
 
 interface Template {
   name: string;
-  sport: "Run" | "Ride" | "Swim";
+  sport: "Run" | "Ride" | "Swim" | "WeightTraining";
   km: number;
   min: number;
   hr: number;
@@ -86,7 +86,10 @@ function sessionsFor(daysAgo: number, weekday: number): Template[] {
   if (daysAgo < RACE_DAYS_AGO) {
     // Recovery week after the race.
     if (daysAgo === 1) return [{ name: "Recovery run", sport: "Run", km: 6.2, min: 36, hr: 124 }];
-    if (daysAgo === 2) return [{ name: "Easy swim", sport: "Swim", km: 1.8, min: 38, hr: 118 }];
+    if (daysAgo === 2) return [
+      { name: "Easy swim", sport: "Swim", km: 1.8, min: 38, hr: 118 },
+      { name: "Strength: hips and core", sport: "WeightTraining", km: 0, min: 30, hr: 104 },
+    ];
     return [];
   }
   if (daysAgo <= RACE_DAYS_AGO + 7) {
@@ -101,11 +104,14 @@ function sessionsFor(daysAgo: number, weekday: number): Template[] {
   const scale = 0.7 + 0.3 * (1 - daysAgo / HISTORY_DAYS);
   const s = (t: Template): Template => ({ ...t, km: +(t.km * scale).toFixed(1), min: Math.round(t.min * scale) });
   switch (weekday) {
-    case 1: return [s({ name: "Swim technique", sport: "Swim", km: 2.4, min: 50, hr: 126 })];
+    case 1: return [
+      s({ name: "Swim technique", sport: "Swim", km: 2.4, min: 50, hr: 126 }),
+      { name: "Strength: lower body", sport: "WeightTraining", km: 0, min: 40, hr: 108 },
+    ];
     case 2: return [s({ name: "Threshold intervals", sport: "Run", km: 12, min: 58, hr: 156 })];
     case 3: return [s({ name: "Endurance ride", sport: "Ride", km: 60, min: 120, hr: 132, watts: 180 })];
     case 4: return [s({ name: "Easy run", sport: "Run", km: 10, min: 56, hr: 140 }), s({ name: "Pool session", sport: "Swim", km: 2, min: 42, hr: 124 })];
-    case 5: return [];
+    case 5: return [{ name: "Strength: core and mobility", sport: "WeightTraining", km: 0, min: 30, hr: 100 }];
     case 6: return [s({ name: "Long ride", sport: "Ride", km: 90, min: 180, hr: 135, watts: 185 })];
     default: return [s({ name: "Long run", sport: "Run", km: 20, min: 112, hr: 146 })];
   }

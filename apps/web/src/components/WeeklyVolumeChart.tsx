@@ -23,6 +23,7 @@ const DISCIPLINES = [
   { key: "Swim", color: "var(--swim)", glyph: "swim" },
   { key: "Ride", color: "var(--ride)", glyph: "ride" },
   { key: "Run", color: "var(--run)", glyph: "run" },
+  { key: "Strength", color: "var(--strength)", glyph: "strength" },
 ] as const satisfies ReadonlyArray<{
   key: string;
   color: string;
@@ -35,6 +36,7 @@ const GLYPH_BY_KEY: Record<DisciplineKey, Discipline> = {
   Swim: "swim",
   Ride: "ride",
   Run: "run",
+  Strength: "strength",
 };
 
 function formatWeekLabel(weekStart: string): string {
@@ -53,6 +55,7 @@ interface ChartDatum {
   Run: number;
   Ride: number;
   Swim: number;
+  Strength: number;
   runKm: number;
   rideKm: number;
   swimM: number;
@@ -95,7 +98,7 @@ function CustomTooltip({
           <span className="text-white font-semibold">
             {formatHours(p.value)}
           </span>
-          <span className="text-gray-500">({distances[p.name]})</span>
+          {distances[p.name] && <span className="text-gray-500">({distances[p.name]})</span>}
         </div>
       ))}
       <p className="text-gray-400 mt-2 pt-2 border-t border-gray-700">
@@ -111,6 +114,7 @@ export function WeeklyVolumeChart({ data }: Props) {
     Swim: true,
     Ride: true,
     Run: true,
+    Strength: true,
   });
 
   const toggle = (key: DisciplineKey) =>
@@ -121,6 +125,7 @@ export function WeeklyVolumeChart({ data }: Props) {
     Run: Math.round((w.runTime / 60) * 100) / 100,
     Ride: Math.round((w.rideTime / 60) * 100) / 100,
     Swim: Math.round((w.swimTime / 60) * 100) / 100,
+    Strength: Math.round((w.strengthTime / 60) * 100) / 100,
     runKm: w.run,
     rideKm: w.ride,
     swimM: w.swim,
