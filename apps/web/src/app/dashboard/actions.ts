@@ -39,5 +39,6 @@ export async function refreshDashboard(): Promise<void> {
     throw err;
   }
 
-  revalidatePath("/dashboard");
+  // Every dashboard address (/dashboard, /dashboard/plan, …) is one page file.
+  revalidatePath("/dashboard/[[...tab]]", "page");
 }

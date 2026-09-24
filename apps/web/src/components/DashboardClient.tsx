@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import type { SyncState } from "@/lib/strava";
@@ -61,6 +62,7 @@ import { GOALS_KEY } from "./GoalsCard";
 import { FITNESS_KEY } from "./FitnessProfile";
 import { ProfileTab } from "./ProfileTab";
 import { ThemeToggle } from "./ThemeToggle";
+import { pathForTab, tabFromPathname, TAB_TITLES, type Tab } from "./dashboard-tabs";
 
 interface Props {
   athlete: { firstname: string; lastname: string; profile: string };
@@ -110,7 +112,6 @@ interface Props {
   analyses: Record<number, string>;
 }
 
-type Tab = "feed" | "plan" | "calendar" | "activities" | "recap" | "profile";
 
 const PRIMARY: { id: Tab; label: string }[] = [
   { id: "feed", label: "Feed" },
@@ -120,14 +121,6 @@ const PRIMARY: { id: Tab; label: string }[] = [
   { id: "recap", label: "Recap" },
 ];
 
-const TITLES: Record<Tab, string> = {
-  feed: "Feed",
-  plan: "Plan",
-  calendar: "Calendar",
-  activities: "Activities",
-  recap: "Recap",
-  profile: "Profile",
-};
 
 // "Synced …" label from a real sync timestamp (Unix millis). Only ever called
 // from async callbacks (never during render), so Date.now() stays out of the
@@ -145,7 +138,10 @@ function formatAgo(syncedAt: number): string {
 }
 
 export function DashboardClient({ athlete, activities, planActivities, weeklyVolume, currentWeek, trainingLoad, blockRecap, planRecap, qualityRecap, syncedAt, syncState, trainingPlan, planSummary, planOverrides, customWorkouts, isAdmin, today, runThreshold, analyses }: Props) {
-  const [tab, setTab] = useState<Tab>("feed");
+  // The page comes from the address, so a refresh, a bookmark or the Back
+  // button lands where the athlete was. Switching pages pushes a new address
+  // without a reload; Next.js keeps usePathname in step with pushState.
+  const tab = tabFromPathname(usePathname());
   // The plan-upload dialog is opened from two places — the plan card itself
   // and "Upload your next plan" on a finished plan — so the shell owns it.
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -224,8 +220,16 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
   const recentLoad = trainingLoad.slice(-60);
 
   function go(next: Tab) {
-    setTab(next);
+    if (next === tab) return;
+    window.history.pushState(null, "", pathForTab(next));
+    window.scrollTo(0, 0);
   }
+
+  // The server sets the title for the page it rendered; this keeps it right
+  // after client-side switches and Back/Forward.
+  useEffect(() => {
+    document.title = tab === "feed" ? "TriLog" : `${TAB_TITLES[tab]} · TriLog`;
+  }, [tab]);
 
   function openCoach(text?: string) {
     setCoachMounted(true);
@@ -333,7 +337,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
         <main className="mx-auto max-w-[1080px] px-4 pb-44 pt-6 md:px-8 md:pb-28 md:pt-8">
           {tab !== "feed" && (
             <h1 className="mb-6 font-display text-4xl font-bold uppercase leading-none tracking-wide text-white">
-              {TITLES[tab]}
+              {TAB_TITLES[tab]}
             </h1>
           )}
 
