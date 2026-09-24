@@ -23,6 +23,8 @@ interface Props {
    */
   uploadOpen: boolean;
   onUploadOpenChange: (open: boolean) => void;
+  /** Opens the coach's plan builder. */
+  onCreate: () => void;
 }
 
 const ACCEPT = ".pdf,.md,.txt,application/pdf,text/markdown,text/plain";
@@ -50,6 +52,19 @@ function formatDate(date: string): string {
  */
 function RacePill({ plan }: { plan: TrainingPlan }) {
   const phase = racePhase(plan);
+  // A plan built to no race just ends; there is no race to count down to.
+  const noRace = plan.raceName === "";
+  if (noRace) {
+    return (
+      <Pill className="border-gray-700 bg-gray-800 text-gray-400">
+        {phase.state === "upcoming"
+          ? `Ends in ${phase.days} ${phase.days === 1 ? "day" : "days"}`
+          : phase.state === "raceDay"
+            ? "Last day"
+            : "Finished"}
+      </Pill>
+    );
+  }
 
   if (phase.state === "raceDay") {
     return (
@@ -92,7 +107,7 @@ function Pill({
   );
 }
 
-export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUploadOpenChange }: Props) {
+export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUploadOpenChange, onCreate }: Props) {
   const open = uploadOpen;
   const setOpen = onUploadOpenChange;
   const [dragging, setDragging] = useState(false);
@@ -150,10 +165,23 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
         setError(null);
         setOpen(true);
       }}
-      className="px-4 py-2 rounded-lg border border-orange-500/40 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20 hover:border-orange-500 text-sm font-semibold transition-colors cursor-pointer"
+      className="px-4 py-2 rounded-[10px] border border-gray-700 text-gray-300 hover:border-gray-600 hover:text-white text-sm font-semibold transition-colors cursor-pointer"
     >
       Upload a plan
     </button>
+  );
+  // Two ways in, side by side: bring a plan you have, or have the coach write one.
+  const planActions = (
+    <div className="flex flex-wrap gap-2">
+      {uploadButton}
+      <button
+        type="button"
+        onClick={onCreate}
+        className="px-4 py-2 rounded-[10px] bg-orange-500 text-[var(--accent-fg)] hover:bg-orange-400 text-sm font-semibold transition-colors cursor-pointer"
+      >
+        Create with coach
+      </button>
+    </div>
   );
 
   return (
@@ -174,7 +202,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
                 {summary.name}
               </h3>
               <p className="text-gray-500 text-xs mt-1">
-                {summary.raceName} · {formatDate(summary.raceDate)}
+                {summary.raceName ? `${summary.raceName} · ${formatDate(summary.raceDate)}` : `Ends ${formatDate(summary.raceDate)}`}
               </p>
 
               <div className="flex flex-wrap items-center gap-2 mt-3">
@@ -193,7 +221,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
               >
                 {removing ? "Removing…" : "Remove"}
               </button>
-              {uploadButton}
+              {planActions}
             </div>
           </div>
 
@@ -217,7 +245,7 @@ export function PlanSourceCard({ plan, summary, onPlanChange, uploadOpen, onUplo
                 from your training data alone.
               </p>
             </div>
-            {uploadButton}
+            {planActions}
           </div>
         </>
       )}

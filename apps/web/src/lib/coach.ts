@@ -380,7 +380,7 @@ ${misdated
   // details. Nothing here is rendered from a default plan.
   const planSection = plan
     ? `# Training plan: ${plan.name} (${plan.source}, ${plan.discipline})
-Goal race: ${plan.raceName} on ${plan.raceDate} (${raceTiming(plan, today)})
+${plan.raceName ? `Goal race: ${plan.raceName} on ${plan.raceDate} (${raceTiming(plan, today)})` : `No goal race: the plan ends on ${plan.raceDate}.`}
 Plan span: ${plan.startDate} to ${plan.raceDate}
 
 ## Recent plan sessions (with adherence)

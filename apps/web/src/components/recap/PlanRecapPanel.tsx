@@ -40,7 +40,7 @@ export function PlanRecapPanel({ recap }: { recap: PlanRecap }) {
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div className="min-w-0">
           <h3 className="font-display text-2xl uppercase leading-tight tracking-wide text-white">
-            {recap.raceName}
+            {recap.raceName || recap.name}
           </h3>
           <p className="mt-1 font-data text-[11px] text-gray-500">
             {DATE_FMT.format(new Date(`${recap.raceDate}T12:00:00`))} ·{" "}

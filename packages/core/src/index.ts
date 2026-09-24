@@ -1,6 +1,7 @@
 export * from "./training";
 export * from "./plan";
 export * from "./plan-schema";
+export * from "./plan-agent";
 export * from "./quality";
 export * from "./quality-recap";
 export * from "./recap";
