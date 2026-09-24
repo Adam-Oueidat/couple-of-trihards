@@ -60,6 +60,7 @@ import { CalendarTab } from "./CalendarTab";
 import { PlanSourceCard } from "./PlanSourceCard";
 import { CreatePlanDialog } from "./plan-draft/CreatePlanDialog";
 import { PlanDraftPanel } from "./plan-draft/PlanDraftPanel";
+import { AdjustPanel } from "./plan-adjust/AdjustPanel";
 import { GOALS_KEY } from "./GoalsCard";
 import { FITNESS_KEY } from "./FitnessProfile";
 import { ProfileTab } from "./ProfileTab";
@@ -377,6 +378,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
                 onCreate={() => setCreateOpen(true)}
               />
               {createOpen && <CreatePlanDialog onClose={() => setCreateOpen(false)} />}
+              {plan.plan && <AdjustPanel onPlanChange={(next, summary) => setPlan({ plan: next, summary })} />}
               <PlannedVsActual
                 activities={planActivities}
                 plan={plan.plan}

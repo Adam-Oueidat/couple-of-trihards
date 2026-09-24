@@ -423,6 +423,32 @@ export const planDrafts = sqliteTable(
   (t) => [index("plan_drafts_user_created_idx").on(t.userId, t.createdAt)],
 );
 
+// A change to the athlete's plan the coach has proposed ("my knee is sore,
+// go lighter for two weeks"). Written in the background like a draft; applied
+// only when the athlete approves, at which point `result.previous` keeps the
+// sessions it replaced so the change can be undone.
+export const planAdjustments = sqliteTable(
+  "plan_adjustments",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    planId: text("plan_id")
+      .notNull()
+      .references(() => trainingPlans.id, { onDelete: "cascade" }),
+    status: text("status", { enum: ["pending", "ready", "failed", "applied", "discarded"] }).notNull(),
+    request: text("request").notNull(),
+    result: text("result", { mode: "json" }).$type<Record<string, unknown>>(),
+    error: text("error"),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at")
+      .notNull()
+      .$defaultFn(() => Math.floor(Date.now() / 1000)),
+  },
+  (t) => [index("plan_adjustments_user_created_idx").on(t.userId, t.createdAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type License = typeof licenses.$inferSelect;
@@ -444,6 +470,7 @@ export type ActivityQualityRow = typeof activityQuality.$inferSelect;
 export type NewActivityQualityRow = typeof activityQuality.$inferInsert;
 export type ScanStateRow = typeof scanState.$inferSelect;
 export type PlanDraftRow = typeof planDrafts.$inferSelect;
+export type PlanAdjustmentRow = typeof planAdjustments.$inferSelect;
 
 // Suppress unused-import warning for `sql` if no schema entry uses it.
 void sql;
