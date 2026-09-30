@@ -92,6 +92,13 @@ export interface Suggestion {
   /** Why this, today — always specific enough to be argued with. */
   why: string;
   session: SuggestedSession | null;
+  /**
+   * A hard session (intervals, tempo, a long run, or a hard day on the plan):
+   * the page offers to go easy instead.
+   */
+  hard?: boolean;
+  /** The sport, when there is no generated session to read it from (the plan's own). */
+  discipline?: TriDiscipline;
   /** Set when a constraint produced this rather than an opportunity. */
   constraint?: "plan" | "fatigue" | "recent-hard";
   score: number;
@@ -342,7 +349,10 @@ function runAnchor(state: AthleteState): ThresholdAnchor {
 }
 
 export function easyRun(state: AthleteState): SuggestedSession {
-  const km = round(state.medianEasyKm ?? 8, 0.5);
+  return buildEasyRun(round(state.medianEasyKm ?? 8, 0.5), runAnchor(state));
+}
+
+function buildEasyRun(km: number, threshold: ThresholdAnchor): SuggestedSession {
   const minutes = Math.round(km * 6);
   return {
     name: `${km} km easy run`,
@@ -362,7 +372,7 @@ export function easyRun(state: AthleteState): SuggestedSession {
         distanceM: km * 1000,
       },
     ],
-    threshold: runAnchor(state),
+    threshold,
     summary: `${km} km easy, Z2 throughout. Comfortable enough to hold a conversation.`,
   };
 }
@@ -721,6 +731,108 @@ function swimSession(state: AthleteState): SuggestedSession {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Easy options: always on offer, at a volume the athlete picks
+// ---------------------------------------------------------------------------
+
+/**
+ * How far each easy option's volume can be dialled, and in what unit: km for
+ * a run, minutes for a spin, metres for a swim.
+ */
+export const EASY_VOLUME: Record<TriDiscipline, { min: number; max: number; step: number; unit: string }> = {
+  run: { min: 2, max: 30, step: 0.5, unit: "km" },
+  ride: { min: 15, max: 300, step: 5, unit: "min" },
+  swim: { min: 200, max: 5000, step: 100, unit: "m" },
+};
+
+function clampVolume(discipline: TriDiscipline, volume: number): number {
+  const { min, max, step } = EASY_VOLUME[discipline];
+  const v = Math.round((Number.isFinite(volume) ? volume : min) / step) * step;
+  return Math.min(max, Math.max(min, Math.round(v * 10) / 10));
+}
+
+function buildEasyRide(minutes: number, threshold: ThresholdAnchor): SuggestedSession {
+  return {
+    name: `${minutes} min easy spin`,
+    discipline: "ride",
+    kind: "easy",
+    durationMin: minutes,
+    steps: [{ label: "Whole ride", detail: "Easy spin, Z1–Z2: light gear, high cadence, never pushing" }],
+    blocks: [{ kind: "steady", label: "Whole ride", durationSec: minutes * 60, intensity: EFFORT.easy }],
+    threshold,
+    summary: `${minutes} min easy spin, Z1–Z2. Light gear, high cadence.`,
+  };
+}
+
+function buildEasySwim(meters: number): SuggestedSession {
+  const minutes = Math.round((meters / 100) * (SWIM_SEC_PER_100 / 60) * 1.1);
+  return {
+    name: `${meters} m easy swim`,
+    discipline: "swim",
+    kind: "easy",
+    distanceKm: meters / 1000,
+    durationMin: minutes,
+    steps: [
+      { label: "Whole swim", detail: `${meters} m relaxed, long strokes; break it into 200s with a short rest if you like` },
+    ],
+    blocks: [
+      { kind: "steady", label: "Whole swim", durationSec: minutes * 60, intensity: EFFORT.easy, distanceM: meters },
+    ],
+    threshold: EFFORT_ANCHOR,
+    summary: `${meters} m easy, relaxed and aerobic.`,
+  };
+}
+
+/**
+ * An easy session of the given sport at the given volume (km, minutes or
+ * metres; see EASY_VOLUME), clamped to a sensible range. Pure, so the page can
+ * rebuild the session as the athlete dials the volume.
+ */
+export function buildEasySession(
+  discipline: TriDiscipline,
+  volume: number,
+  threshold: ThresholdAnchor = EFFORT_ANCHOR,
+): SuggestedSession {
+  const v = clampVolume(discipline, volume);
+  if (discipline === "run") return buildEasyRun(v, threshold);
+  if (discipline === "ride") return buildEasyRide(v, threshold);
+  return buildEasySwim(v);
+}
+
+export interface EasyOption {
+  discipline: TriDiscipline;
+  /** Where the volume starts: what the athlete usually does. */
+  volume: number;
+  session: SuggestedSession;
+}
+
+/**
+ * An easy run, spin and swim, whatever the ranking says: the low-effort way to
+ * train on any day, at the athlete's usual volume to start with.
+ */
+export function easyOptions(input: SuggestInput): EasyOption[] {
+  const state = readAthleteState(input);
+  const ftp = input.athlete?.ftp ?? null;
+  const volumes: Record<TriDiscipline, number> = {
+    run: clampVolume("run", state.medianEasyKm ?? 8),
+    ride: clampVolume("ride", state.medianRideMin ?? 60),
+    swim: clampVolume("swim", (state.medianSwimKm ?? 1.5) * 1000),
+  };
+  const anchors: Record<TriDiscipline, ThresholdAnchor> = {
+    run: runAnchor(state),
+    ride: ftp ? { kind: "ftp", watts: ftp } : EFFORT_ANCHOR,
+    swim: EFFORT_ANCHOR,
+  };
+  return (["run", "ride", "swim"] as TriDiscipline[]).map((d) => ({
+    discipline: d,
+    volume: volumes[d],
+    session: buildEasySession(d, volumes[d], anchors[d]),
+  }));
+}
+
+/** Session kinds that are a hard day, whatever the sport. */
+const HARD_KINDS = new Set<SuggestionKind>(["intervals", "vo2", "tempo", "long"]);
+
 function restDay(): SuggestedSession | null {
   return null;
 }
@@ -801,6 +913,8 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
       priority: "do-this",
       score: 100,
       constraint: "plan",
+      hard: isHardSession(s),
+      ...(disciplineOf(s) !== "strength" ? { discipline: disciplineOf(s) as TriDiscipline } : {}),
       headline: s.isCustom ? `On your calendar: ${s.name}` : `Your plan: ${s.name}`,
       why: s.isCustom
         ? `You already put this on ${date}${s.km ? `, ${s.km} km` : ""}. The options below are alternatives if it will not fit.`
@@ -993,6 +1107,7 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
     out.push({
       id: c.id,
       priority: priorityOf(c.score, rank++),
+      ...(c.session && HARD_KINDS.has(c.session.kind) ? { hard: true } : {}),
       score: c.score,
       headline: c.headline,
       why: c.why,

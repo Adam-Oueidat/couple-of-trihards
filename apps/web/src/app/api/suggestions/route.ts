@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createLogger, defaultLimiter, suggestWorkouts } from "@trihards/core";
+import { createLogger, defaultLimiter, easyOptions, suggestWorkouts } from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 import { loadSuggestInput } from "@/lib/suggestions";
@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
       date: input.date,
       today: input.today,
       suggestions: suggestWorkouts(input),
+      // An easy run, spin and swim, always: the low-effort choice any day.
+      easy: easyOptions(input),
     });
   } catch (err) {
     log.error("suggestions failed", err);
