@@ -4,10 +4,13 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import {
+  buildEasySession,
+  EASY_VOLUME,
   formatDuration,
   isHardSuggestion,
   SUGGEST_DISCIPLINE_LABEL,
   type ConflictAction,
+  type EasyOption,
   type ScheduleConflict,
   type Suggestion,
   type SuggestionPriority,
@@ -21,6 +24,7 @@ interface Payload {
   date: string;
   today: string;
   suggestions: Suggestion[];
+  easy?: EasyOption[];
 }
 
 const DISCIPLINE_COLOR: Record<TriDiscipline, string> = {
@@ -285,6 +289,20 @@ export function NextUpTab({ context }: { context?: string } = {}) {
             )}
           </div>
         )}
+
+        {s.hard && !asking && data?.easy && data.easy.length > 0 && (
+          <EasyMode
+            key={`${viewing}:${s.id}`}
+            options={data.easy}
+            sport={s.session?.discipline ?? s.discipline ?? "run"}
+            viewing={viewing}
+            adding={adding}
+            added={added}
+            onAdd={(id, session) =>
+              accept({ id, priority: "optional", headline: session.name, why: "", session, score: 0 }, {})
+            }
+          />
+        )}
       </>
     );
   }
@@ -526,6 +544,118 @@ function SuggestionHeader({ s, large = false }: { s: Suggestion; large?: boolean
           {formatDuration(s.session.durationMin)}
           {s.session.distanceKm ? ` · ${s.session.distanceKm} km` : ""}
         </div>
+      )}
+    </div>
+  );
+}
+
+const EASY_LABEL: Record<TriDiscipline, string> = { run: "Run", ride: "Spin", swim: "Swim" };
+
+/**
+ * "Go easy mode instead": under a hard pick, one tap opens an easy run, spin
+ * or swim at the athlete's usual volume, which they can dial up or down. Folded
+ * away until asked for, so the card stays about the pick.
+ */
+function EasyMode({
+  options,
+  sport,
+  viewing,
+  adding,
+  added,
+  onAdd,
+}: {
+  options: EasyOption[];
+  sport: TriDiscipline;
+  viewing: string;
+  adding: string | null;
+  added: Record<string, string>;
+  onAdd: (id: string, session: EasyOption["session"]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [discipline, setDiscipline] = useState<TriDiscipline>(
+    options.some((o) => o.discipline === sport) ? sport : options[0].discipline,
+  );
+  const [volume, setVolume] = useState<Record<string, number>>(() =>
+    Object.fromEntries(options.map((o) => [o.discipline, o.volume])),
+  );
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 cursor-pointer text-sm text-gray-500 underline-offset-4 transition-colors hover:text-white hover:underline"
+      >
+        Go easy mode instead
+      </button>
+    );
+  }
+
+  const o = options.find((x) => x.discipline === discipline)!;
+  const range = EASY_VOLUME[discipline];
+  const v = volume[discipline] ?? o.volume;
+  const session = v === o.volume ? o.session : buildEasySession(discipline, v, o.session.threshold);
+  // A new id per sport and volume, so "On your calendar" belongs to the one added.
+  const id = `easy-${discipline}-${v}`;
+  const onCalendar = added[id] === viewing;
+  const set = (next: number) =>
+    setVolume((prev) => ({
+      ...prev,
+      [discipline]: Math.min(range.max, Math.max(range.min, Math.round(next * 10) / 10)),
+    }));
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[10px] border border-gray-800 bg-gray-950/60 px-3 py-2.5">
+      <span className="inline-flex gap-1" role="radiogroup" aria-label="Easy session sport">
+        {options.map((x) => (
+          <button
+            key={x.discipline}
+            type="button"
+            role="radio"
+            aria-checked={x.discipline === discipline}
+            onClick={() => setDiscipline(x.discipline)}
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[12px] transition-colors ${
+              x.discipline === discipline
+                ? "border-gray-600 bg-gray-800 text-white"
+                : "border-gray-800 text-gray-500 hover:text-white"
+            }`}
+          >
+            <span style={{ color: DISCIPLINE_COLOR[x.discipline] }}>
+              <DisciplineGlyph discipline={x.discipline} size={11} />
+            </span>
+            {EASY_LABEL[x.discipline]}
+          </button>
+        ))}
+      </span>
+      <span className="inline-flex items-center gap-1" role="group" aria-label="Easy session volume">
+        <button type="button" onClick={() => set(v - range.step)} disabled={v <= range.min} aria-label="Less" className={STEP_BTN}>−</button>
+        <span className="min-w-[64px] text-center font-data text-[13px] text-white" aria-live="polite">
+          {v} {range.unit}
+        </span>
+        <button type="button" onClick={() => set(v + range.step)} disabled={v >= range.max} aria-label="More" className={STEP_BTN}>+</button>
+      </span>
+      <span className="font-data text-[11px] text-gray-500">
+        {discipline === "ride" ? "Z1–Z2" : `~${formatDuration(session.durationMin)} · Z2`}
+      </span>
+      <span className="ml-auto inline-flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="cursor-pointer px-1 text-[13px] text-gray-500 transition-colors hover:text-white"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => onAdd(id, session)}
+          disabled={adding !== null || onCalendar}
+          className="cursor-pointer rounded-[10px] border border-gray-700 px-3 py-1.5 text-[13px] font-semibold text-gray-300 transition-colors hover:border-gray-600 hover:text-white disabled:cursor-default disabled:opacity-60"
+        >
+          {adding === id ? "Adding…" : onCalendar ? "On your calendar" : "Add to calendar"}
+        </button>
+      </span>
+      {added[id] === "error" && (
+        <span className="w-full font-data text-[11px] text-[var(--err)]">Could not add it. Try again.</span>
       )}
     </div>
   );

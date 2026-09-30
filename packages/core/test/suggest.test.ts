@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildEasySession,
+  easyOptions,
+  EASY_VOLUME,
   readAthleteState,
   resolveZoneModel,
   sessionNote,
@@ -502,5 +505,35 @@ describe("the list always has a lead", () => {
     const out = suggestWorkouts(input({ activities: acts, trainingLoad: load(0) }), 8);
     expect(out[0].constraint).toBe("recent-hard");
     expect(out.filter((s) => s.priority === "do-this")).toHaveLength(1);
+  });
+});
+
+describe("easy options", () => {
+  it("always offers an easy run, spin and swim at the athlete's usual volume", () => {
+    const opts = easyOptions(input());
+    expect(opts.map((o) => o.discipline)).toEqual(["run", "ride", "swim"]);
+    for (const o of opts) {
+      expect(o.session.kind).toBe("easy");
+      expect(o.session.durationMin).toBeGreaterThan(0);
+    }
+  });
+
+  it("rebuilds a session at the volume the athlete picks, within bounds", () => {
+    expect(buildEasySession("run", 5).distanceKm).toBe(5);
+    expect(buildEasySession("run", 5).name).toBe("5 km easy run");
+    expect(buildEasySession("ride", 45).durationMin).toBe(45);
+    expect(buildEasySession("swim", 1200).distanceKm).toBe(1.2);
+    expect(buildEasySession("run", 0.4).distanceKm).toBe(EASY_VOLUME.run.min);
+    expect(buildEasySession("swim", 99999).distanceKm).toBe(EASY_VOLUME.swim.max / 1000);
+  });
+});
+
+describe("hard picks", () => {
+  it("flags intervals and tempo as hard, and easy running as not", () => {
+    const out = suggestWorkouts(input(), 10);
+    for (const s of out) {
+      if (s.session && ["intervals", "vo2", "tempo", "long"].includes(s.session.kind)) expect(s.hard).toBe(true);
+      if (s.session && (s.session.kind === "easy" || s.session.kind === "recovery")) expect(s.hard).toBeFalsy();
+    }
   });
 });
