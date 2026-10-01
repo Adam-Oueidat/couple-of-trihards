@@ -644,7 +644,8 @@ export interface EfficiencyTrend {
 const EF_MIN_POINTS = 8;
 const EF_MIN_WEEKS = 6;
 
-function aerobicRuns(
+/** Runs long enough to trust and averaging below Z3: the easy-run set. */
+export function aerobicRuns(
   activities: StravaActivity[],
   model: ZoneModel,
   from: string,
