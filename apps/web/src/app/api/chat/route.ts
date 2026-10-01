@@ -27,6 +27,10 @@ import {
 import { addWorkout, validateWorkoutInput } from "@/lib/workouts";
 import { moveSession } from "@/lib/plan-overrides";
 import {
+  analyzeTrainingBlocks,
+  parseBlockAnalysisRequest,
+} from "@/lib/block-analysis";
+import {
   getCarryoverSummary,
   getConversation,
   getConversationMessages,
@@ -98,6 +102,37 @@ const TOOLS: Anthropic.Tool[] = [
         },
       },
       required: ["session_id", "new_date"],
+    },
+  },
+  {
+    name: "analyze_training_blocks",
+    description:
+      "Compare the athlete's easy running across training blocks: easy pace, heart rate, efficiency (speed per heartbeat), pace inside one fixed heart-rate band, aerobic decoupling, time in zone, volume, training load and form — plus their latest easy runs read against the current block. Every number is computed server-side from their full Strava history, and each block-to-block comparison comes with a verdict (improved / worse / running easier / running harder / stable / not enough data) and the measured changes that could explain it. Call it whenever the athlete asks how their easy pace, aerobic base or running fitness is trending, whether it is getting better or worse, or why. With no arguments it compares the last three 6-week blocks. Pass `blocks` for specific periods (e.g. 'since I started the plan' vs the block before), using dates from get_current_datetime and the plan section.",
+    input_schema: {
+      type: "object",
+      properties: {
+        blocks: {
+          type: "array",
+          description:
+            "Explicit periods to compare, 2-6 of them, non-overlapping. Overrides block_weeks/block_count.",
+          items: {
+            type: "object",
+            properties: {
+              from: { type: "string", description: "YYYY-MM-DD, inclusive" },
+              to: { type: "string", description: "YYYY-MM-DD, inclusive" },
+            },
+            required: ["from", "to"],
+          },
+        },
+        block_weeks: {
+          type: "number",
+          description: "Length of each block in weeks when blocks is omitted (1-12, default 6)",
+        },
+        block_count: {
+          type: "number",
+          description: "How many back-to-back blocks ending today (2-6, default 3)",
+        },
+      },
     },
   },
 ];
@@ -406,6 +441,22 @@ export async function POST(request: NextRequest) {
                     error: err instanceof Error ? err.message : String(err),
                   });
                   result = `Failed to move session: ${err instanceof Error ? err.message : "unknown error"}`;
+                }
+              } else if (block.name === "analyze_training_blocks") {
+                try {
+                  result = await analyzeTrainingBlocks(
+                    auth,
+                    activities,
+                    today,
+                    parseBlockAnalysisRequest(block.input),
+                  );
+                  log.info("coach analyzed blocks", { userId, chars: result.length });
+                } catch (err) {
+                  log.warn("analyze_training_blocks tool failed", {
+                    userId,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                  result = `Failed to analyze blocks: ${err instanceof Error ? err.message : "unknown error"}`;
                 }
               } else {
                 log.warn("unknown tool requested", { userId, name: block.name });
