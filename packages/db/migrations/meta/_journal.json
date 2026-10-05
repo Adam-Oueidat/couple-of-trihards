@@ -92,6 +92,13 @@
       "when": 1790257810659,
       "tag": "0012_flashy_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1791230466262,
+      "tag": "0013_slow_warlock",
+      "breakpoints": true
     }
   ]
 }

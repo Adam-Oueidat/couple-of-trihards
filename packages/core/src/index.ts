@@ -3,6 +3,7 @@ export * from "./plan";
 export * from "./plan-schema";
 export * from "./plan-agent";
 export * from "./plan-adjust";
+export * from "./plan-revise";
 export * from "./quality";
 export * from "./quality-recap";
 export * from "./block-analysis";
