@@ -7,11 +7,12 @@ import {
   formatDuration,
   type DraftWeekStats,
   type PlannedSession,
+  type RevisionStance,
   type TrainingDiscipline,
   type TrainingPlan,
 } from "@trihards/core";
 import { fetcher } from "@/lib/fetcher";
-import type { DraftView } from "@/lib/plan-drafts";
+import type { DraftResult, DraftView } from "@/lib/plan-drafts";
 import type { PlanSummary } from "@/lib/training-plans";
 import { DisciplineGlyph } from "../DisciplineGlyph";
 import { DISCIPLINE_PILL } from "../discipline-pill";
@@ -55,31 +56,41 @@ export function PlanDraftPanel({
     revalidateOnFocus: false,
     refreshInterval: (d) => (d?.status === "pending" ? 5000 : 0),
   });
-  const [busy, setBusy] = useState<"save" | "discard" | null>(null);
+  const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   if (!draft) return null;
 
-  async function act(action: "save" | "discard") {
-    if (!draft) return;
+  async function act(action: Action, extra?: { feedback: string }): Promise<boolean> {
+    if (!draft) return false;
     setBusy(action);
     setError(null);
     try {
       const res = await fetch(`${DRAFTS_KEY}/${draft.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...extra }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
       if (action === "save") onPlanChange(data.plan ?? null, data.summary ?? null);
-      await mutate(DRAFTS_KEY, null, { revalidate: false });
+      // Revise, insist and back answer with the version to show next.
+      const next = action === "revise" || action === "insist" || action === "back";
+      await mutate(DRAFTS_KEY, next ? (data as DraftView) : null, { revalidate: false });
       if (action === "discard") onStartOver();
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
+      return false;
     } finally {
       setBusy(null);
     }
+  }
+
+  // A revision being written, or one that failed, keeps the version it
+  // started from on screen with the conversation above it.
+  if (draft.base && (draft.status === "pending" || draft.status === "failed")) {
+    return <DraftPreview draft={draft} result={draft.base} busy={busy} error={error} act={act} />;
   }
 
   if (draft.status === "pending") {
@@ -114,46 +125,58 @@ export function PlanDraftPanel({
     );
   }
 
-  return <DraftPreview draft={draft} busy={busy} error={error} onSave={() => act("save")} onDiscard={() => act("discard")} />;
+  return <DraftPreview draft={draft} result={draft.result} busy={busy} error={error} act={act} />;
 }
+
+type Action = "save" | "discard" | "revise" | "insist" | "back";
+type Act = (action: Action, extra?: { feedback: string }) => Promise<boolean>;
 
 function DraftPreview({
   draft,
+  result,
   busy,
   error,
-  onSave,
-  onDiscard,
+  act,
 }: {
   draft: DraftView;
-  busy: "save" | "discard" | null;
+  /** The version on screen: the draft's own, or while a revision is written, the one it started from. */
+  result: DraftResult;
+  busy: Action | null;
   error: string | null;
-  onSave: () => void;
-  onDiscard: () => void;
+  act: Act;
 }) {
-  const result = draft.result!;
   const { plan: raw, stats, phases, why, assumptions, weekFocus } = result;
   const plan = useMemo(() => buildTrainingPlan(raw), [raw]);
   const [weekIdx, setWeekIdx] = useState(0);
   const hasRace = raw.raceName !== "";
   const total = phases.reduce((s, p) => s + p.weeks, 0);
+  const revising = draft.status === "pending";
+  // Changes are shown only on the version that made them.
+  const revision = draft.status === "ready" ? result.revision : undefined;
+  const changed = useMemo(() => new Set((revision?.changedWeeks ?? []).map((w) => w - 1)), [revision]);
+  const version = draft.status === "ready" ? draft.revision : draft.revision - 1;
 
   return (
     <section className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="font-data text-[11px] uppercase tracking-[0.14em] text-orange-500">Draft · not saved</p>
+          <p className="font-data text-[11px] uppercase tracking-[0.14em] text-orange-500">
+            Draft{version > 0 ? ` · version ${version + 1}` : ""} · not saved
+          </p>
           <h2 className="mt-1.5 font-display text-4xl font-bold uppercase leading-none tracking-wide text-white">{raw.name}</h2>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onDiscard} disabled={busy !== null} className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:border-gray-600 disabled:opacity-50">
+          <button type="button" onClick={() => act("discard")} disabled={busy !== null} className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:border-gray-600 disabled:opacity-50">
             {busy === "discard" ? "…" : "Start over"}
           </button>
-          <button type="button" onClick={onSave} disabled={busy !== null} className="cursor-pointer rounded-[10px] bg-orange-500 px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] hover:bg-orange-400 disabled:opacity-50">
+          <button type="button" onClick={() => act("save")} disabled={busy !== null || draft.status !== "ready"} className="cursor-pointer rounded-[10px] bg-orange-500 px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] hover:bg-orange-400 disabled:cursor-default disabled:opacity-50">
             {busy === "save" ? "Saving…" : "Save as my plan"}
           </button>
         </div>
       </div>
       {error && <p className="text-sm text-[var(--err)]" role="alert">{error}</p>}
+
+      <RevisePanel draft={draft} revision={revision} busy={busy} act={act} revising={revising} />
 
       <div className="grid overflow-hidden rounded-[14px] border border-gray-800 bg-gray-900 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="min-w-0 p-5 sm:p-6">
@@ -180,7 +203,13 @@ function DraftPreview({
               </div>
             ))}
           </div>
-          <WeeklyHoursChart weeks={stats.weeks} selected={weekIdx} onSelect={setWeekIdx} />
+          <WeeklyHoursChart
+            weeks={stats.weeks}
+            selected={weekIdx}
+            onSelect={setWeekIdx}
+            changed={changed}
+            previous={revision?.previousWeekMin}
+          />
           <FitnessChart points={stats.ctl} />
         </div>
         <div className="flex flex-col gap-3 border-t border-gray-800 bg-gray-950/60 p-5 sm:p-6 lg:border-l lg:border-t-0">
@@ -196,15 +225,15 @@ function DraftPreview({
               </ul>
             </>
           )}
-          {draft.result!.dropped > 0 && (
+          {result.dropped > 0 && (
             <p className="text-[12px] text-gray-500">
-              {draft.result!.dropped} session{draft.result!.dropped === 1 ? "" : "s"} fell on days you can&apos;t train or outside the plan&apos;s dates and were left out.
+              {result.dropped} session{result.dropped === 1 ? "" : "s"} fell on days you can&apos;t train or outside the plan&apos;s dates and were left out.
             </p>
           )}
         </div>
       </div>
 
-      <WeekBrowser plan={plan} weeks={stats.weeks} focus={weekFocus} index={weekIdx} onIndex={setWeekIdx} />
+      <WeekBrowser plan={plan} weeks={stats.weeks} focus={weekFocus} index={weekIdx} onIndex={setWeekIdx} changed={changed} />
     </section>
   );
 }
@@ -226,13 +255,19 @@ function WeeklyHoursChart({
   weeks,
   selected,
   onSelect,
+  changed,
+  previous,
 }: {
   weeks: DraftWeekStats[];
   selected: number;
   onSelect: (i: number) => void;
+  /** 0-based weeks the last revision changed. */
+  changed: Set<number>;
+  /** Each week's total minutes before the last revision; changed weeks show it as an outline. */
+  previous?: number[];
 }) {
   const [hover, setHover] = useState<number | null>(null);
-  const maxH = Math.max(1, ...weeks.map((w) => w.totalMin / 60));
+  const maxH = Math.max(1, ...weeks.map((w) => w.totalMin / 60), ...[...changed].map((i) => (previous?.[i] ?? 0) / 60));
   const top = Math.ceil(maxH / 2) * 2;
   const slot = CHART_W / weeks.length;
   const bar = Math.max(3, slot - 3);
@@ -252,7 +287,7 @@ function WeeklyHoursChart({
           ))}
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${CHART_W} ${HOURS_H + 16}`} className="w-full" role="img" aria-label={`Weekly planned hours, ${weeks.length} weeks, peaking at ${maxH.toFixed(1)} hours`} onMouseLeave={() => setHover(null)}>
+      <svg viewBox={`0 0 ${CHART_W} ${HOURS_H + 16}`} className="w-full" role="img" aria-label={`Weekly planned hours, ${weeks.length} weeks, peaking at ${Math.max(...weeks.map((w) => w.totalMin / 60)).toFixed(1)} hours${changed.size ? `; ${changed.size} weeks changed, their old totals outlined` : ""}`} onMouseLeave={() => setHover(null)}>
         {[0, top / 2, top].map((h) => (
           <g key={h}>
             <line x1={0} x2={CHART_W} y1={y(h)} y2={y(h)} stroke="var(--chart-grid)" strokeWidth={1} strokeDasharray={h === 0 ? undefined : "3 4"} />
@@ -273,6 +308,19 @@ function WeeklyHoursChart({
                 base += h;
                 return <rect key={s} x={x} y={y0} width={bar} height={height} rx={1.5} fill={SPORT_COLOR[s]} />;
               })}
+              {changed.has(i) && previous?.[i] !== undefined && previous[i] > 0 && (
+                <rect
+                  x={x - 0.5}
+                  y={y(previous[i] / 60)}
+                  width={bar + 1}
+                  height={(previous[i] / 60 / top) * HOURS_H}
+                  rx={1.5}
+                  fill="none"
+                  stroke="var(--text-muted)"
+                  strokeWidth={1}
+                  strokeDasharray="3 2"
+                />
+              )}
               {i === selected && <rect x={x - 1} y={HOURS_H + 4} width={bar + 2} height={3} rx={1.5} fill="var(--accent)" />}
               {/* Hit target: the whole column, taller and wider than the bars. */}
               <rect
@@ -300,6 +348,9 @@ function WeeklyHoursChart({
             Week {shown + 1} · {weeks[shown].phase}
           </p>
           <p className="mb-1 text-white">{formatDuration(weeks[shown].totalMin)}{weeks[shown].recovery ? " · recovery" : ""}</p>
+          {changed.has(shown) && previous?.[shown] !== undefined && (
+            <p className="mb-1 text-gray-400">was {formatDuration(previous[shown])}</p>
+          )}
           {SPORTS.filter((s) => weeks[shown].minutes[s] > 0).map((s) => (
             <p key={s} className="flex justify-between text-gray-300">
               <span className="inline-flex items-center gap-1.5">
@@ -373,12 +424,14 @@ function WeekBrowser({
   focus,
   index,
   onIndex,
+  changed,
 }: {
   plan: TrainingPlan;
   weeks: DraftWeekStats[];
   focus: string[];
   index: number;
   onIndex: (i: number) => void;
+  changed: Set<number>;
 }) {
   const week = weeks[index];
   if (!week) return null;
@@ -396,6 +449,9 @@ function WeekBrowser({
           <p className="font-data text-[11px] uppercase tracking-[0.14em] text-gray-500">
             Week {index + 1} of {weeks.length} · {week.phase}
             {week.recovery ? " · recovery" : ""}
+            {changed.has(index) && (
+              <span className="ml-2 rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 normal-case tracking-normal text-orange-500">changed</span>
+            )}
           </p>
           <p className="mt-1 font-display text-xl font-bold uppercase tracking-wide text-white">
             {fmt(week.weekStart)}–{fmt(addDays(week.weekStart, 6))} · {formatDuration(week.totalMin)}
@@ -432,6 +488,154 @@ function WeekBrowser({
         })}
       </div>
       <p className="mt-3 text-[12px] text-gray-500">Once saved, every session is on your calendar, where you can move, edit or skip it.</p>
+    </section>
+  );
+}
+
+const EXAMPLES = ["More running volume", "Long rides on Sunday instead of Saturday", "Add a third swim each week"];
+
+const STANCE: Record<RevisionStance, { label: string; className: string }> = {
+  agree: { label: "Agrees", className: "border-[var(--ok)]/40 bg-[var(--ok)]/10 text-[var(--ok)]" },
+  adjusted: { label: "Adjusted it", className: "border-[var(--warn)]/40 bg-[var(--warn)]/10 text-[var(--warn)]" },
+  advise_against: { label: "Advises against", className: "border-[var(--err)]/40 bg-[var(--err)]/10 text-[var(--err)]" },
+};
+
+function weekRanges(weeks: number[]): string {
+  const parts: string[] = [];
+  for (let i = 0; i < weeks.length; i++) {
+    let j = i;
+    while (j + 1 < weeks.length && weeks[j + 1] === weeks[j] + 1) j++;
+    parts.push(j > i ? `${weeks[i]}–${weeks[j]}` : `${weeks[i]}`);
+    i = j;
+  }
+  return `${weeks.length === 1 ? "week" : "weeks"} ${parts.join(", ")}`;
+}
+
+/**
+ * "Revise with coach": ask for a change, read what the coach makes of it, and
+ * keep the new version, go back, or have it done as asked anyway.
+ */
+function RevisePanel({
+  draft,
+  revision,
+  busy,
+  act,
+  revising,
+}: {
+  draft: DraftView;
+  revision: DraftResult["revision"];
+  busy: Action | null;
+  act: Act;
+  revising: boolean;
+}) {
+  const [text, setText] = useState("");
+  const failed = draft.status === "failed";
+  const feedback = revision?.feedback ?? (revising || failed ? draft.feedback : null);
+  const sportDeltas = revision
+    ? SPORTS.map((s) => ({ s, before: revision.minutes.before[s], after: revision.minutes.after[s] })).filter(
+        (d) => Math.abs(d.after - d.before) >= 15,
+      )
+    : [];
+  const canAsk = draft.status === "ready" && draft.revisionsLeft > 0;
+
+  return (
+    <section className="rounded-[14px] border border-gray-800 bg-gray-900 p-5 sm:p-6" aria-live="polite">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="font-display text-lg font-bold uppercase tracking-wide text-white">Revise with coach</h3>
+        {draft.status === "ready" && draft.revision > 0 && (
+          <span className="font-data text-[11px] text-gray-500">{draft.revisionsLeft} revision{draft.revisionsLeft === 1 ? "" : "s"} left</span>
+        )}
+      </div>
+
+      {feedback && (
+        <div className="mt-4 flex flex-col gap-3">
+          <p className="max-w-[80%] self-end rounded-[14px] rounded-br-[4px] bg-orange-500 px-3.5 py-2.5 text-sm font-medium text-[var(--accent-fg)]">
+            {feedback}
+            {(revision?.insisted ?? draft.insist) && (
+              <span className="block text-[12px] font-normal opacity-80">Do it as I asked</span>
+            )}
+          </p>
+          {revising && <p className="animate-pulse self-start text-sm text-gray-500">Your coach is weighing this against your training…</p>}
+          {failed && <p className="self-start text-sm text-[var(--err)]">{draft.error}</p>}
+          {revision && (
+            <div className="max-w-[88%] self-start rounded-[14px] rounded-bl-[4px] bg-gray-800 px-3.5 py-2.5 text-sm leading-relaxed text-gray-100">
+              <span className={`mb-1.5 inline-block rounded-full border px-2 py-0.5 font-data text-[11px] ${STANCE[revision.stance].className}`}>
+                {STANCE[revision.stance].label}
+              </span>
+              <p>{revision.message}</p>
+            </div>
+          )}
+          {revision && (
+            <p className="font-data text-[12px] text-gray-400">
+              {revision.changedWeeks.length === 0
+                ? "Nothing in the plan changed."
+                : [
+                    `Changed ${weekRanges(revision.changedWeeks)}`,
+                    ...sportDeltas.map(
+                      (d) => `${SPORT_LABEL[d.s]} ${formatDuration(d.before)} → ${formatDuration(d.after)}`,
+                    ),
+                  ].join(" · ")}
+            </p>
+          )}
+          {(revision || failed) && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {draft.parentId && (
+                <button type="button" disabled={busy !== null} onClick={() => act("back")} className="cursor-pointer rounded-[10px] border border-gray-700 px-4 py-2 text-sm font-semibold text-gray-300 hover:border-gray-600 disabled:opacity-50">
+                  {busy === "back" ? "…" : "Back to previous version"}
+                </button>
+              )}
+              {revision && revision.stance !== "agree" && !revision.insisted && (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => act("insist")}
+                  className="cursor-pointer rounded-[10px] border border-orange-500/50 px-4 py-2 text-sm font-semibold text-orange-500 hover:border-orange-500 disabled:opacity-50"
+                >
+                  {busy === "insist" ? "…" : "Do it as I asked"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {canAsk && (
+        <>
+          <form
+            className="mt-4 flex items-center gap-2 rounded-[14px] border border-gray-800 bg-gray-950/60 py-1.5 pl-4 pr-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const t = text.trim();
+              if (!t) return;
+              void act("revise", { feedback: t }).then((ok) => ok && setText(""));
+            }}
+          >
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              maxLength={600}
+              aria-label="What should change in this draft?"
+              placeholder="What would you change? Your coach will say what it thinks, then rework only the weeks that change."
+              className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
+            />
+            <button type="submit" disabled={busy !== null || !text.trim()} className="cursor-pointer rounded-[10px] bg-orange-500 px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] hover:bg-orange-400 disabled:cursor-default disabled:opacity-50">
+              {busy === "revise" ? "…" : "Ask"}
+            </button>
+          </form>
+          {!feedback && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {EXAMPLES.map((e) => (
+                <button key={e} type="button" onClick={() => setText(e)} className="cursor-pointer rounded-full border border-gray-800 px-3 py-1 text-[12px] text-gray-400 hover:border-gray-700 hover:text-white">
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {draft.status === "ready" && draft.revisionsLeft === 0 && (
+        <p className="mt-3 text-[13px] text-gray-500">That&apos;s as many revisions as one draft takes. Save it and adjust it from the Plan page, or start over.</p>
+      )}
     </section>
   );
 }

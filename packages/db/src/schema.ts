@@ -404,6 +404,8 @@ export const scanState = sqliteTable(
 // Generation runs in the background (it can outlast a request timeout), so
 // the request, progress and result live here and the page polls for them.
 // `input` and `result` are JSON; the result is re-validated before it is saved.
+// A revision ("more running, please") is a new row pointing at the version it
+// changes, so the athlete can step back to it.
 export const planDrafts = sqliteTable(
   "plan_drafts",
   {
@@ -413,6 +415,12 @@ export const planDrafts = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     status: text("status", { enum: ["pending", "ready", "failed", "saved", "discarded"] }).notNull(),
     input: text("input", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+    // Revisions only: the version this one changes, what the athlete asked,
+    // whether they overrode the coach's concerns, and how many revisions deep.
+    parentId: text("parent_id"),
+    feedback: text("feedback"),
+    insist: integer("insist", { mode: "boolean" }).notNull().default(false),
+    revision: integer("revision").notNull().default(0),
     result: text("result", { mode: "json" }).$type<Record<string, unknown>>(),
     error: text("error"),
     createdAt: createdAt(),
