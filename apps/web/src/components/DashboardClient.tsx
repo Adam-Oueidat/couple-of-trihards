@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { refreshDashboard } from "@/app/dashboard/actions";
 import { StravaActivity, WeeklyVolume } from "@trihards/core";
 import type { SyncState } from "@/lib/strava";
@@ -125,6 +125,13 @@ const PRIMARY: { id: Tab; label: string }[] = [
 ];
 
 
+// How often, and for how long, the page re-asks the server while a background
+// sync is running. A sync is a few seconds of Strava paging, so this covers a
+// slow one several times over; past that the label stays put until the athlete
+// reloads or presses Sync, rather than polling forever against a stuck sync.
+const SYNC_POLL_MS = 4_000;
+const SYNC_POLL_LIMIT = 15;
+
 // "Synced …" label from a real sync timestamp (Unix millis). Only ever called
 // from async callbacks (never during render), so Date.now() stays out of the
 // render path. Goes up to days because the timestamp is the persisted last sync,
@@ -203,6 +210,25 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
     };
   }, [syncedAt]);
 
+  // "refreshing" means the server answered with the previous sync and started
+  // a new one after the response. That sync finishes on the server, where this
+  // page cannot see it: syncState is a prop of a render that has already
+  // happened, so without asking again the label read "Syncing…" until a manual
+  // reload. Re-rendering the server component is what a reload did; this does
+  // it in place. Once the server reports "fresh" or "unreachable" the prop
+  // changes and the cleanup stops the timer.
+  const router = useRouter();
+  useEffect(() => {
+    if (syncState !== "refreshing") return;
+    let polls = 0;
+    const timer = setInterval(() => {
+      polls += 1;
+      if (polls >= SYNC_POLL_LIMIT) clearInterval(timer);
+      router.refresh();
+    }, SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [syncState, router]);
+
   function refresh() {
     startTransition(async () => {
       try {
@@ -254,7 +280,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               Strava unreachable
             </span>
           ) : syncState === "refreshing" ? (
-            <span title="Showing your last sync while a fresh one runs in the background. Reload in a moment to see it.">
+            <span title="Showing your last sync while a fresh one runs in the background. This updates on its own when it finishes.">
               Syncing…
             </span>
           ) : (
