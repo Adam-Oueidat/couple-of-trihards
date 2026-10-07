@@ -174,7 +174,11 @@ export async function saveMessage(
   userId: string,
   conversationId: string,
   role: MessageRole,
-  content: string | Anthropic.ContentBlockParam[],
+  // The coach streams through the beta namespace, whose blocks are a superset.
+  content:
+    | string
+    | Anthropic.ContentBlockParam[]
+    | Anthropic.Beta.BetaContentBlockParam[],
 ): Promise<void> {
   const db = getDb();
   await db.insert(chatMessages).values({

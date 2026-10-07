@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
     role: m.role,
     content: m.content,
   }));
-  const conversation: Anthropic.MessageParam[] = [
+  const conversation: Anthropic.Beta.BetaMessageParam[] = [
     ...persistedTurns,
     { role: "user", content: newUserMessage.content },
   ];
@@ -292,8 +292,18 @@ export async function POST(request: NextRequest) {
     async start(controller) {
       try {
         for (let round = 0; round < 5; round++) {
-          const stream = anthropic.messages.stream({
+          // Beta namespace for `block_binding`. Sonnet 5.5 ties a thinking
+          // block to the exact system prompt, tools and earlier messages that
+          // produced it, and this route changes two of those between turns: the
+          // training context in `system` carries today's date and live load, and
+          // history is a sliding window of the last 20 messages. Replaying a
+          // stored block after either is a 400 on accounts the check is enforced
+          // for. "drop_block" drops the blocks that no longer match instead —
+          // those from earlier turns — while blocks from this turn's own tool
+          // rounds, where nothing before them has changed, still reach the model.
+          const stream = anthropic.beta.messages.stream({
             model: COACH_MODEL,
+            betas: ["thinking-binding-controls-2026-08-01"],
             // Thinking and visible text share this budget, so it sits well clear
             // of a long reply. The response is streamed, so a high ceiling costs
             // nothing until it is actually used.
@@ -301,7 +311,11 @@ export async function POST(request: NextRequest) {
             // The coach weighs TSB against planned load, skip patterns and
             // proximity to key sessions before it will call add_workout. That is
             // the multi-factor judgment adaptive thinking exists for.
-            thinking: { type: "adaptive" },
+            // Cast: the pinned SDK does not type `block_binding` yet.
+            thinking: {
+              type: "adaptive",
+              block_binding: { prefix_mismatch_behavior: "drop_block" },
+            } as Anthropic.Beta.BetaThinkingConfigAdaptive,
             // Adaptive thinking already scales depth to the question, so medium
             // effort keeps an interactive chat responsive on the easy ones.
             output_config: { effort: "medium" },

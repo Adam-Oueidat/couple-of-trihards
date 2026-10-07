@@ -6,7 +6,8 @@
  * a real athlete acts on, invalidates the prompt-cache prefix the coach routes
  * are built around, and can 400 on a parameter the next generation drops
  * (`budget_tokens` and `temperature` are accepted on Sonnet 4.6 and rejected on
- * Sonnet 5). Moving a role forward is a reviewed edit, never an automatic one.
+ * Sonnet 5; forced `tool_choice` and disabled thinking are accepted on Sonnet 5
+ * and rejected on Sonnet 5.5). Moving a role forward is a reviewed edit, never an automatic one.
  *
  * Each role reads an env override first so a model can be rolled forward — or
  * rolled back — without a deploy, since App Runner owns its environment
@@ -14,7 +15,7 @@
  */
 
 /** The coaching chat. Interactive and streamed, so it is latency-sensitive. */
-export const COACH_MODEL = process.env.COACH_MODEL ?? "claude-sonnet-5";
+export const COACH_MODEL = process.env.COACH_MODEL ?? "claude-sonnet-5-5";
 
 /**
  * One-shot activity analysis. Streamed, but nobody is waiting mid-sentence.
