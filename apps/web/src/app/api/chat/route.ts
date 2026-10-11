@@ -16,8 +16,8 @@ import {
   COACH_SYSTEM_PROMPT,
   localDateOf,
   resolveToday,
-  summarizeConversation,
 } from "@/lib/coach";
+import { getCoachingMemory, summarizeAndStore } from "@/lib/coach-memory";
 import {
   dayOfWeekOf,
   daysBetween,
@@ -31,15 +31,12 @@ import {
   parseBlockAnalysisRequest,
 } from "@/lib/block-analysis";
 import {
-  getCarryoverSummary,
   getConversation,
   getConversationMessages,
   getLatestConversation,
   getOrCreateConversation,
   lastInteractionTs,
-  messageToText,
   saveMessage,
-  setConversationSummary,
 } from "@/lib/chat";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -209,28 +206,20 @@ export async function POST(request: NextRequest) {
     // start fresh. Best-effort — never let summarization block the chat.
     const leaving = requested ?? (await getLatestConversation(userId));
     if (leaving && !leaving.summary) {
-      try {
-        const prior = await getConversationMessages(userId, leaving.id, 50);
-        const text: { role: string; content: string }[] = [];
-        for (const m of prior) {
-          const content = messageToText(m);
-          if (content !== null) text.push({ role: m.role, content });
-        }
-        const summary = await summarizeConversation(text);
-        if (summary) await setConversationSummary(userId, leaving.id, summary);
-      } catch (err) {
-        log.warn("conversation summary failed", {
-          userId,
-          conversationId: leaving.id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      await summarizeAndStore(
+        userId,
+        leaving,
+        localDateOf(leaving.lastMessageAt, activities),
+      );
     }
     conversationId = await getOrCreateConversation(userId);
   }
 
-  // Carry the most recent prior-conversation summary into context as memory.
-  const priorSummary = await getCarryoverSummary(userId, conversationId);
+  // Carry the recent prior conversations into context as memory. This one is
+  // left out: its turns are replayed verbatim below.
+  const memory = await getCoachingMemory(userId, activities, today, {
+    excludeConversationId: conversationId,
+  });
 
   log.info("chat turn", {
     userId,
@@ -246,7 +235,7 @@ export async function POST(request: NextRequest) {
     auth,
     activities,
     today,
-    { priorSummary, sinceTs },
+    { memory, sinceTs },
   );
 
   // Ordered stable → volatile, because caching is a strict prefix match and

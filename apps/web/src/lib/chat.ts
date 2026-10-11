@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, gte } from "drizzle-orm";
 import { chatMessages, conversations, getDb } from "@trihards/db";
 
 export type MessageRole = "user" | "assistant";
@@ -101,23 +101,31 @@ export async function setConversationSummary(
     );
 }
 
-// The most recent non-null summary from the user's *other* conversations — the
-// rolling memory we inject so continuity survives a fresh daily thread.
-export async function getCarryoverSummary(
+// Conversations with a turn at or after `sinceTs`, newest first — the window
+// the coach's shared memory is built from (see coach-memory.ts).
+export async function getRecentConversations(
   userId: string,
-  excludeConversationId: string,
-): Promise<string | null> {
+  sinceTs: number,
+  limit: number,
+): Promise<ConversationMeta[]> {
   const db = getDb();
   const rows = await db
-    .select({ id: conversations.id, summary: conversations.summary })
+    .select()
     .from(conversations)
-    .where(eq(conversations.userId, userId))
+    .where(
+      and(
+        eq(conversations.userId, userId),
+        gte(conversations.lastMessageAt, sinceTs),
+      ),
+    )
     .orderBy(desc(conversations.lastMessageAt))
-    .limit(10);
-  for (const r of rows) {
-    if (r.id !== excludeConversationId && r.summary) return r.summary;
-  }
-  return null;
+    .limit(limit);
+  return rows.map((r) => ({
+    id: r.id,
+    startedAt: r.startedAt,
+    lastMessageAt: r.lastMessageAt,
+    summary: r.summary,
+  }));
 }
 
 // Unix-seconds timestamp of the user's most recent chat turn across all
@@ -197,6 +205,34 @@ export async function saveMessage(
     .where(
       and(eq(conversations.id, conversationId), eq(conversations.userId, userId)),
     );
+}
+
+// The newest `limit` messages of a conversation, returned oldest → newest.
+// getConversationMessages counts from the start of the thread; this counts from
+// the end, which is what a "where did we leave it" read needs.
+export async function getLatestConversationMessages(
+  userId: string,
+  conversationId: string,
+  limit: number,
+): Promise<StoredMessage[]> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.userId, userId),
+        eq(chatMessages.conversationId, conversationId),
+      ),
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(limit);
+  return rows.reverse().map((r) => ({
+    id: r.id,
+    role: r.role as MessageRole,
+    content: parseContent(r.content),
+    createdAt: r.createdAt,
+  }));
 }
 
 // For UI rendering: collapse complex content into a text string. Returns
