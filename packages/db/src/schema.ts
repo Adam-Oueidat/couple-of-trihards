@@ -457,6 +457,32 @@ export const planAdjustments = sqliteTable(
   (t) => [index("plan_adjustments_user_created_idx").on(t.userId, t.createdAt)],
 );
 
+// The long-term half of the coach's shared memory (see apps/web/src/lib/brain.ts):
+// one thing the athlete said that stays true past this week and cannot be read
+// from their training data — a niggle, the days they cannot train, kit they do
+// not own. Every AI surface reads these and every one can add to them. A note
+// that stops being true is archived rather than deleted, so it stays on record.
+export const athleteNotes = sqliteTable(
+  "athlete_notes",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind", {
+      enum: ["health", "availability", "preference", "equipment", "background", "agreement"],
+    }).notNull(),
+    text: text("text").notNull(),
+    // Where the athlete said it.
+    source: text("source", { enum: ["chat", "plan_request", "plan_adjustment"] }).notNull(),
+    // Athlete-local date it was said or last confirmed, YYYY-MM-DD.
+    notedOn: text("noted_on").notNull(),
+    archivedAt: integer("archived_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("athlete_notes_user_idx").on(t.userId, t.archivedAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type License = typeof licenses.$inferSelect;
@@ -482,3 +508,4 @@ export type PlanAdjustmentRow = typeof planAdjustments.$inferSelect;
 
 // Suppress unused-import warning for `sql` if no schema entry uses it.
 void sql;
+export type AthleteNoteRow = typeof athleteNotes.$inferSelect;

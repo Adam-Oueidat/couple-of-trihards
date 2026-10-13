@@ -37,8 +37,9 @@ export const ANALYSIS_FALLBACK_MODEL =
   process.env.ANALYSIS_FALLBACK_MODEL ?? "claude-opus-5";
 
 /**
- * Condenses a finished conversation into a few sentences of memory. Cheap and
- * best-effort by design — see summarizeConversation.
+ * Keeps the coach's memory: condenses a finished conversation into a few
+ * sentences, and reads what the athlete said for standing notes. Cheap and
+ * best-effort by design — see summarizeConversation and learnFromAthlete.
  */
 export const SUMMARY_MODEL = process.env.SUMMARY_MODEL ?? "claude-haiku-4-5";
 

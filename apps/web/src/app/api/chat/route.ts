@@ -17,7 +17,7 @@ import {
   localDateOf,
   resolveToday,
 } from "@/lib/coach";
-import { getCoachingMemory, summarizeAndStore } from "@/lib/coach-memory";
+import { summarizeAndStore } from "@/lib/coach-memory";
 import {
   dayOfWeekOf,
   daysBetween,
@@ -45,7 +45,7 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_current_datetime",
     description:
-      "Returns the authoritative current date, local time, day of week and timezone for this athlete, resolved server-side from their device clock. This is the ONLY valid source for the current moment. Call it at the start of every conversation, and again before any time-dependent reasoning: days until the race, what 'this week' or 'tomorrow' means, how recent an activity is, whether a plan session is still upcoming or already done, and before choosing the date for add_workout. Never state or calculate from a date or time you remember — earlier turns in this conversation, the earlier-coaching-context summary, and anything the athlete said previously all describe the past and may be days or months stale. Calling this tool is cheap; being wrong about the date is not.",
+      "Returns the authoritative current date, local time, day of week and timezone for this athlete, resolved server-side from their device clock. This is the ONLY valid source for the current moment. Call it at the start of every conversation, and again before any time-dependent reasoning: days until the race, what 'this week' or 'tomorrow' means, how recent an activity is, whether a plan session is still upcoming or already done, and before choosing the date for add_workout. Never state or calculate from a date or time you remember — earlier turns in this conversation, the coach-memory section, and anything the athlete said previously all describe the past and may be days or months stale. Calling this tool is cheap; being wrong about the date is not.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -215,12 +215,6 @@ export async function POST(request: NextRequest) {
     conversationId = await getOrCreateConversation(userId);
   }
 
-  // Carry the recent prior conversations into context as memory. This one is
-  // left out: its turns are replayed verbatim below.
-  const memory = await getCoachingMemory(userId, activities, today, {
-    excludeConversationId: conversationId,
-  });
-
   log.info("chat turn", {
     userId,
     conversationId,
@@ -235,7 +229,9 @@ export async function POST(request: NextRequest) {
     auth,
     activities,
     today,
-    { memory, sinceTs },
+    // This conversation is left out of the recalled memory: its turns are
+    // replayed verbatim below.
+    { excludeConversationId: conversationId, sinceTs },
   );
 
   // Ordered stable → volatile, because caching is a strict prefix match and

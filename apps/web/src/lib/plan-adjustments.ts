@@ -25,6 +25,7 @@ import { getOverrides } from "./plan-overrides";
 import { getWorkouts } from "./workouts";
 import { resolveToday } from "./coach-dates";
 import { buildTrainingContext, COACH_SYSTEM_PROMPT } from "./coach";
+import { learnFromAthlete } from "./brain-notes";
 
 const log = createLogger("plan-adjustments");
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -109,6 +110,9 @@ async function propose(row: PlanAdjustmentRow, identity: StravaIdentity): Promis
   const { joined } = plans;
   const today = resolveToday(undefined, activities);
   const { identity: coachIdentity, context } = await buildTrainingContext(identity, activities, today);
+  // The reason for a change ("my knee is sore") is often the thing most worth
+  // remembering. Runs alongside the proposal; it never rejects.
+  const learned = learnFromAthlete(identity.userId, { source: "plan_adjustment", date: today, text: row.request });
 
   // Every upcoming session, with the ones the athlete owns marked, plus the
   // last two weeks graded so the coach can see how things have been going.
@@ -163,6 +167,7 @@ async function propose(row: PlanAdjustmentRow, identity: StravaIdentity): Promis
     messages: [{ role: "user", content: request }],
   });
   const message = await stream.finalMessage();
+  await learned;
   if (message.stop_reason === "refusal") throw new Error("The coach couldn't answer that. Try rewording it.");
   if (message.stop_reason === "max_tokens") throw new Error("That change is too big to propose at once. Try a narrower request.");
 

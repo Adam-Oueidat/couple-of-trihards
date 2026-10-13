@@ -39,6 +39,7 @@ import { getOverrides } from "./plan-overrides";
 import { getWorkouts } from "./workouts";
 import { resolveToday } from "./coach-dates";
 import { buildTrainingContext, COACH_SYSTEM_PROMPT } from "./coach";
+import { learnFromAthlete } from "./brain-notes";
 
 const log = createLogger("plan-drafts");
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -222,10 +223,24 @@ function buildRequestMessage(request: PlanRequest, sp: StartingPointView): strin
   return lines.join("\n");
 }
 
+/** The athlete's own part of a plan request, for the coach's notes (see brain-notes). */
+function describeRequest(request: PlanRequest): string {
+  return [
+    request.prompt,
+    request.maxHoursPerWeek ? `Most they can train: ${request.maxHoursPerWeek} hours a week.` : null,
+    request.unavailableDays?.length ? `Days they cannot train: ${request.unavailableDays.join(", ")}.` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function generate(row: PlanDraftRow, identity: StravaIdentity): Promise<DraftResult> {
   const request = row.input as unknown as PlanRequest;
   const { view: sp, activities, today } = await buildStartingPoint(identity, request.startDate);
   const { identity: coachIdentity, context } = await buildTrainingContext(identity, activities, today);
+  // What they wrote here ("I work shifts, no Wednesdays") is worth knowing in
+  // the chat too. Runs alongside the plan; it never rejects.
+  const learned = learnFromAthlete(identity.userId, { source: "plan_request", date: today, text: describeRequest(request) });
 
   // Streamed: a full plan is tens of thousands of output tokens. Structured
   // output keeps it in the weeks-and-weekdays shape expandDraft dates.
@@ -246,6 +261,7 @@ async function generate(row: PlanDraftRow, identity: StravaIdentity): Promise<Dr
     messages: [{ role: "user", content: buildRequestMessage(request, sp) }],
   });
   const message = await stream.finalMessage();
+  await learned;
 
   if (message.stop_reason === "refusal") throw new Error("The coach couldn't write this plan. Try rewording the request.");
   if (message.stop_reason === "max_tokens") throw new Error("That plan came out too long to finish. Try a shorter timeline.");
@@ -338,6 +354,7 @@ async function generateRevision(row: PlanDraftRow, parent: PlanDraftRow, identit
     earlierFeedback(row),
   ]);
   const { identity: coachIdentity, context } = await buildTrainingContext(identity, activities, today);
+  const learned = learnFromAthlete(identity.userId, { source: "plan_request", date: today, text: row.feedback ?? "" });
   const current = draftToModelOutput(base);
   const numbered = { ...current, weeks: current.weeks.map((w, i) => ({ week: i + 1, ...w })) };
 
@@ -364,6 +381,7 @@ async function generateRevision(row: PlanDraftRow, parent: PlanDraftRow, identit
     ],
   });
   const message = await stream.finalMessage();
+  await learned;
 
   if (message.stop_reason === "refusal") throw new Error("The coach couldn't make that change. Try rewording it.");
   if (message.stop_reason === "max_tokens") throw new Error("That change came out too long to finish. Try asking for less at once.");

@@ -75,7 +75,7 @@ describe("formatTranscript", () => {
 describe("COACH_SYSTEM_PROMPT and chat memory", () => {
   it("treats settled chat decisions as standing", () => {
     expect(COACH_SYSTEM_PROMPT).toContain("still stands");
-    expect(COACH_SYSTEM_PROMPT).toMatch(/activity analysis alike/);
+    expect(COACH_SYSTEM_PROMPT).toMatch(/in an activity analysis and in plan work alike/);
   });
 
   it("still forbids reading the current date from memory", () => {
