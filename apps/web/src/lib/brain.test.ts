@@ -40,8 +40,8 @@ beforeAll(async () => {
 
 describe("checkNoteChanges", () => {
   const existing = [
-    { id: "id-knee", kind: "health" as const, text: "Left knee sore on downhills", notedOn: "2026-09-20" },
-    { id: "id-wed", kind: "availability" as const, text: "Cannot train on Wednesdays", notedOn: "2026-09-01" },
+    { id: "id-knee", kind: "health" as const, text: "Left knee sore on downhills", notedOn: "2026-09-20", rulesOut: [], until: null },
+    { id: "id-wed", kind: "availability" as const, text: "Cannot train on Wednesdays", notedOn: "2026-09-01", rulesOut: [], until: null },
   ];
 
   it("maps refs back to the notes they were shown as", () => {
@@ -50,7 +50,7 @@ describe("checkNoteChanges", () => {
       existing,
     );
     expect(changes.retire).toEqual(["id-knee"]);
-    expect(changes.update).toEqual([{ id: "id-wed", text: "Cannot train on Wednesdays or Fridays" }]);
+    expect(changes.update).toEqual([{ id: "id-wed", text: "Cannot train on Wednesdays or Fridays", rulesOut: [], until: null }]);
   });
 
   it("drops refs it was never shown, unknown kinds and repeats", () => {
@@ -67,7 +67,7 @@ describe("checkNoteChanges", () => {
       },
       existing,
     );
-    expect(changes.add).toEqual([{ kind: "equipment", text: "Has no power meter" }]);
+    expect(changes.add).toEqual([{ kind: "equipment", text: "Has no power meter", rulesOut: [], until: null }]);
     expect(changes.update).toEqual([]);
     expect(changes.retire).toEqual([]);
   });
@@ -85,8 +85,8 @@ describe("standing notes", () => {
       userId,
       {
         add: [
-          { kind: "health", text: "Left knee sore on downhills" },
-          { kind: "availability", text: "Cannot train on Wednesdays" },
+          { kind: "health", text: "Left knee sore on downhills", rulesOut: [], until: null },
+          { kind: "availability", text: "Cannot train on Wednesdays", rulesOut: [], until: null },
         ],
         update: [],
         retire: [],
@@ -107,20 +107,20 @@ describe("standing notes", () => {
 
     await notes.applyNoteChanges(
       userId,
-      { add: [], update: [{ id: wedId, text: "Cannot train on Wednesdays or Fridays" }], retire: [kneeId] },
+      { add: [], update: [{ id: wedId, text: "Cannot train on Wednesdays or Fridays", rulesOut: [], until: null }], retire: [kneeId] },
       "chat",
       TODAY,
     );
     expect(await notes.getNotes(userId)).toEqual([
-      { id: wedId, kind: "availability", text: "Cannot train on Wednesdays or Fridays", notedOn: TODAY },
+      { id: wedId, kind: "availability", text: "Cannot train on Wednesdays or Fridays", notedOn: TODAY, rulesOut: [], until: null },
     ]);
   });
 
   it("groups by kind and dates every note", () => {
     const text = notes.formatNotes(
       [
-        { id: "a", kind: "availability", text: "Cannot train on Wednesdays", notedOn: "2026-10-12" },
-        { id: "b", kind: "health", text: "Left knee sore on downhills", notedOn: "2026-09-20" },
+        { id: "a", kind: "availability", text: "Cannot train on Wednesdays", notedOn: "2026-10-12", rulesOut: [], until: null },
+        { id: "b", kind: "health", text: "Left knee sore on downhills", notedOn: "2026-09-20", rulesOut: [], until: null },
       ],
       TODAY,
     )!;
@@ -128,6 +128,48 @@ describe("standing notes", () => {
     expect(text).toContain("- Left knee sore on downhills (said 2026-09-20, 23 days ago)");
     expect(text).toContain("(said 2026-10-12, yesterday)");
     expect(notes.formatNotes([], TODAY)).toBeNull();
+  });
+});
+
+describe("sports a note rules out", () => {
+  it("keeps only real sports, and an end date only alongside one", () => {
+    const changes = notes.checkNoteChanges(
+      {
+        add: [
+          { kind: "health", text: "Cannot swim, new tattoo", rules_out: ["swim", "yoga"], until: "2026-11-03" },
+          { kind: "health", text: "Sore calf", rules_out: [], until: "2026-11-03" },
+          { kind: "health", text: "Broken wrist", rules_out: ["ride"], until: "in three weeks" },
+        ],
+      },
+      [],
+    );
+    expect(changes.add.map((a) => [a.rulesOut, a.until])).toEqual([
+      [["swim"], "2026-11-03"],
+      [[], null],
+      [["ride"], null],
+    ]);
+  });
+
+  it("is stored, shown to the coach and handed to the suggestion rules", async () => {
+    await notes.applyNoteChanges(
+      otherUserId,
+      { add: [{ kind: "health", text: "Cannot swim, new tattoo", rulesOut: ["swim"], until: "2026-11-03" }], update: [], retire: [] },
+      "chat",
+      TODAY,
+    );
+    const stored = await notes.getNotes(otherUserId);
+    expect(notes.ruledOutFrom(stored)).toEqual([
+      { discipline: "swim", reason: "Cannot swim, new tattoo", until: "2026-11-03" },
+    ]);
+    expect(notes.formatNotes(stored, TODAY)).toContain("[rules out: swim until 2026-11-03]");
+
+    // Lifting the restriction is an update the checker lets through.
+    const lifted = notes.checkNoteChanges(
+      { update: [{ ref: "n1", text: "Cannot swim, new tattoo", rules_out: [], until: "" }] },
+      stored,
+    );
+    expect(lifted.update).toHaveLength(1);
+    await notes.applyNoteChanges(otherUserId, { add: [], update: [], retire: [stored[0].id] }, "chat", TODAY);
   });
 });
 

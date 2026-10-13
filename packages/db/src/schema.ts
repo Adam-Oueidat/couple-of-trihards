@@ -8,7 +8,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { RawPlannedSession } from "@trihards/core";
+import type { RawPlannedSession, TriDiscipline } from "@trihards/core";
 
 const id = () =>
   text("id")
@@ -477,6 +477,11 @@ export const athleteNotes = sqliteTable(
     source: text("source", { enum: ["chat", "plan_request", "plan_adjustment"] }).notNull(),
     // Athlete-local date it was said or last confirmed, YYYY-MM-DD.
     notedOn: text("noted_on").notNull(),
+    // Sports this note rules out altogether ("cannot swim, new tattoo"), and the
+    // last day it does when the athlete gave one. The rule-based suggestions
+    // have no model to read the text with, so they read these.
+    rulesOut: text("rules_out", { mode: "json" }).$type<TriDiscipline[]>(),
+    rulesOutUntil: text("rules_out_until"),
     archivedAt: integer("archived_at"),
     createdAt: createdAt(),
   },

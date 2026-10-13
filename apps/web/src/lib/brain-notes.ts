@@ -1,7 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { athleteNotes, getDb, type AthleteNoteRow } from "@trihards/db";
-import { createLogger, SUMMARY_MODEL } from "@trihards/core";
+import {
+  createLogger,
+  SUMMARY_MODEL,
+  TRI_DISCIPLINES,
+  type RuledOut,
+  type TriDiscipline,
+} from "@trihards/core";
 import { daysBetween } from "./coach-dates";
 
 const log = createLogger("brain-notes");
@@ -34,6 +40,10 @@ export interface AthleteNote {
   text: string;
   // Athlete-local date it was said or last confirmed, YYYY-MM-DD.
   notedOn: string;
+  // Sports the note rules out altogether, and the last day it does (null when
+  // the athlete gave no end).
+  rulesOut: TriDiscipline[];
+  until: string | null;
 }
 
 // How many notes a prompt carries, and the bounds on one learning pass.
@@ -59,7 +69,28 @@ export async function getNotes(userId: string): Promise<AthleteNote[]> {
     .where(and(eq(athleteNotes.userId, userId), isNull(athleteNotes.archivedAt)))
     .orderBy(desc(athleteNotes.notedOn), desc(athleteNotes.createdAt))
     .limit(MAX_NOTES);
-  return rows.map((r) => ({ id: r.id, kind: r.kind, text: r.text, notedOn: r.notedOn }));
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    text: r.text,
+    notedOn: r.notedOn,
+    rulesOut: r.rulesOut ?? [],
+    until: r.rulesOutUntil,
+  }));
+}
+
+// "swim until 2026-11-03", or null for a note that rules nothing out.
+function describeRulesOut(n: Pick<AthleteNote, "rulesOut" | "until">): string | null {
+  if (n.rulesOut.length === 0) return null;
+  return `${n.rulesOut.join(", ")}${n.until ? ` until ${n.until}` : ""}`;
+}
+
+// The notes as the rule-based suggestions read them: one entry per sport ruled
+// out. Lapsed ones are left in; the suggester checks the day being planned.
+export function ruledOutFrom(notes: AthleteNote[]): RuledOut[] {
+  return notes.flatMap((n) =>
+    n.rulesOut.map((discipline) => ({ discipline, reason: n.text, until: n.until })),
+  );
 }
 
 // The body of the "Standing notes" section, grouped by kind, or null when
@@ -75,17 +106,28 @@ export function formatNotes(notes: AthleteNote[], today: string): string | null 
       ...of.map((n) => {
         const days = daysBetween(n.notedOn, today);
         const ago = days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
-        return `- ${n.text} (said ${n.notedOn}, ${ago})`;
+        const off = describeRulesOut(n);
+        return `- ${n.text} (said ${n.notedOn}, ${ago})${off ? ` [rules out: ${off}]` : ""}`;
       }),
     ];
   }).join("\n");
 }
 
+interface RulesOut {
+  rulesOut: TriDiscipline[];
+  until: string | null;
+}
+
 export interface NoteChanges {
-  add: { kind: NoteKind; text: string }[];
-  update: { id: string; text: string }[];
+  add: ({ kind: NoteKind; text: string } & RulesOut)[];
+  update: ({ id: string; text: string } & RulesOut)[];
   retire: string[];
 }
+
+const RULES_OUT_PROPERTIES = {
+  rules_out: { type: "array", items: { type: "string", enum: TRI_DISCIPLINES } },
+  until: { type: "string" },
+};
 
 const NOTE_CHANGES_SCHEMA = {
   type: "object",
@@ -97,10 +139,11 @@ const NOTE_CHANGES_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["kind", "text"],
+        required: ["kind", "text", "rules_out", "until"],
         properties: {
           kind: { type: "string", enum: NOTE_KINDS },
           text: { type: "string" },
+          ...RULES_OUT_PROPERTIES,
         },
       },
     },
@@ -109,8 +152,8 @@ const NOTE_CHANGES_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["ref", "text"],
-        properties: { ref: { type: "string" }, text: { type: "string" } },
+        required: ["ref", "text", "rules_out", "until"],
+        properties: { ref: { type: "string" }, text: { type: "string" }, ...RULES_OUT_PROPERTIES },
       },
     },
     retire: { type: "array", items: { type: "string" } },
@@ -135,7 +178,9 @@ Do not keep:
 
 How to answer:
 - add: a new note. One fact per note, one plain sentence in the third person without their name ("Works night shifts Thursday to Saturday"). Write any date as a calendar date, worked out from the date given, never as "last week".
-- update: an existing note that has changed or gained detail. Give its ref and the whole note rewritten. Do not update a note that is merely mentioned again unchanged.
+- rules_out, on every add and update: the sports (swim, ride, run) this note makes impossible altogether, e.g. ["swim"] for "I can't swim for three weeks, new tattoo". Use it only when the athlete cannot do the sport at all; a niggle that means going easier, or a day they cannot train, rules nothing out and gets []. Almost every note gets [].
+- until, with rules_out: the last day it applies as YYYY-MM-DD, when the athlete gave an end date or a length of time; "" when they did not, or when rules_out is [].
+- update: an existing note that has changed or gained detail. Give its ref and the whole note rewritten, with its rules_out and until as they should now be. Do not update a note that is merely mentioned again unchanged.
 - retire: the ref of a note the athlete says is no longer true (the knee is fine again, they bought a power meter) or that a new note replaces.
 - Never add a note that repeats an existing one.
 - Most of what an athlete says changes nothing. When that is so, return three empty lists.`;
@@ -151,27 +196,42 @@ export function checkNoteChanges(raw: unknown, existing: AthleteNote[]): NoteCha
   const clean = (v: unknown) =>
     typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, MAX_NOTE_CHARS) : "";
   const known = new Set(existing.map((n) => n.text.toLowerCase()));
+  const rulesOutOf = (item: Record<string, unknown>): RulesOut => {
+    const sports = Array.isArray(item.rules_out) ? item.rules_out : [];
+    const rulesOut = TRI_DISCIPLINES.filter((d) => sports.includes(d));
+    const until =
+      rulesOut.length > 0 && typeof item.until === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.until)
+        ? item.until
+        : null;
+    return { rulesOut, until };
+  };
 
   for (const ref of Array.isArray(retire) ? retire : []) {
     const note = typeof ref === "string" ? byRef.get(ref) : undefined;
     if (note && !out.retire.includes(note.id)) out.retire.push(note.id);
   }
   for (const item of Array.isArray(update) ? update : []) {
-    const { ref, text } = (item ?? {}) as Record<string, unknown>;
-    const note = typeof ref === "string" ? byRef.get(ref) : undefined;
-    const next = clean(text);
-    if (!note || !next || out.retire.includes(note.id) || next === note.text) continue;
+    const fields = (item ?? {}) as Record<string, unknown>;
+    const note = typeof fields.ref === "string" ? byRef.get(fields.ref) : undefined;
+    const next = clean(fields.text);
+    if (!note || !next || out.retire.includes(note.id)) continue;
     if (out.update.some((u) => u.id === note.id)) continue;
-    out.update.push({ id: note.id, text: next });
+    const rules = rulesOutOf(fields);
+    const same =
+      next === note.text &&
+      rules.until === note.until &&
+      rules.rulesOut.join() === note.rulesOut.join();
+    if (!same) out.update.push({ id: note.id, text: next, ...rules });
   }
   for (const item of Array.isArray(add) ? add : []) {
     if (out.add.length >= MAX_ADDS) break;
-    const { kind, text } = (item ?? {}) as Record<string, unknown>;
-    const next = clean(text);
+    const fields = (item ?? {}) as Record<string, unknown>;
+    const kind = fields.kind;
+    const next = clean(fields.text);
     if (!NOTE_KINDS.includes(kind as NoteKind) || !next) continue;
     if (known.has(next.toLowerCase())) continue;
     known.add(next.toLowerCase());
-    out.add.push({ kind: kind as NoteKind, text: next });
+    out.add.push({ kind: kind as NoteKind, text: next, ...rulesOutOf(fields) });
   }
   return out;
 }
@@ -192,13 +252,23 @@ export async function applyNoteChanges(
   for (const u of changes.update) {
     await db
       .update(athleteNotes)
-      .set({ text: u.text, notedOn: date })
+      .set({ text: u.text, notedOn: date, rulesOut: u.rulesOut, rulesOutUntil: u.until })
       .where(and(eq(athleteNotes.userId, userId), eq(athleteNotes.id, u.id)));
   }
   if (changes.add.length) {
     await db
       .insert(athleteNotes)
-      .values(changes.add.map((a) => ({ userId, kind: a.kind, text: a.text, source, notedOn: date })));
+      .values(
+        changes.add.map((a) => ({
+          userId,
+          kind: a.kind,
+          text: a.text,
+          source,
+          notedOn: date,
+          rulesOut: a.rulesOut,
+          rulesOutUntil: a.until,
+        })),
+      );
   }
 }
 
@@ -220,7 +290,12 @@ export async function learnFromAthlete(
   try {
     const existing = await getNotes(userId);
     const notes =
-      existing.map((n, i) => `[n${i + 1}] (${n.kind}, said ${n.notedOn}) ${n.text}`).join("\n") ||
+      existing
+        .map((n, i) => {
+          const off = describeRulesOut(n);
+          return `[n${i + 1}] (${n.kind}, said ${n.notedOn}) ${n.text}${off ? ` [rules out: ${off}]` : ""}`;
+        })
+        .join("\n") ||
       "None yet.";
     const res = await anthropic.messages.create({
       model: SUMMARY_MODEL,

@@ -537,3 +537,55 @@ describe("hard picks", () => {
     }
   });
 });
+
+describe("sports the athlete has ruled out", () => {
+  const tattoo = { discipline: "swim" as const, reason: "Cannot swim: new tattoo healing", until: day(14) };
+  // Rides recently, no swim for weeks: the ranking would normally call that a gap.
+  const noSwim = () => [...baseHistory(), act(day(-3), "Ride", 40, 90), act(day(-30), "Swim", 1.5, 35)];
+
+  it("never suggests the sport or calls its absence a gap", () => {
+    expect(ids({ activities: noSwim() })).toContain("stale-swim");
+    const out = suggestWorkouts(input({ activities: noSwim(), ruledOut: [tattoo] }), 8);
+    expect(out.map((s) => s.id)).not.toContain("stale-swim");
+    expect(out.some((s) => s.session?.discipline === "swim")).toBe(false);
+    expect(easyOptions(input({ ruledOut: [tattoo] })).map((o) => o.discipline)).toEqual(["run", "ride"]);
+  });
+
+  it("stops applying after its last day", () => {
+    const healed = { ...tattoo, until: day(-1) };
+    expect(ids({ activities: noSwim(), ruledOut: [healed] })).toContain("stale-swim");
+    expect(easyOptions(input({ ruledOut: [healed] }))).toHaveLength(3);
+  });
+
+  it("offers the other sports, not only rest, when running is off", () => {
+    const out = suggestWorkouts(
+      input({ ruledOut: [{ discipline: "run", reason: "Stress fracture, no running" }] }),
+      8,
+    );
+    expect(out.some((s) => s.session?.discipline === "run")).toBe(false);
+    expect(out.map((s) => s.id)).toEqual(expect.arrayContaining(["easy-ride", "easy-swim", "rest"]));
+  });
+
+  it("swaps the easy run on a fatigue card for a sport that is allowed", () => {
+    const out = suggestWorkouts(
+      input({ trainingLoad: load(-30), ruledOut: [{ discipline: "run", reason: "No running" }] }),
+    );
+    expect(out[0].constraint).toBe("fatigue");
+    expect(out[0].session?.discipline).toBe("ride");
+  });
+
+  it("says so on a planned session in that sport instead of presenting it as the thing to do", () => {
+    const plan = {
+      name: "Block",
+      source: "runna",
+      discipline: "triathlon",
+      startDate: day(-30),
+      raceDate: day(30),
+      raceName: "Race",
+      sessions: [{ id: "s1", date: TODAY, originalDate: TODAY, name: "Technique swim", discipline: "swim", type: "easy", km: 1.5 }],
+    } as unknown as TrainingPlan;
+    const out = suggestWorkouts(input({ plan, ruledOut: [tattoo] }));
+    expect(out[0].id).toBe("plan-today");
+    expect(out[0].why).toContain("new tattoo healing");
+  });
+});
