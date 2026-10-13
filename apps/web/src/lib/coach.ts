@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import {
   AthleteDetail,
   AthleteStats,
@@ -19,13 +18,12 @@ import {
   racePhase,
   findMisdatedSessions,
   type TrainingPlan,
-  SUMMARY_MODEL,
 } from "@trihards/core";
 import { getWorkouts } from "./workouts";
 import { getActiveTrainingPlan } from "./training-plans";
 import { getOverrides } from "./plan-overrides";
 import { getGoals } from "./goals";
-import { getRecentAnalyses } from "./analyses";
+import { recall } from "./brain";
 import {
   getAthleteDetail,
   getAthleteStats,
@@ -33,14 +31,12 @@ import {
   type StravaIdentity,
 } from "./strava";
 import { getPersonalBests, type PersonalBest } from "./personal-bests";
-import { dayOfWeekOf, resolveToday } from "./coach-dates";
+import { resolveToday } from "./coach-dates";
 import { getQualityProfiles } from "./quality-scan";
 
 export { localDateOf, resolveToday } from "./coach-dates";
 
 const log = createLogger("coach");
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const COACH_SYSTEM_PROMPT = `You are a triathlon coach embedded in a training dashboard app called "TriLog". You advise the athlete based on their real Strava training data, which is provided below.
 
@@ -61,10 +57,12 @@ Guidelines:
 - Use metric units.
 - Never use emojis. Write in plain text only — no emoji, emoticons, or decorative symbols anywhere in your replies, including headings, lists, and summaries.
 - Verify the current moment, never recall it. When the get_current_datetime tool is available to you, call it before your first reply in a conversation, and again before anything time-dependent: recency, "this week", days until the race, whether a plan session is upcoming or already done, and any date you pass to add_workout. Compute every relative date ("in 3 days", "last Tuesday") from what it returns. When that tool is not available, the "Today is ..." line at the top of the athlete's data is the same server-resolved clock and stands in for it.
-- A date you remember is never the current date. Dates in your own earlier turns, in the "Earlier coaching context" recap, and in anything the athlete told you before were true when they were written and may now be days or months stale — treat every one of them as history. Never restate one as "today" and never compute from one. If the "Today is ..." line and get_current_datetime ever disagree, the tool wins.
-- Your earlier chats with the athlete may appear under "Earlier coaching context", each stamped with the day it took place. They describe the past, not the present: never read today's date or the athlete's current numbers from them — the live data sections are authoritative for those, and get_current_datetime for the moment.
-- What you and the athlete settled in those chats still stands, in the chat and in an activity analysis alike: a rest day they took or agreed to take, a session swapped or dropped, how the week was reshaped, a niggle they reported. Build on it. Never prescribe again something they have already done, and never reopen a question you already closed together. A rest day leaves no trace in Strava, so when the athlete told you they rested on a given day, that day was rest — count it when you judge recovery, alongside TSB rather than instead of it.
-- If the data since that chat genuinely changes the picture (new sessions, a jump in load), say so explicitly: name what was agreed, what has happened since, and why your advice now differs. Never contradict an earlier agreement silently.
+- A date you remember is never the current date. Dates in your own earlier turns, in the "Coach memory" section, and in anything the athlete told you before were true when they were written and may now be days or months stale — treat every one of them as history. Never restate one as "today" and never compute from one. If the "Today is ..." line and get_current_datetime ever disagree, the tool wins.
+- The "Coach memory" section is everything you already know about this athlete beyond their data, and it is the same memory whether you are chatting, analysing an activity, writing a plan or adjusting one. To the athlete you are one coach: whatever they told you in one of those places, you know in all of them. It describes the past, not the present: never read today's date or the athlete's current numbers from it — the live data sections are authoritative for those, and get_current_datetime for the moment.
+- "Standing notes" are things the athlete told you that hold until they say otherwise: a niggle, the days they cannot train, kit they do not have, how they like to be coached. Respect them without being asked again — never schedule onto a day they said they cannot train, never prescribe what an injury note rules out. Each note carries the day it was said. A health note more than a few weeks old may have cleared: when it bears on your advice, ask how it is rather than assuming either way, and do not bring it up when it does not.
+- "Earlier coaching context" holds your earlier chats, each stamped with the day it took place. What you and the athlete settled in them still stands, in the chat, in an activity analysis and in plan work alike: a rest day they took or agreed to take, a session swapped or dropped, how the week was reshaped, a niggle they reported. Build on it. Never prescribe again something they have already done, and never reopen a question you already closed together. A rest day leaves no trace in Strava, so when the athlete told you they rested on a given day, that day was rest — count it when you judge recovery, alongside TSB rather than instead of it.
+- "Plan work" is what you did on their plan outside the chat: the plan you wrote and why, and each change they asked you to make with the reason they gave. Only a change marked as approved is in the plan; one they did not apply or undid is not, so never describe it as scheduled. The reason they gave for asking still counts either way.
+- If the data since then genuinely changes the picture (new sessions, a jump in load), say so explicitly: name what was agreed, what has happened since, and why your advice now differs. Never contradict an earlier agreement silently.
 - When the athlete refers to "my session", "my workout", "today's effort" or similar without naming one, assume they mean the most recent / newly-synced activity (see "New since we last spoke" when present), and confirm which one if it's ambiguous.
 
 Plan moves:
@@ -159,59 +157,10 @@ function formatFitnessProfile(
   return lines.length > 0 ? lines.join("\n") : "No fitness profile data available.";
 }
 
-// The week either side of a date, one "Weekday YYYY-MM-DD" per line. The
-// summary model is handed this to look dates up in: asked to work out which
-// date "Thursday" was, it put a rest day on the wrong one.
-function calendarAround(date: string): string {
-  const base = Date.parse(`${date}T00:00:00Z`);
-  const lines: string[] = [];
-  for (let offset = -7; offset <= 7; offset++) {
-    const day = new Date(base + offset * 86400000).toISOString().slice(0, 10);
-    lines.push(`${dayOfWeekOf(day)} ${day}${offset === 0 ? " (day of this conversation)" : ""}`);
-  }
-  return lines.join("\n");
-}
-
-// Condense a finished conversation into a few sentences for the coach's own
-// future reference. Cheap model, best-effort — callers must tolerate null.
-export async function summarizeConversation(
-  messages: { role: string; content: string }[],
-  // Athlete-local date the conversation took place (YYYY-MM-DD). It is what
-  // lets "I rested yesterday" be recorded as a day rather than lost.
-  date?: string,
-): Promise<string | null> {
-  const transcript = messages
-    .map((m) => `${m.role === "user" ? "Athlete" : "Coach"}: ${m.content}`)
-    .join("\n")
-    .trim();
-  if (!transcript) return null;
-  const res = await anthropic.messages.create({
-    model: SUMMARY_MODEL,
-    max_tokens: 600,
-    system:
-      "You summarize a triathlon coaching conversation for the coach's own future reference. Write 4-7 sentences in plain past tense. Capture: the topics discussed, any injuries, concerns, or goals the athlete raised, and any workouts added. Above all, record what was settled, since later advice has to stay consistent with it: what the athlete said they did or did not do (rest days taken, sessions done, skipped or swapped), what the coach advised, and what the two agreed for the coming days. Give every such fact its day. When the date of the conversation is provided, turn relative days (today, yesterday, Friday, tomorrow) into the weekday plus the calendar date, e.g. 'rested on Friday 2026-10-09', looking the date up in the calendar given with it rather than calculating it; when it is not, keep the athlete's own wording and do not guess a date. No preamble, no headings, plain text only.",
-    messages: [
-      {
-        role: "user",
-        content: date
-          ? `This conversation took place on ${dayOfWeekOf(date)} ${date}.\nCalendar around it, to read dates from rather than work them out:\n${calendarAround(date)}\n\n${transcript}`
-          : transcript,
-      },
-    ],
-  });
-  const text = res.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("")
-    .trim();
-  return text || null;
-}
-
 export interface TrainingContextOpts {
-  // The athlete's recent chats with the coach, already rendered (see
-  // getCoachingMemory). Both the chat and the activity analysis get it, so the
-  // two cannot disagree about what was already settled.
-  memory?: string | null;
+  // The chat being answered: its turns are replayed as messages, so the brain
+  // leaves it out of the memory it recalls.
+  excludeConversationId?: string;
   // Unix seconds: activities started after this are flagged "new since we last
   // spoke" so the coach can reference them without the athlete pointing them out.
   sinceTs?: number | null;
@@ -308,18 +257,17 @@ These activities were logged since your last conversation with the athlete. If t
 ${newActivities.slice(0, 10).map(activityLine).join("\n")}\n`
       : "";
 
-  const memorySection = opts.memory
-    ? `\n## Earlier coaching context (your own earlier chats with this athlete — history, not "now"; what was settled in them still stands)
-${opts.memory}\n`
-    : "";
-
-  const [overrides, goals, pbs, workouts, recentAnalyses, activePlan] =
+  // Every surface that builds its prompt here gets the coach's whole memory
+  // (see brain.ts); none of them has to remember to ask for it.
+  const [overrides, goals, pbs, workouts, memory, activePlan] =
     await Promise.all([
       getOverrides(userId),
       getGoals(userId),
       getPersonalBests(userId),
       getWorkouts(userId),
-      getRecentAnalyses(userId, 3),
+      recall(userId, activities, today, {
+        excludeConversationId: opts.excludeConversationId,
+      }),
       getActiveTrainingPlan(userId),
     ]);
 
@@ -482,7 +430,9 @@ Do not name a plan, a race, a race date, or a prescribed session — you have no
   const athleteIdentity = formatAthleteIdentity(athlete);
 
   const context = `# Today is ${today} (the athlete's current local date — treat this as "now")
-${memorySection}
+
+${memory}
+
 # Athlete training data (from Strava, last 12 months)
 
 ## Fitness profile
@@ -525,19 +475,6 @@ ${
         : [],
     )
     .join("\n") || "None"
-}
-
-## Your recent activity analyses (your own prior coaching feedback — stay consistent with it)
-${
-  recentAnalyses
-    .map((a) => {
-      const act = activities.find((x) => x.id === a.activityId);
-      const label = act
-        ? `"${act.name}" (${act.start_date_local.split("T")[0]})`
-        : `activity ${a.activityId}`;
-      return `### Analysis of ${label}\n${a.text}`;
-    })
-    .join("\n\n") || "None yet"
 }`;
 
   return { identity: athleteIdentity, context };

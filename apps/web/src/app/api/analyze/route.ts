@@ -19,7 +19,6 @@ import {
   COACH_SYSTEM_PROMPT,
   resolveToday,
 } from "@/lib/coach";
-import { getCoachingMemory } from "@/lib/coach-memory";
 import { saveAnalysis } from "@/lib/analyses";
 import { updatePersonalBests } from "@/lib/personal-bests";
 
@@ -53,16 +52,14 @@ export async function POST(request: NextRequest) {
 
   const detail = await getActivityDetail(auth, activityId);
   await updatePersonalBests(userId, detail);
-  // The analysis reads the same chat memory the coach chat does. Without it a
-  // rest day or a reshaped week agreed in chat is invisible here, and the
-  // report keeps prescribing what the athlete has already done.
+  // buildTrainingContext brings the coach's whole memory with it (lib/brain.ts),
+  // so a rest day or a reshaped week agreed in chat is in front of the analysis
+  // and the report does not prescribe what the athlete has already done.
   const today = resolveToday(undefined, activities);
-  const memory = await getCoachingMemory(userId, activities, today);
   const { identity, context: trainingContext } = await buildTrainingContext(
     auth,
     activities,
     today,
-    { memory },
   );
 
   // Beta namespace for `fallbacks`: a classifier false positive is re-run on

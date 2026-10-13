@@ -34,6 +34,7 @@ import {
   type CustomWorkout,
 } from "./workouts";
 import { getQualityProfiles } from "./quality-scan";
+import { getNotes, ruledOutFrom } from "./brain-notes";
 import { resolveToday } from "./coach-dates";
 
 /**
@@ -48,7 +49,7 @@ export async function loadSuggestInput(
   identity: StravaIdentity,
   requested: string | null,
 ): Promise<SuggestInput & { today: string; date: string }> {
-  const [{ activities }, active, overrides, workouts, profiles, zones, athlete] =
+  const [{ activities }, active, overrides, workouts, profiles, zones, athlete, notes] =
     await Promise.all([
       getActivitiesWithDailySync(identity, TRAINING_HISTORY_WEEKS),
       getActiveTrainingPlan(identity.userId),
@@ -57,6 +58,7 @@ export async function loadSuggestInput(
       getQualityProfiles(identity.userId),
       getAthleteZones(identity).catch(() => null),
       getAthleteDetail(identity).catch(() => null),
+      getNotes(identity.userId),
     ]);
 
   const today = resolveToday(undefined, activities);
@@ -92,6 +94,9 @@ export async function loadSuggestInput(
     zones: zoneModel,
     zoneSeconds,
     athlete: { ftp: athlete?.ftp ?? null, weight: athlete?.weight ?? null },
+    // What the athlete told the coach they cannot do (the brain's standing
+    // notes), so these rules never suggest a sport the coach knows is off.
+    ruledOut: ruledOutFrom(notes),
     today,
     date,
   };

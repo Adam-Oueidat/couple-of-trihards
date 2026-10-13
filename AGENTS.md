@@ -34,6 +34,10 @@ Other useful scripts (run from the repo root): `pnpm build`, `pnpm lint`, `pnpm 
 
 Each athlete's plan is a row in `training_plans`, uploaded on the Plan tab and parsed out of the document by the Claude API. **There is no default plan at read time**: an athlete without a row has no plan, and the calendar, plan tab, and coach prompt must all say so rather than falling back to anything. `SEED_PLAN` in `@trihards/core` (the bundled `runna-plan.json`) exists solely for the one-time `pnpm db:backfill-seed-plan <athlete-or-user-id>` backfill that assigns it to the one athlete it was written for — never import it into a read path.
 
+### The coach has one memory
+
+Every AI surface (coach chat, activity analysis, plan writing and revising, "adjust with coach") is the same coach to the athlete, so they share one memory: the brain in `apps/web/src/lib/brain.ts`. `buildTrainingContext` calls `recall()` for every prompt, which brings the standing notes (`athlete_notes`), recent chat recaps, plan work and recent analyses. A new AI surface must build its prompt with `buildTrainingContext` rather than assembling its own, and should pass whatever the athlete typed to `learnFromAthlete` (`brain-notes.ts`), which is the only thing that writes standing notes.
+
 ### Next.js docs
 
 `next` is a dependency of `apps/web`, so the version-pinned docs referenced below live at **`apps/web/node_modules/next/dist/docs/`**.

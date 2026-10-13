@@ -119,6 +119,32 @@ export interface SuggestInput {
   today?: string;
   /** The day being planned for. Defaults to today. */
   date?: string;
+  /** Sports the athlete has told the coach they cannot do for now. */
+  ruledOut?: RuledOut[];
+}
+
+/**
+ * A sport the athlete cannot do at the moment, in their own words: a new
+ * tattoo keeps them out of the pool, a stress fracture off the road. It comes
+ * from the coach's standing notes, so the ranking and the coach agree.
+ */
+export interface RuledOut {
+  discipline: TriDiscipline;
+  /** The note it comes from, as the athlete would recognise it. */
+  reason: string;
+  /** Last day it applies (YYYY-MM-DD); open-ended when absent. */
+  until?: string | null;
+}
+
+/** What is ruled out on the day being planned, first reason per sport. */
+function ruledOutOn(input: SuggestInput, date: string): Map<TriDiscipline, RuledOut> {
+  const out = new Map<TriDiscipline, RuledOut>();
+  for (const r of input.ruledOut ?? []) {
+    if (r.until && r.until < date) continue;
+    // Quoted mid-sentence below, so its own full stop goes.
+    if (!out.has(r.discipline)) out.set(r.discipline, { ...r, reason: r.reason.replace(/[.\s]+$/, "") });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -823,11 +849,14 @@ export function easyOptions(input: SuggestInput): EasyOption[] {
     ride: ftp ? { kind: "ftp", watts: ftp } : EFFORT_ANCHOR,
     swim: EFFORT_ANCHOR,
   };
-  return (["run", "ride", "swim"] as TriDiscipline[]).map((d) => ({
-    discipline: d,
-    volume: volumes[d],
-    session: buildEasySession(d, volumes[d], anchors[d]),
-  }));
+  const off = ruledOutOn(input, input.date ?? input.today ?? localToday());
+  return (["run", "ride", "swim"] as TriDiscipline[])
+    .filter((d) => !off.has(d))
+    .map((d) => ({
+      discipline: d,
+      volume: volumes[d],
+      session: buildEasySession(d, volumes[d], anchors[d]),
+    }));
 }
 
 /** Session kinds that are a hard day, whatever the sport. */
@@ -896,6 +925,20 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
 
   const out: Suggestion[] = [];
 
+  // --- Constraint: a sport the athlete has said they cannot do. Nothing below
+  // may prescribe it, and its absence is never read as a gap to fill.
+  const off = ruledOutOn(input, date);
+  // The easy session a constraint card falls back to: a run, unless running is
+  // off, then whichever sport is left. Null (rest) when none is.
+  const easyFallback = (run: () => SuggestedSession): SuggestedSession | null =>
+    !off.has("run")
+      ? run()
+      : !off.has("ride")
+        ? rideSession(state, "easy", ftp)
+        : !off.has("swim")
+          ? swimSession(state)
+          : null;
+
   // --- Constraint: the plan, or the athlete's own calendar, already answers
   // this. Calendar workouts count even with no plan uploaded.
   const planned = scheduledSessions({
@@ -908,6 +951,8 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
 
   if (planned.length > 0) {
     const s = planned[0];
+    const sport = disciplineOf(s);
+    const clash = sport !== "strength" ? off.get(sport as TriDiscipline) : undefined;
     out.push({
       id: "plan-today",
       priority: "do-this",
@@ -916,7 +961,11 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
       hard: isHardSession(s),
       ...(disciplineOf(s) !== "strength" ? { discipline: disciplineOf(s) as TriDiscipline } : {}),
       headline: s.isCustom ? `On your calendar: ${s.name}` : `Your plan: ${s.name}`,
-      why: s.isCustom
+      // The calendar is the athlete's, so the session stays where it is — but it
+      // cannot be presented as the thing to do without saying what they told us.
+      why: clash
+        ? `This is still on ${s.isCustom ? "your calendar" : "your plan"} for ${date}, but you told the coach: "${clash.reason}". Pick one of the options below, and ask the coach to adjust the plan if that still stands.`
+        : s.isCustom
         ? `You already put this on ${date}${s.km ? `, ${s.km} km` : ""}. The options below are alternatives if it will not fit.`
         : `Already prescribed for ${date}${s.km ? `, ${s.km} km` : ""}. A plan you wrote when you were thinking clearly beats a suggestion made now — the options below are alternatives if it will not fit.`,
       session: null,
@@ -938,7 +987,7 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
       constraint: "fatigue",
       headline: "Take it easy today",
       why: `Form is ${state.tsb.toFixed(0)}. Below ${BURIED_TSB} is where sessions stop landing and niggles start — a hard day now costs more than it buys.`,
-      session: recoveryRun(state),
+      session: easyFallback(() => recoveryRun(state)),
     });
   } else if (tooSoon && state.lastHard) {
     out.push({
@@ -950,7 +999,7 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
         ? "Easy day — a hard session comes first"
         : "Easy day — you went hard recently",
       why: `"${state.lastHard.name}" ${describeHardDay(state.lastHard, today)}. Back-to-back hard days is the pattern that turns a good block into an injury.`,
-      session: easyRun(state),
+      session: easyFallback(() => easyRun(state)),
     });
   }
 
@@ -978,6 +1027,24 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
           key === "ride"
             ? rideSession(state, canGoHard ? "intervals" : "easy", ftp)
             : swimSession(state),
+      });
+    }
+  }
+
+  // With running off, the baselines below (all runs) disappear, so the sports
+  // that are left stand in for them rather than leaving only "rest".
+  const noRun = off.get("run");
+  if (noRun) {
+    for (const key of ["ride", "swim"] as TriDiscipline[]) {
+      if (off.has(key)) continue;
+      candidates.push({
+        id: `easy-${key}`,
+        kind: "easy",
+        discipline: key,
+        score: 45,
+        headline: key === "ride" ? "Easy spin" : "Easy swim",
+        why: `Running is off for now ("${noRun.reason}"), so this keeps the aerobic work going without it.`,
+        session: key === "ride" ? rideSession(state, "easy", ftp) : swimSession(state),
       });
     }
   }
@@ -1077,6 +1144,8 @@ export function suggestWorkouts(input: SuggestInput, limit = 5): Suggestion[] {
   // Constraints suppress intensity outright rather than merely down-ranking it:
   // a suggestion that should not be followed must not be offered as an option.
   const allowed = candidates.filter((c) => {
+    // A sport the athlete cannot do is not an option, however large the gap.
+    if (c.session && off.has(c.session.discipline)) return false;
     if (!canGoHard && (c.kind === "intervals" || c.kind === "vo2" || c.kind === "tempo")) {
       return false;
     }
