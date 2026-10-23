@@ -320,6 +320,9 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               {item.label}
             </NavItem>
           ))}
+          <NavItem active={false} onClick={() => openCoach()}>
+            Coach chat
+          </NavItem>
         </nav>
 
         <div className="mt-auto space-y-3">
@@ -464,6 +467,15 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
             placeholder="Ask your coach anything…"
             className="min-w-0 flex-1 bg-transparent text-sm text-white placeholder-gray-500 focus:outline-none"
           />
+          {/* Back into the conversation without having to ask something new. */}
+          <button
+            type="button"
+            onClick={() => openCoach()}
+            className="cursor-pointer rounded-[10px] border border-gray-800 px-3 py-2 text-sm font-medium text-gray-400 transition-colors hover:border-gray-600 hover:text-white"
+          >
+            <span className="sm:hidden">Chat</span>
+            <span className="hidden sm:inline">Open chat</span>
+          </button>
           <button
             type="submit"
             className="cursor-pointer rounded-[10px] bg-orange-500 px-4 py-2 text-sm font-semibold text-[var(--accent-fg)] transition-colors hover:bg-orange-400"
