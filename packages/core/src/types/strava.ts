@@ -36,6 +36,11 @@ export interface StravaActivity {
   kilojoules?: number; // for rides
   average_watts?: number;
   weighted_average_watts?: number;
+  max_watts?: number;
+  /** True when the watts came from a power meter; false means Strava estimated them. */
+  device_watts?: boolean;
+  /** Rides: crank rpm. Runs: Strava reports per-leg rpm, so double it for steps/min. */
+  average_cadence?: number;
   trainer: boolean;
   manual: boolean;
   /** Runs: 1 = race, 2 = long run, 3 = workout. Absent when the athlete never tagged it. */
@@ -59,6 +64,8 @@ export interface Split {
   elapsed_time: number;
   average_speed: number; // m/s
   average_heartrate?: number;
+  /** Runs: Strava's grade-adjusted speed for the split (m/s). */
+  average_grade_adjusted_speed?: number;
   elevation_difference: number;
 }
 
@@ -108,8 +115,11 @@ export interface StreamSet {
   heartrate?: Stream;
   velocity_smooth?: Stream;
   altitude?: Stream;
+  /** Rides: crank rpm. Runs: per-leg rpm (double it for steps/min). */
   cadence?: Stream;
   watts?: Stream;
+  /** Percent grade, smoothed by Strava. */
+  grade_smooth?: Stream;
 }
 
 export interface HRZoneRange {

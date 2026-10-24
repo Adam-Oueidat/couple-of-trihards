@@ -5,6 +5,7 @@ export * from "./plan-agent";
 export * from "./plan-adjust";
 export * from "./plan-revise";
 export * from "./quality";
+export * from "./activity-metrics";
 export * from "./quality-recap";
 export * from "./block-analysis";
 export * from "./recap";

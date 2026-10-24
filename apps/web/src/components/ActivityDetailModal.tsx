@@ -28,6 +28,7 @@ import {
 } from "./activity-detail/format";
 import { AnalysisPanel } from "./activity-detail/AnalysisPanel";
 import { SummaryStats } from "./activity-detail/SummaryStats";
+import { SportMetrics } from "./activity-detail/SportMetrics";
 import { LapsSection } from "./activity-detail/LapsSection";
 import { SplitsSection } from "./activity-detail/SplitsSection";
 
@@ -92,7 +93,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
   }, [onClose]);
 
   const detail = data?.activity;
-  const points = data?.streams ? buildChartPoints(data.streams, isRide) : [];
+  const points = data?.streams ? buildChartPoints(data.streams, discipline) : [];
 
   const laps = detail?.laps ?? [];
   const hasLaps = laps.length > 1;
@@ -112,7 +113,7 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
         ]
       : []),
     { label: "Moving time", value: formatDuration(activity.moving_time / 60) },
-    ...(hasDistance ? [{ label: "Pace", value: formatPace(activity) }] : []),
+    ...(hasDistance ? [{ label: isRide ? "Speed" : "Pace", value: formatPace(activity) }] : []),
     ...(detail?.calories
       ? [{ label: "Calories", value: `${Math.round(detail.calories)}` }]
       : []),
@@ -174,6 +175,8 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
 
           <SummaryStats stats={stats} />
 
+          {data?.metrics && <SportMetrics metrics={data.metrics} />}
+
           <AnalysisPanel
             analysis={analysis}
             analyzing={analyzing}
@@ -181,13 +184,11 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
             onRun={runAnalysis}
           />
 
-          <StreamCharts points={points} isRide={isRide} />
-
-
-
-
-
-
+          <StreamCharts
+            points={points}
+            isRide={isRide}
+            ftp={data?.metrics?.kind === "ride" ? data.metrics.ftp : null}
+          />
 
           {hasLaps && (
             <LapsSection laps={laps} discipline={discipline} isRide={isRide} />

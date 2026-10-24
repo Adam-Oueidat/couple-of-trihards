@@ -17,6 +17,8 @@ import {
   matchSessions,
   racePhase,
   findMisdatedSessions,
+  describeActivityMetrics,
+  type ActivityMetrics,
   type TrainingPlan,
 } from "@trihards/core";
 import { getWorkouts } from "./workouts";
@@ -233,10 +235,15 @@ export async function buildTrainingContext(
     const hr = a.average_heartrate
       ? `, avg HR ${a.average_heartrate.toFixed(0)}`
       : "";
+    // Rides are read through power; quote it whenever Strava has it.
+    const power =
+      d === "ride" && a.average_watts
+        ? `, ${Math.round(a.average_watts)}W avg${a.weighted_average_watts ? ` / ${Math.round(a.weighted_average_watts)}W NP` : ""}`
+        : "";
     const day = a.start_date_local.split("T")[0];
     // Strength has no distance or pace worth quoting; time and effort only.
     if (d === "strength") return `- ${day} strength: "${a.name}" ${Math.round(a.moving_time / 60)}min${hr}`;
-    return `- ${day} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}`;
+    return `- ${day} ${d}: "${a.name}" ${dist} in ${Math.round(a.moving_time / 60)}min (${formatPace(a)})${hr}${power}`;
   };
 
   const recentLines = activities.slice(0, 20).map(activityLine).join("\n");
@@ -500,8 +507,12 @@ function formatPaceFromSpeed(metersPerSecond: number): string {
   return `${formatSecondsAsClock(1000 / metersPerSecond)}/km`;
 }
 
-export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
+export function buildActivityAnalysisRequest(
+  detail: DetailedActivity,
+  metrics: ActivityMetrics | null = null,
+): string {
   const discipline = getDiscipline(detail);
+  const isRide = discipline === "ride";
   const dist =
     discipline === "strength"
       ? "no distance (strength session)"
@@ -530,8 +541,12 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
             const km = (l.distance / 1000).toFixed(2);
             const time = `${Math.floor(l.moving_time / 60)}:${String(l.moving_time % 60).padStart(2, "0")}`;
             return (
-              `  L${l.lap_index}: ${km}km ${time} ${formatPaceFromSpeed(l.average_speed)}` +
+              `  L${l.lap_index}: ${km}km ${time} ${isRide ? `${(l.average_speed * 3.6).toFixed(1)}km/h` : formatPaceFromSpeed(l.average_speed)}` +
               (l.average_heartrate ? ` HR ${l.average_heartrate.toFixed(0)}` : "") +
+              (l.average_watts ? ` ${Math.round(l.average_watts)}W` : "") +
+              (l.average_cadence
+                ? ` ${Math.round(isRide ? l.average_cadence : l.average_cadence * 2)}${isRide ? "rpm" : "spm"}`
+                : "") +
               (l.total_elevation_gain ? ` (+${Math.round(l.total_elevation_gain)}m)` : "")
             );
           })
@@ -554,7 +569,11 @@ export function buildActivityAnalysisRequest(detail: DetailedActivity): string {
           "**Workout execution** — did the session hit the workout I described in my notes (target paces/durations/recoveries)? Judge it as a whole — did the work reps land in range and hold up — and call out only anything notably off (a blown rep, a clear fade, HR drift). Do not walk through every lap.",
         ]
       : []),
-    "**What went well / what to improve** — grounded in the laps, splits, HR, and pacing data above.",
+    isRide
+      ? "**What went well / what to improve** — grounded in the power data above (NP and IF against the session's purpose, how evenly it was paced, peak efforts, cadence), plus laps and HR."
+      : discipline === "run"
+        ? "**What went well / what to improve** — grounded in the laps, splits, HR and pacing above; read hilly running through grade-adjusted pace, and mention cadence only if it is notably low or changed through the run."
+        : "**What went well / what to improve** — grounded in the laps, splits, HR, and pacing data above.",
     "**Cross-training** — given my upcoming plan sessions and current fatigue (TSB), what swim/bike cross-training is reasonable in the next few days, or whether I should skip it.",
   ]
     .map((point, i) => `${i + 1}. ${point}`)
@@ -568,6 +587,7 @@ Distance: ${dist} | Moving time: ${Math.round(detail.moving_time / 60)}min | Pac
 ${detail.average_heartrate ? `Avg HR: ${detail.average_heartrate.toFixed(0)} | Max HR: ${detail.max_heartrate?.toFixed(0) ?? "-"}` : "No HR data"}
 ${detail.total_elevation_gain ? `Elevation gain: ${Math.round(detail.total_elevation_gain)}m` : ""}
 ${detail.suffer_score ? `Suffer score: ${detail.suffer_score}` : ""}
+${metrics ? describeActivityMetrics(metrics) : ""}
 ${detail.description ? `Athlete notes: ${detail.description}` : ""}
 ${laps ? `\nLaps (as recorded):\n${laps}` : ""}
 ${splits ? `\nSplits:\n${splits}` : ""}
