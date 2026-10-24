@@ -6,6 +6,8 @@ import {
   peakAverage,
   resampleToSeconds,
   rideMetrics,
+  rideSplitMeters,
+  rideSplits,
   runMetrics,
   STREAM_KEYS,
   type DetailedActivity,
@@ -167,5 +169,64 @@ describe("run metrics", () => {
     const text = describeActivityMetrics(runMetrics(run, null));
     expect(text).toContain("Cadence: 168 spm");
     expect(text).toContain("Grade-adjusted pace: 4:54/km");
+  });
+});
+
+describe("ride splits", () => {
+  // 90 km at 10 m/s, one sample a second, 200W, a 2 m climb every km.
+  const seconds = 9000;
+  const time = stream(seconds + 1, (i) => i);
+  const streams: StreamSet = {
+    time: { data: time },
+    distance: { data: time.map((t) => t * 10) },
+    watts: { data: time.map(() => 200) },
+    heartrate: { data: time.map(() => 140) },
+    cadence: { data: time.map(() => 90) },
+    altitude: { data: time.map((t) => t / 50) },
+  };
+  const ride = activity({ distance: 90000, moving_time: seconds });
+
+  it("cuts a 90 km ride into 5 km chunks, not 90 rows", () => {
+    const splits = rideSplits(ride, streams);
+    expect(splits).toHaveLength(18);
+    expect(splits[0]).toEqual({
+      fromKm: 0,
+      toKm: 5,
+      movingTime: 500,
+      speed: 10,
+      heartrate: 140,
+      watts: 200,
+      cadence: 90,
+      elevationDiff: 10,
+    });
+  });
+
+  it("steps up to 10 km past 100 km", () => {
+    expect(rideSplitMeters(90_000)).toBe(5_000);
+    expect(rideSplitMeters(160_000)).toBe(10_000);
+  });
+
+  it("folds a short final stub into the chunk before it", () => {
+    // 20.5 km: four full chunks and a 0.5 km stub, which joins the fourth.
+    const short: StreamSet = { ...streams, distance: { data: time.map((t) => Math.min(t * 10, 20500)) } };
+    const splits = rideSplits(activity({ distance: 20500 }), short);
+    expect(splits).toHaveLength(4);
+    expect(splits[3]).toMatchObject({ fromKm: 15, toKm: 20.5 });
+  });
+
+  it("groups Strava's km splits when there are no streams", () => {
+    const km = Array.from({ length: 12 }, (_, i) => ({
+      split: i + 1,
+      distance: 1000,
+      moving_time: 120,
+      elapsed_time: 120,
+      average_speed: 1000 / 120,
+      average_heartrate: 130,
+      elevation_difference: 1,
+    }));
+    const splits = rideSplits(activity({ distance: 12000, splits_metric: km }), null);
+    // 5 + 5 + 2: the 2 km stub is not under a fifth of 5 km, so it stays.
+    expect(splits.map((s) => [s.fromKm, s.toKm])).toEqual([[0, 5], [5, 10], [10, 12]]);
+    expect(splits[0]).toMatchObject({ movingTime: 600, heartrate: 130, watts: null, elevationDiff: 5 });
   });
 });

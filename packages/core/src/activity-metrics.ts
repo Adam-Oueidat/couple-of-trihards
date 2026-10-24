@@ -93,6 +93,20 @@ export interface RideMetrics {
   /** Whether the watts came from a power meter or Strava's estimate. */
   powerSource: "meter" | "estimated" | null;
   ftp: number | null;
+  /** Fixed-distance chunks (5 or 10 km) — a ride's answer to km splits. */
+  splits: RideSplit[];
+}
+
+export interface RideSplit {
+  /** Where the chunk starts and ends, in km from the start. */
+  fromKm: number;
+  toKm: number;
+  movingTime: number; // seconds
+  speed: number; // m/s
+  heartrate: number | null;
+  watts: number | null;
+  cadence: number | null; // rpm while pedalling
+  elevationDiff: number | null; // metres, end minus start
 }
 
 export interface RunMetrics {
@@ -308,6 +322,7 @@ export function rideMetrics(
 
   return {
     kind: "ride",
+    splits: rideSplits(activity, streams),
     avgPower: roundOrNull(avgPower),
     maxPower: roundOrNull(maxPower),
     normalizedPower: roundOrNull(np),
@@ -327,6 +342,126 @@ export function rideMetrics(
     powerSource,
     ftp,
   };
+}
+
+/**
+ * How long a ride's splits are. A km split is the unit a run is paced in; on
+ * a bike it passes in under two minutes and a long ride becomes a hundred
+ * rows of noise. 5 km keeps a typical ride to a screenful, and anything over
+ * 100 km steps up to 10 km so a long ride stays one too.
+ */
+export function rideSplitMeters(distanceM: number): number {
+  return distanceM > 100_000 ? 10_000 : 5_000;
+}
+
+/**
+ * The ride cut into fixed-distance chunks, from the streams when we have them
+ * (which also gives power and cadence per chunk) and otherwise by grouping
+ * Strava's km splits. A final stub shorter than a fifth of a chunk is folded
+ * into the one before rather than shown as its own misleading row.
+ */
+export function rideSplits(
+  activity: DetailedActivity | StravaActivity,
+  streams: StreamSet | null,
+): RideSplit[] {
+  const size = rideSplitMeters(activity.distance);
+  const time = streams?.time?.data;
+  const dist = streams?.distance?.data;
+  if (time && dist && dist.length > 1) return splitsFromStreams(streams!, time, dist, size);
+
+  const km = "splits_metric" in activity ? (activity.splits_metric ?? []) : [];
+  if (km.length === 0) return [];
+  const per = size / 1000;
+  const groups: (typeof km)[] = [];
+  for (let i = 0; i < km.length; i += per) groups.push(km.slice(i, i + per));
+  foldStub(groups, (g) => g.reduce((a, s) => a + s.distance, 0), size);
+
+  let from = 0;
+  return groups.map((g) => {
+    const distance = g.reduce((a, s) => a + s.distance, 0);
+    const moving = g.reduce((a, s) => a + s.moving_time, 0);
+    const hrTime = g.reduce((a, s) => a + (s.average_heartrate ? s.moving_time : 0), 0);
+    const hr = g.reduce((a, s) => a + (s.average_heartrate ?? 0) * s.moving_time, 0);
+    const split: RideSplit = {
+      fromKm: round(from / 1000, 1),
+      toKm: round((from + distance) / 1000, 1),
+      movingTime: moving,
+      speed: moving > 0 ? distance / moving : 0,
+      heartrate: hrTime > 0 ? Math.round(hr / hrTime) : null,
+      watts: null,
+      cadence: null,
+      elevationDiff: Math.round(g.reduce((a, s) => a + s.elevation_difference, 0)),
+    };
+    from += distance;
+    return split;
+  });
+}
+
+/** Merge a too-short final group into the one before it. */
+function foldStub<T>(groups: T[][], length: (g: T[]) => number, size: number): void {
+  if (groups.length > 1 && length(groups[groups.length - 1]) < size / 5) {
+    const stub = groups.pop()!;
+    groups[groups.length - 1].push(...stub);
+  }
+}
+
+function splitsFromStreams(
+  streams: StreamSet,
+  time: number[],
+  dist: number[],
+  size: number,
+): RideSplit[] {
+  const watts = streams.watts?.data;
+  const hr = streams.heartrate?.data;
+  const cad = streams.cadence?.data;
+  const alt = streams.altitude?.data;
+  const n = Math.min(time.length, dist.length);
+
+  // Sample index ranges, one per chunk boundary crossed.
+  const ranges: [number, number][] = [];
+  let start = 0;
+  let next = size;
+  for (let i = 1; i < n; i++) {
+    if (dist[i] >= next) {
+      ranges.push([start, i]);
+      start = i;
+      while (dist[i] >= next) next += size;
+    }
+  }
+  if (start < n - 1) ranges.push([start, n - 1]);
+  // Same rule as foldStub: a short final stub joins the chunk before it.
+  if (ranges.length > 1) {
+    const [a, b] = ranges[ranges.length - 1];
+    if (dist[b] - dist[a] < size / 5) {
+      ranges.pop();
+      ranges[ranges.length - 1][1] = b;
+    }
+  }
+
+  return ranges.map(([a, b]) => {
+    // Time-weight each sample by the interval it covers, skipping stops.
+    let moving = 0;
+    const acc = { hr: 0, hrT: 0, w: 0, wT: 0, c: 0, cT: 0 };
+    for (let i = a; i < b; i++) {
+      const dt = time[i + 1] - time[i];
+      if (dt <= 0 || dt > MAX_GAP_SECONDS) continue;
+      moving += dt;
+      if (hr?.[i]) { acc.hr += hr[i] * dt; acc.hrT += dt; }
+      if (watts && watts[i] != null) { acc.w += watts[i] * dt; acc.wT += dt; }
+      if (cad?.[i]) { acc.c += cad[i] * dt; acc.cT += dt; }
+    }
+    const distance = dist[b] - dist[a];
+    return {
+      fromKm: round(dist[a] / 1000, 1),
+      toKm: round(dist[b] / 1000, 1),
+      movingTime: moving,
+      speed: moving > 0 ? distance / moving : 0,
+      heartrate: acc.hrT > 0 ? Math.round(acc.hr / acc.hrT) : null,
+      watts: acc.wT > 0 ? Math.round(acc.w / acc.wT) : null,
+      cadence: acc.cT > 0 ? Math.round(acc.c / acc.cT) : null,
+      elevationDiff: alt ? Math.round(alt[b] - alt[a]) : null,
+    };
+  });
 }
 
 // --------------------------------------------------------------------------
@@ -408,6 +543,14 @@ export function activityMetrics(
 // For the coach
 // --------------------------------------------------------------------------
 
+function formatClock(seconds: number): string {
+  const s = Math.round(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+}
+
 function paceFromSpeed(mps: number): string {
   const s = Math.round(1000 / mps);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}/km`;
@@ -457,6 +600,21 @@ export function describeActivityMetrics(m: ActivityMetrics): string {
       );
     }
     if (m.decouplingPct != null) lines.push(`Pw:HR decoupling (steady ride): ${m.decouplingPct}%`);
+    if (m.splits.length > 1) {
+      lines.push(
+        `\nSplits (${m.splits[0].toKm - m.splits[0].fromKm >= 9.5 ? 10 : 5}km):\n` +
+          m.splits
+            .map(
+              (s) =>
+                `  ${s.fromKm}-${s.toKm}km: ${formatClock(s.movingTime)} ${(s.speed * 3.6).toFixed(1)}km/h` +
+                (s.watts != null ? ` ${s.watts}W` : "") +
+                (s.heartrate != null ? ` HR ${s.heartrate}` : "") +
+                (s.cadence != null ? ` ${s.cadence}rpm` : "") +
+                (s.elevationDiff ? ` (${s.elevationDiff > 0 ? "+" : ""}${s.elevationDiff}m)` : ""),
+            )
+            .join("\n"),
+      );
+    }
   } else {
     if (m.avgCadence != null) lines.push(`Cadence: ${m.avgCadence} spm`);
     if (m.gradeAdjustedSpeed != null)

@@ -520,7 +520,9 @@ export function buildActivityAnalysisRequest(
         ? `${detail.distance.toFixed(0)}m`
         : `${(detail.distance / 1000).toFixed(2)}km`;
 
-  const splits = detail.splits_metric
+  // Km splits are a run's unit. A ride's splits are 5/10 km chunks and come
+  // in with its metrics below, so 90 rows of min/km never reach the prompt.
+  const splits = (isRide ? undefined : detail.splits_metric)
     ?.map(
       (s) =>
         `  km${s.split}: ${formatPaceFromSpeed(s.average_speed)}` +

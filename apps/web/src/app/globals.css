@@ -134,6 +134,26 @@ body {
   font-family: var(--font-sans, Arial, Helvetica, sans-serif);
 }
 
+/* ---------- Scrollbars ----------
+   The theme is a class, so the browser never learns the page is dark and
+   draws its light scrollbar — a white track down the side of every dark
+   modal. Declaring the scheme fixes native controls; the thin palette-toned
+   thumb on a transparent track makes the bar sit inside the surface it
+   scrolls instead of beside it. */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-soft) transparent;
+}
+*:hover {
+  scrollbar-color: var(--text-faint) transparent;
+}
+
 /* ---------- Type roles ----------
    display: condensed instrument face for headings, big numerics, eyebrows
    data:    monospace with tabular figures for measured values (km, h, TSB)
