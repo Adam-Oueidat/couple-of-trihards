@@ -31,6 +31,7 @@ import { SummaryStats } from "./activity-detail/SummaryStats";
 import { SportMetrics } from "./activity-detail/SportMetrics";
 import { LapsSection } from "./activity-detail/LapsSection";
 import { SplitsSection } from "./activity-detail/SplitsSection";
+import { RideSplitsSection } from "./activity-detail/RideSplitsSection";
 
 // Imported through the shared charts chunk rather than directly, so the modal
 // reuses the recharts copy the dashboard already loaded instead of pulling a
@@ -194,8 +195,13 @@ export function ActivityDetailModal({ activity, onClose }: Props) {
             <LapsSection laps={laps} discipline={discipline} isRide={isRide} />
           )}
 
-          {detail?.splits_metric && detail.splits_metric.length > 1 && (
-            <SplitsSection splits={detail.splits_metric} />
+          {data?.metrics?.kind === "ride" ? (
+            data.metrics.splits.length > 1 && (
+              <RideSplitsSection splits={data.metrics.splits} />
+            )
+          ) : (
+            detail?.splits_metric &&
+            detail.splits_metric.length > 1 && <SplitsSection splits={detail.splits_metric} />
           )}
 
           {detail?.best_efforts && detail.best_efforts.length > 0 && (
