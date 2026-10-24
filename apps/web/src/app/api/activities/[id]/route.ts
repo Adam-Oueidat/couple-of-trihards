@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createLogger, defaultLimiter } from "@trihards/core";
-import { getActivityDetail, getActivityStreams } from "@/lib/strava";
+import { activityMetrics, createLogger, defaultLimiter } from "@trihards/core";
+import { getActivityDetail, getActivityStreams, getAthleteDetail } from "@/lib/strava";
 import { ownsActivity } from "@/lib/activity-access";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
@@ -33,13 +33,20 @@ export async function GET(
   }
 
   try {
-    const [activity, streams, analysis] = await Promise.all([
+    const [activity, streams, analysis, athlete] = await Promise.all([
       getActivityDetail(auth, activityId),
       getActivityStreams(auth, activityId),
       getAnalysis(auth.userId, activityId),
+      // FTP and weight turn power into intensity, TSS and W/kg. Cached, and
+      // allowed to fail: a ride without them still has its watts.
+      getAthleteDetail(auth).catch(() => null),
     ]);
     await updatePersonalBests(auth.userId, activity);
-    return NextResponse.json({ activity, streams, analysis });
+    const metrics = activityMetrics(activity, streams, {
+      ftp: athlete?.ftp,
+      weight: athlete?.weight,
+    });
+    return NextResponse.json({ activity, streams, analysis, metrics });
   } catch (err) {
     log.error("failed to fetch activity detail", err);
     return NextResponse.json(

@@ -1,10 +1,12 @@
-import { DetailedActivity, StreamSet } from "@trihards/core";
+import { ActivityMetrics, DetailedActivity, StreamSet } from "@trihards/core";
 import { getDiscipline, formatSecondsAsClock } from "@trihards/core";
 
 export interface DetailResponse {
   activity: DetailedActivity;
   streams: StreamSet | null;
   analysis: { text: string; createdAt: string } | null;
+  /** Ride or run metrics; null for other sports. */
+  metrics: ActivityMetrics | null;
 }
 
 export interface ChartPoint {
@@ -12,6 +14,8 @@ export interface ChartPoint {
   hr?: number;
   pace?: number; // min/km for runs, km/h for rides
   alt?: number;
+  watts?: number;
+  cadence?: number; // rpm for rides, steps/min for runs
 }
 
 export interface LapPoint {
@@ -36,15 +40,38 @@ export function isWalk(speed: number, discipline: ReturnType<typeof getDisciplin
 
 const MAX_POINTS = 300;
 
-export function buildChartPoints(streams: StreamSet, isRide: boolean): ChartPoint[] {
+export function buildChartPoints(
+  streams: StreamSet,
+  discipline: ReturnType<typeof getDiscipline>,
+): ChartPoint[] {
   const dist = streams.distance?.data;
   if (!dist || dist.length === 0) return [];
+  const isRide = discipline === "ride";
 
   const step = Math.max(1, Math.floor(dist.length / MAX_POINTS));
   const points: ChartPoint[] = [];
 
+  // Power and cadence swing second to second, so one sample per bucket reads
+  // as noise. They are averaged over the bucket instead; zeros are kept for
+  // power (coasting is real work done: none) but dropped for cadence, which
+  // the athlete means only while pedalling or running.
+  const bucketMean = (data: number[] | undefined, i: number, skipZeros: boolean) => {
+    if (!data) return undefined;
+    let sum = 0;
+    let n = 0;
+    for (let j = i; j < Math.min(i + step, data.length); j++) {
+      if (skipZeros && !data[j]) continue;
+      sum += data[j];
+      n++;
+    }
+    return n > 0 ? Math.round(sum / n) : undefined;
+  };
+  // Strava records run cadence per leg; runners count both feet.
+  const cadenceScale = discipline === "run" ? 2 : 1;
+
   for (let i = 0; i < dist.length; i += step) {
     const v = streams.velocity_smooth?.data[i];
+    const cadence = bucketMean(streams.cadence?.data, i, true);
     points.push({
       km: Math.round((dist[i] / 1000) * 100) / 100,
       hr: streams.heartrate?.data[i],
@@ -55,6 +82,8 @@ export function buildChartPoints(streams: StreamSet, isRide: boolean): ChartPoin
             : Math.round((1000 / v / 60) * 100) / 100 // min/km
           : undefined,
       alt: streams.altitude?.data[i],
+      watts: bucketMean(streams.watts?.data, i, false),
+      cadence: cadence === undefined ? undefined : cadence * cadenceScale,
     });
   }
   return points;

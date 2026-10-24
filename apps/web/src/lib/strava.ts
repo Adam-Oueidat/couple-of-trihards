@@ -6,6 +6,7 @@ import {
   StravaActivity,
   StravaTokens,
   StreamSet,
+  STREAM_KEYS,
   createLogger,
 } from "@trihards/core";
 import { and, eq } from "drizzle-orm";
@@ -359,6 +360,9 @@ function toStravaActivity(a: StravaActivity): StravaActivity {
     kilojoules: a.kilojoules,
     average_watts: a.average_watts,
     weighted_average_watts: a.weighted_average_watts,
+    max_watts: a.max_watts,
+    device_watts: a.device_watts,
+    average_cadence: a.average_cadence,
     trainer: a.trainer,
     manual: a.manual,
     // Strava's race tag. The run-threshold estimate and the feed's race
@@ -454,7 +458,8 @@ export async function getActivityStreamsStrict(
   return cached(`streams:${athleteId}:${id}`, 60 * 60_000, async () => {
     try {
       return await stravaFetch<StreamSet>(userId, `/activities/${id}/streams`, {
-        keys: "time,distance,heartrate,velocity_smooth,altitude,watts",
+        // Cadence used to be missing here, so no ride or run ever had it.
+        keys: STREAM_KEYS.join(","),
         key_by_type: "true",
       });
     } catch (err) {

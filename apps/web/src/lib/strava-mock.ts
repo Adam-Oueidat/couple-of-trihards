@@ -141,6 +141,10 @@ function toActivity(t: Template, day: Date, idx: number, n: number): StravaActiv
     average_watts: t.watts,
     weighted_average_watts: t.watts ? t.watts + 8 : undefined,
     kilojoules: t.watts ? Math.round((t.watts * moving) / 1000) : undefined,
+    max_watts: t.watts ? Math.round(t.watts * 2.6) : undefined,
+    device_watts: t.watts ? true : undefined,
+    // Strava's units: crank rpm for a ride, per-leg rpm for a run.
+    average_cadence: t.sport === "Ride" ? 88 : t.sport === "Run" ? 84 : undefined,
     trainer: false,
     manual: false,
     workout_type: t.workoutType ?? null,
@@ -178,6 +182,8 @@ function detailFor(a: StravaActivity): DetailedActivity {
           moving_time: t,
           elapsed_time: t,
           average_speed: 1000 / t,
+          // Climbing splits are faster on the flat-ground equivalent.
+          average_grade_adjusted_speed: (1000 / t) * (1 + Math.max(0, jitter(i + 7)) * 0.03),
           average_heartrate: Math.round((a.average_heartrate ?? 140) - 6 + (12 * i) / Math.max(km, 1)),
           elevation_difference: Math.round(jitter(i + 7) * 4),
         };
@@ -194,6 +200,7 @@ function detailFor(a: StravaActivity): DetailedActivity {
     average_speed: a.average_speed,
     average_heartrate: a.average_heartrate,
     average_watts: a.average_watts,
+    average_cadence: a.average_cadence,
   }));
   return {
     ...a,
@@ -221,6 +228,10 @@ function streamsFor(a: StravaActivity): StreamSet {
     heartrate: { data: time.map((t, i) => Math.round(hr0 - 10 + Math.min(1, t / 600) * 10 + jitter(i) * 3)) },
     velocity_smooth: { data: time.map((_, i) => +(a.average_speed * (1 + jitter(i + 3) * 0.05)).toFixed(2)) },
     altitude: { data: time.map((_, i) => +(20 + Math.sin(i / 30) * 8).toFixed(1)) },
+    ...(a.average_cadence
+      ? { cadence: { data: time.map((_, i) => Math.max(0, Math.round(a.average_cadence! + jitter(i + 9) * 4))) } }
+      : {}),
+    grade_smooth: { data: time.map((_, i) => +(Math.cos(i / 30) * 2).toFixed(1)) },
     ...(a.average_watts ? { watts: { data: time.map((_, i) => Math.round(a.average_watts! * (1 + jitter(i + 5) * 0.12))) } } : {}),
   };
 }

@@ -17,6 +17,10 @@ interface Props {
  */
 export function LapsSection({ laps, discipline, isRide }: Props) {
   const [lapsOpen, setLapsOpen] = useState(false);
+  // Only columns some lap actually has. Strava's run cadence is per leg.
+  const showPower = laps.some((l) => l.average_watts);
+  const showCadence = laps.some((l) => l.average_cadence);
+  const cadenceOf = (c: number) => Math.round(discipline === "run" ? c * 2 : c);
 
   return (
       <div>
@@ -52,6 +56,14 @@ export function LapsSection({ laps, discipline, isRide }: Props) {
                     {isRide ? "Speed" : "Pace"}
                   </th>
                   <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">HR</th>
+                  {showPower && (
+                    <th className="text-left px-3 py-2 font-medium">Power</th>
+                  )}
+                  {showCadence && (
+                    <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
+                      {isRide ? "rpm" : "spm"}
+                    </th>
+                  )}
                   {!isRide && discipline !== "swim" && (
                     <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">
                       Elev
@@ -73,6 +85,16 @@ export function LapsSection({ laps, discipline, isRide }: Props) {
                     <td className="px-3 py-1.5 hidden sm:table-cell">
                       {lap.average_heartrate ? `${lap.average_heartrate.toFixed(0)} bpm` : "-"}
                     </td>
+                    {showPower && (
+                      <td className="px-3 py-1.5">
+                        {lap.average_watts ? `${Math.round(lap.average_watts)} W` : "-"}
+                      </td>
+                    )}
+                    {showCadence && (
+                      <td className="px-3 py-1.5 hidden sm:table-cell">
+                        {lap.average_cadence ? cadenceOf(lap.average_cadence) : "-"}
+                      </td>
+                    )}
                     {!isRide && discipline !== "swim" && (
                       <td className="px-3 py-1.5 hidden sm:table-cell">
                         {lap.total_elevation_gain

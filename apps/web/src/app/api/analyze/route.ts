@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import {
+  activityMetrics,
   analyzeLimiter,
   ANALYSIS_FALLBACK_MODEL,
   ANALYSIS_MODEL,
@@ -11,7 +12,12 @@ import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 
 const log = createLogger("api:analyze");
-import { getActivityDetail, getRecentActivities } from "@/lib/strava";
+import {
+  getActivityDetail,
+  getActivityStreams,
+  getAthleteDetail,
+  getRecentActivities,
+} from "@/lib/strava";
 import { ownsActivityIn } from "@/lib/activity-access";
 import {
   buildActivityAnalysisRequest,
@@ -50,8 +56,19 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
   }
 
-  const detail = await getActivityDetail(auth, activityId);
+  // Streams and the athlete's FTP are what turn a ride into power, NP, IF and
+  // TSS and a run into cadence and drift — without them the coach only ever
+  // saw averages. Both are cached by the activity modal that launched this.
+  const [detail, streams, athlete] = await Promise.all([
+    getActivityDetail(auth, activityId),
+    getActivityStreams(auth, activityId),
+    getAthleteDetail(auth).catch(() => null),
+  ]);
   await updatePersonalBests(userId, detail);
+  const metrics = activityMetrics(detail, streams, {
+    ftp: athlete?.ftp,
+    weight: athlete?.weight,
+  });
   // buildTrainingContext brings the coach's whole memory with it (lib/brain.ts),
   // so a rest day or a reshaped week agreed in chat is in front of the analysis
   // and the report does not prescribe what the athlete has already done.
@@ -91,7 +108,7 @@ export async function POST(request: NextRequest) {
       },
       { type: "text", text: trainingContext },
     ],
-    messages: [{ role: "user", content: buildActivityAnalysisRequest(detail) }],
+    messages: [{ role: "user", content: buildActivityAnalysisRequest(detail, metrics) }],
   });
 
   const encoder = new TextEncoder();
