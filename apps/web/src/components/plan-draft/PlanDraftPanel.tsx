@@ -61,7 +61,7 @@ export function PlanDraftPanel({
 
   if (!draft) return null;
 
-  async function act(action: Action, extra?: { feedback: string }): Promise<boolean> {
+  async function act(action: Action, extra?: ActExtra): Promise<boolean> {
     if (!draft) return false;
     setBusy(action);
     setError(null);
@@ -74,8 +74,8 @@ export function PlanDraftPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
       if (action === "save") onPlanChange(data.plan ?? null, data.summary ?? null);
-      // Revise, insist and back answer with the version to show next.
-      const next = action === "revise" || action === "insist" || action === "back";
+      // Revise, insist, edit and back answer with the version to show next.
+      const next = action === "revise" || action === "insist" || action === "edit" || action === "back";
       await mutate(DRAFTS_KEY, next ? (data as DraftView) : null, { revalidate: false });
       if (action === "discard") onStartOver();
       return true;
@@ -128,8 +128,14 @@ export function PlanDraftPanel({
   return <DraftPreview draft={draft} result={draft.result} busy={busy} error={error} act={act} />;
 }
 
-type Action = "save" | "discard" | "revise" | "insist" | "back";
-type Act = (action: Action, extra?: { feedback: string }) => Promise<boolean>;
+type Action = "save" | "discard" | "revise" | "insist" | "edit" | "back";
+/** A revision's words, or one hand edit to a session (see parseDraftEdit). */
+type ActExtra =
+  | { feedback: string }
+  | { sessionId: string; edit: "move"; date: string }
+  | { sessionId: string; edit: "delete" }
+  | { sessionId: string; edit: "retime"; durationMin: number };
+type Act = (action: Action, extra?: ActExtra) => Promise<boolean>;
 
 function DraftPreview({
   draft,
@@ -233,7 +239,16 @@ function DraftPreview({
         </div>
       </div>
 
-      <WeekBrowser plan={plan} weeks={stats.weeks} focus={weekFocus} index={weekIdx} onIndex={setWeekIdx} changed={changed} />
+      <WeekBrowser
+        plan={plan}
+        weeks={stats.weeks}
+        focus={weekFocus}
+        index={weekIdx}
+        onIndex={setWeekIdx}
+        changed={changed}
+        // Only the draft's own version, once ready: not one kept on screen while a revision is written.
+        edit={draft.status === "ready" && result === draft.result ? { act, busy, error } : null}
+      />
     </section>
   );
 }
@@ -417,7 +432,18 @@ function FitnessChart({ points }: { points: { date: string; ctl: number }[] }) {
   );
 }
 
-/** One plan week, a row per day with that day's sessions side by side. */
+/** What the week browser needs to let the athlete change sessions by hand. */
+interface EditProps {
+  act: Act;
+  busy: Action | null;
+  error: string | null;
+}
+
+/**
+ * One plan week, a row per day with that day's sessions side by side. With
+ * `edit`, the athlete can switch to editing: move, delete or retime a session
+ * by hand, without asking the coach.
+ */
 function WeekBrowser({
   plan,
   weeks,
@@ -425,6 +451,7 @@ function WeekBrowser({
   index,
   onIndex,
   changed,
+  edit,
 }: {
   plan: TrainingPlan;
   weeks: DraftWeekStats[];
@@ -432,9 +459,12 @@ function WeekBrowser({
   index: number;
   onIndex: (i: number) => void;
   changed: Set<number>;
+  edit: EditProps | null;
 }) {
+  const [editing, setEditing] = useState(false);
   const week = weeks[index];
   if (!week) return null;
+  const isEditing = editing && edit !== null;
   const byDay = new Map<string, PlannedSession[]>();
   for (const s of plan.sessions) {
     if (s.date < week.weekStart || s.date > addDays(week.weekStart, 6)) continue;
@@ -459,6 +489,16 @@ function WeekBrowser({
           {focus[index] && <p className="mt-1 text-sm text-gray-400">{focus[index]}</p>}
         </div>
         <div className="flex gap-1.5">
+          {edit && (
+            <button
+              type="button"
+              aria-pressed={isEditing}
+              onClick={() => setEditing((v) => !v)}
+              className={`cursor-pointer rounded-[8px] border px-3 py-1.5 text-sm font-semibold ${isEditing ? "border-orange-500 bg-orange-500/10 text-orange-500" : "border-gray-700 text-gray-300 hover:border-gray-600"}`}
+            >
+              {isEditing ? "Done" : "Edit sessions"}
+            </button>
+          )}
           <button type="button" aria-label="Previous week" disabled={index === 0} onClick={() => onIndex(index - 1)} className="cursor-pointer rounded-[8px] border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-600 disabled:cursor-default disabled:opacity-30">←</button>
           <button type="button" aria-label="Next week" disabled={index === weeks.length - 1} onClick={() => onIndex(index + 1)} className="cursor-pointer rounded-[8px] border border-gray-700 px-3 py-1.5 text-sm text-gray-300 hover:border-gray-600 disabled:cursor-default disabled:opacity-30">→</button>
         </div>
@@ -470,9 +510,11 @@ function WeekBrowser({
           return (
             <div key={day} className="grid grid-cols-[56px_minmax(0,1fr)_64px] items-center gap-3 border-t border-gray-800 px-3 py-2.5 first:border-t-0">
               <span className="font-data text-[12px] uppercase tracking-[0.08em] text-gray-500">{DAY_FMT.format(new Date(`${day}T12:00:00`))}</span>
-              <div className="flex flex-wrap gap-1.5">
+              <div className={isEditing ? "flex flex-col gap-1.5" : "flex flex-wrap gap-1.5"}>
                 {sessions.length === 0 ? (
                   <span className="text-[13px] text-gray-600">Rest</span>
+                ) : isEditing ? (
+                  sessions.map((s) => <SessionEditor key={s.id} session={s} plan={plan} edit={edit} />)
                 ) : (
                   sessions.map((s) => (
                     <span key={s.id} title={s.notes} className={`inline-flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-[12px] ${DISCIPLINE_PILL[s.discipline]}`}>
@@ -487,8 +529,81 @@ function WeekBrowser({
           );
         })}
       </div>
-      <p className="mt-3 text-[12px] text-gray-500">Once saved, every session is on your calendar, where you can move, edit or skip it.</p>
+      {isEditing && edit.error && <p className="mt-3 text-sm text-[var(--err)]" role="alert">{edit.error}</p>}
+      <p className="mt-3 text-[12px] text-gray-500">
+        {isEditing
+          ? "Each change is made straight away, and the numbers above are worked out again. It doesn't use one of your revisions."
+          : "Once saved, every session is on your calendar, where you can move, edit or skip it."}
+      </p>
     </section>
+  );
+}
+
+/** One session in edit mode: its pill, then the day, the minutes and a delete. */
+function SessionEditor({ session: s, plan, edit }: { session: PlannedSession; plan: TrainingPlan; edit: EditProps }) {
+  const [minutes, setMinutes] = useState(s.durationMin ? String(s.durationMin) : "");
+  const disabled = edit.busy !== null;
+
+  function retime() {
+    const min = Math.round(Number(minutes));
+    if (!minutes || min === s.durationMin) return;
+    void edit.act("edit", { sessionId: s.id, edit: "retime", durationMin: min });
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span title={s.notes} className={`inline-flex min-w-0 items-center gap-1.5 rounded-[8px] border px-2.5 py-1 text-[12px] ${DISCIPLINE_PILL[s.discipline]}`}>
+        <DisciplineGlyph discipline={s.discipline} size={11} />
+        <span className="truncate font-semibold">{sessionLabel(s)}</span>
+      </span>
+      <input
+        type="date"
+        value={s.date}
+        min={plan.startDate}
+        max={plan.raceDate}
+        disabled={disabled}
+        aria-label={`Move ${s.name} to`}
+        onChange={(e) => {
+          const date = e.target.value;
+          if (!date || date === s.date) return;
+          void edit.act("edit", { sessionId: s.id, edit: "move", date });
+        }}
+        className="rounded-[8px] border border-gray-700 bg-gray-950 px-2 py-1 font-data text-[12px] text-gray-200 disabled:opacity-50"
+      />
+      <span className="inline-flex items-center gap-1">
+        <input
+          type="number"
+          inputMode="numeric"
+          min={5}
+          max={600}
+          step={5}
+          value={minutes}
+          placeholder="min"
+          disabled={disabled}
+          aria-label={`Minutes for ${s.name}`}
+          onChange={(e) => setMinutes(e.target.value)}
+          onBlur={retime}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              retime();
+            }
+          }}
+          className="w-16 rounded-[8px] border border-gray-700 bg-gray-950 px-2 py-1 text-right font-data text-[12px] text-gray-200 disabled:opacity-50"
+        />
+        <span className="font-data text-[11px] text-gray-500">min</span>
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => void edit.act("edit", { sessionId: s.id, edit: "delete" })}
+        aria-label={`Delete ${s.name}`}
+        title="Delete session"
+        className="cursor-pointer px-1 text-sm text-gray-600 hover:text-red-400 disabled:opacity-50"
+      >
+        ×
+      </button>
+    </div>
   );
 }
 

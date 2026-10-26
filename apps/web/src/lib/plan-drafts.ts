@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { after } from "next/server";
 import { getDb, planDrafts, type PlanDraftRow } from "@trihards/db";
 import {
+  applyDraftEdit,
   createLogger,
   describeDraftWeeks,
   draftStats,
@@ -24,6 +25,7 @@ import {
   summarizeRevision,
   TRAINING_HISTORY_WEEKS,
   weeksBetween,
+  type DraftEdit,
   type DraftModelOutput,
   type DraftPhase,
   type DraftStats,
@@ -500,6 +502,31 @@ export async function reviseDraft(
     .returning();
   runInBackground(row, identity, parent);
   return toView(row, parent.result as unknown as DraftResult);
+}
+
+/**
+ * A hand edit to a ready draft: move, delete or retime one session. No model
+ * call, so it changes the version on screen in place rather than making a new
+ * one, and does not count against the revisions a draft can take; only the
+ * preview's numbers are worked out again. Throws a message safe to show.
+ */
+export async function editDraft(identity: StravaIdentity, id: string, edit: DraftEdit): Promise<DraftView> {
+  const row = await ownedDraft(identity.userId, id);
+  if (!row || row.status !== "ready" || !row.result) throw new Error("That draft isn't ready to change.");
+  const request = row.input as unknown as PlanRequest;
+  const current = row.result as unknown as DraftResult;
+  const plan = applyDraftEdit(current.plan, edit, request);
+  const activities = await getRecentActivities(identity, TRAINING_HISTORY_WEEKS);
+  const result: DraftResult = { ...current, plan, stats: draftStats({ ...current, plan }, activities) };
+  const [updated] = await getDb()
+    .update(planDrafts)
+    .set({ result: result as unknown as Record<string, unknown>, updatedAt: Math.floor(Date.now() / 1000) })
+    // Only while still ready: a draft saved or discarded meanwhile stays as it is.
+    .where(and(eq(planDrafts.id, id), eq(planDrafts.status, "ready")))
+    .returning();
+  if (!updated) throw new Error("That draft isn't ready to change.");
+  log.info("plan draft edited", { draftId: id, edit: edit.action });
+  return toView(updated);
 }
 
 /** The athlete's latest draft that is neither saved nor discarded, if any. */
