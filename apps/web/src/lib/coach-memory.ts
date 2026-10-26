@@ -2,7 +2,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createLogger, SUMMARY_MODEL, type StravaActivity } from "@trihards/core";
 import { learnFromAthlete } from "./brain-notes";
 import {
-  getConversationMessages,
   getLatestConversationMessages,
   getRecentConversations,
   messageToText,
@@ -163,7 +162,9 @@ export async function summarizeAndStore(
   date: string,
 ): Promise<string | null> {
   try {
-    const turns = textTurns(await getConversationMessages(userId, conversation.id, 50));
+    const turns = textTurns(
+      await getLatestConversationMessages(userId, conversation.id, 50),
+    );
     // The recap is what the chat settled; the notes are what it revealed that
     // will still be true in a month. Read for both at once, since the reply
     // waits on this.

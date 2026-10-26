@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { and, asc, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte } from "drizzle-orm";
 import { chatMessages, conversations, getDb } from "@trihards/db";
 
 export type MessageRole = "user" | "assistant";
@@ -153,31 +153,6 @@ function parseContent(raw: string): string | Anthropic.ContentBlockParam[] {
   }
 }
 
-export async function getConversationMessages(
-  userId: string,
-  conversationId: string,
-  limit = 20,
-): Promise<StoredMessage[]> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.userId, userId),
-        eq(chatMessages.conversationId, conversationId),
-      ),
-    )
-    .orderBy(asc(chatMessages.createdAt))
-    .limit(limit);
-  return rows.map((r) => ({
-    id: r.id,
-    role: r.role as MessageRole,
-    content: parseContent(r.content),
-    createdAt: r.createdAt,
-  }));
-}
-
 export async function saveMessage(
   userId: string,
   conversationId: string,
@@ -208,8 +183,8 @@ export async function saveMessage(
 }
 
 // The newest `limit` messages of a conversation, returned oldest → newest.
-// getConversationMessages counts from the start of the thread; this counts from
-// the end, which is what a "where did we leave it" read needs.
+// Counted from the end of the thread: past the limit, it is the opening turns
+// that drop out, never the latest ones.
 export async function getLatestConversationMessages(
   userId: string,
   conversationId: string,
@@ -233,6 +208,47 @@ export async function getLatestConversationMessages(
     content: parseContent(r.content),
     createdAt: r.createdAt,
   }));
+}
+
+// A stored row the API will accept as the first turn of a replay: a user turn
+// that is the athlete talking, not a tool_result answering a tool_use that has
+// fallen out of the window.
+function isPlainUserTurn(m: StoredMessage): boolean {
+  if (m.role !== "user") return false;
+  if (typeof m.content === "string") return true;
+  return !m.content.some((b) => b.type === "tool_result");
+}
+
+function hasToolUse(m: StoredMessage): boolean {
+  return (
+    m.role === "assistant" &&
+    typeof m.content !== "string" &&
+    m.content.some((b) => b.type === "tool_use")
+  );
+}
+
+// Snap a newest-N slice of a thread to boundaries the API accepts. The front is
+// trimmed to the first plain user turn, so the window never opens on an orphaned
+// tool_result or on an assistant turn. The back drops an assistant tool_use
+// whose tool_result was never stored (a round cut off mid-stream), since a
+// dangling tool_use is the same 400 from the other side.
+export function trimToReplayWindow(messages: StoredMessage[]): StoredMessage[] {
+  const start = messages.findIndex(isPlainUserTurn);
+  if (start === -1) return [];
+  let end = messages.length;
+  while (end > start && hasToolUse(messages[end - 1])) end--;
+  return messages.slice(start, end);
+}
+
+// The last `limit` rows of a thread that can be replayed to the model as-is.
+export async function getReplayHistory(
+  userId: string,
+  conversationId: string,
+  limit: number,
+): Promise<StoredMessage[]> {
+  return trimToReplayWindow(
+    await getLatestConversationMessages(userId, conversationId, limit),
+  );
 }
 
 // For UI rendering: collapse complex content into a text string. Returns
