@@ -1,4 +1,4 @@
-import { buildTrainingPlan, type RawPlannedSession, type RawTrainingPlan, type SessionType, SESSION_TYPES } from "./plan";
+import { buildTrainingPlan, estimateSessionMinutes, type RawPlannedSession, type RawTrainingPlan, type SessionType, SESSION_TYPES } from "./plan";
 import { parseRawTrainingPlan } from "./plan-schema";
 import type { TrainingDiscipline } from "./recap";
 import { expectedSessionTss } from "./schedule";
@@ -301,12 +301,6 @@ export interface DraftStats {
   recoveryWeeks: number;
 }
 
-function sessionMinutes(s: { discipline: TrainingDiscipline; km: number; durationMin?: number }): number {
-  if (s.durationMin) return s.durationMin;
-  if (s.km <= 0) return s.discipline === "strength" ? 30 : 45;
-  return s.discipline === "swim" ? s.km * 25 : s.discipline === "ride" ? s.km * 2.4 : s.km * 6;
-}
-
 export function draftStats(draft: ExpandedDraft, history: StravaActivity[]): DraftStats {
   const plan = buildTrainingPlan(draft.plan);
   const firstMonday = mondayOf(plan.startDate);
@@ -334,7 +328,7 @@ export function draftStats(draft: ExpandedDraft, history: StravaActivity[]): Dra
   for (const s of plan.sessions) {
     const week = byWeek.get(mondayOf(s.date));
     if (!week) continue;
-    const min = Math.round(sessionMinutes(s));
+    const min = Math.round(estimateSessionMinutes(s));
     week.minutes[s.discipline] += min;
     week.totalMin += min;
   }
@@ -350,7 +344,7 @@ export function draftStats(draft: ExpandedDraft, history: StravaActivity[]): Dra
   // Project fitness by treating every plan session as done as written.
   const expected = new Map<string, number>();
   for (const s of plan.sessions) {
-    const tss = expectedSessionTss({ ...s, status: "upcoming" }, sessionMinutes(s));
+    const tss = expectedSessionTss({ ...s, status: "upcoming" }, estimateSessionMinutes(s));
     expected.set(s.date, (expected.get(s.date) ?? 0) + tss);
   }
   const load = calcTrainingLoad(history, plan.raceDate, expected);

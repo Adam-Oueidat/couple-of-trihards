@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   matchSessions,
-  plannedVsActualByWeek,
+  planWeeks,
   SEED_PLAN,
   getWeekStart,
   type CustomWorkoutInput,
@@ -12,7 +12,7 @@ import {
 // Regression: the calendar can "Remove" (hide) a plan session and add custom
 // workouts, but the plan tab used to ignore both — hidden sessions still showed
 // and counted km, and custom workouts never appeared. matchSessions /
-// plannedVsActualByWeek now honor `hidden` and merge custom workouts.
+// planWeeks now honor `hidden` and merge custom workouts.
 
 function hide(sessionId: string, date: string): PlanOverrideMap {
   const override: PlanOverride = {
@@ -39,10 +39,10 @@ describe("hidden sessions", () => {
     const s = SEED_PLAN.sessions[0];
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
 
-    const before = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date).find(
+    const before = planWeeks(SEED_PLAN, [], undefined, s.date).find(
       (w) => w.weekStart === week,
     )!;
-    const after = plannedVsActualByWeek(SEED_PLAN, [], hide(s.id, s.date), s.date).find(
+    const after = planWeeks(SEED_PLAN, [], hide(s.id, s.date), s.date).find(
       (w) => w.weekStart === week,
     );
 
@@ -75,10 +75,10 @@ describe("custom workouts", () => {
   });
 
   it("adds custom-workout km to the weekly planned total", () => {
-    const base = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date).find(
+    const base = planWeeks(SEED_PLAN, [], undefined, s.date).find(
       (w) => w.weekStart === week,
     )!;
-    const withSwim = plannedVsActualByWeek(SEED_PLAN, [], undefined, s.date, [swim]).find(
+    const withSwim = planWeeks(SEED_PLAN, [], undefined, s.date, [swim]).find(
       (w) => w.weekStart === week,
     )!;
     expect(withSwim.plannedKm).toBeCloseTo(base.plannedKm + 2, 1);

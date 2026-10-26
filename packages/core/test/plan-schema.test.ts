@@ -5,7 +5,7 @@ import {
   daysUntilRace,
   getCurrentWeekSessions,
   parseRawTrainingPlan,
-  plannedVsActualByWeek,
+  planWeeks,
   SEED_PLAN,
   TRAINING_PLAN_JSON_SCHEMA,
   type CustomWorkoutInput,
@@ -157,7 +157,7 @@ describe("per-athlete plans", () => {
   });
 
   it("weekly planned volume comes from the passed-in plan", () => {
-    const weeks = plannedVsActualByWeek(uploaded, [], undefined, "2027-01-04");
+    const weeks = planWeeks(uploaded, [], undefined, "2027-01-04");
     const total = weeks.reduce((sum, w) => sum + w.plannedKm, 0);
     expect(total).toBeCloseTo(22, 1);
   });
@@ -208,7 +208,7 @@ describe("an athlete with no plan has no plan", () => {
   });
 
   it("has no planned weeks and no planned km without a plan", () => {
-    expect(plannedVsActualByWeek(null, [], undefined, SEED_PLAN.startDate)).toEqual([]);
+    expect(planWeeks(null, [], undefined, SEED_PLAN.startDate)).toEqual([]);
   });
 
   it("still shows the athlete's own custom workouts, and only those", () => {
@@ -230,7 +230,7 @@ describe("an athlete with no plan has no plan", () => {
     expect(sessions).toHaveLength(1);
     expect(sessions[0].id).toBe("custom-1");
 
-    const weeks = plannedVsActualByWeek(
+    const weeks = planWeeks(
       null,
       [],
       undefined,
