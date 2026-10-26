@@ -32,7 +32,7 @@ import {
 } from "@/lib/block-analysis";
 import {
   getConversation,
-  getConversationMessages,
+  getReplayHistory,
   getLatestConversation,
   getOrCreateConversation,
   lastInteractionTs,
@@ -258,9 +258,10 @@ export async function POST(request: NextRequest) {
   // Pull the latest user turn — that's the one we'll persist.
   const newUserMessage = body.messages[body.messages.length - 1];
 
-  // Load prior persisted history (oldest → newest) and convert to Anthropic
-  // MessageParam shape, then append the just-arrived turn.
-  const history = await getConversationMessages(userId, conversationId, 20);
+  // Load the last 20 persisted rows (oldest → newest), snapped so the window
+  // never splits a tool round, and convert to Anthropic MessageParam shape,
+  // then append the just-arrived turn.
+  const history = await getReplayHistory(userId, conversationId, 20);
   const persistedTurns: Anthropic.MessageParam[] = history.map((m) => ({
     role: m.role,
     content: m.content,

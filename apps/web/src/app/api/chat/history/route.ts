@@ -4,8 +4,8 @@ import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
 import {
   getConversation,
-  getConversationMessages,
   getLatestConversation,
+  getLatestConversationMessages,
   messageToText,
 } from "@/lib/chat";
 
@@ -29,7 +29,11 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const stored = await getConversationMessages(auth.userId, conversation.id, 50);
+  const stored = await getLatestConversationMessages(
+    auth.userId,
+    conversation.id,
+    50,
+  );
   const messages = stored
     .map((m) => {
       const text = messageToText(m);

@@ -382,6 +382,7 @@ export function DashboardClient({ athlete, activities, planActivities, weeklyVol
               trainingLoad={recentLoad}
               today={today}
               plan={plan.plan}
+              overrides={edits.overrides}
               runThreshold={runThreshold}
               analyses={analyses}
               onUploadPlan={() => {

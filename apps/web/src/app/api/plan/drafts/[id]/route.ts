@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { analyzeLimiter, defaultLimiter, parseRevisionRequest } from "@trihards/core";
+import { analyzeLimiter, defaultLimiter, parseDraftEdit, parseRevisionRequest } from "@trihards/core";
 import { isAuthFailure, requireAuth } from "@/lib/auth";
 import { withLimit } from "@/lib/api";
-import { discardDraft, insistDraft, reviseDraft, revertDraft, saveDraft } from "@/lib/plan-drafts";
+import { discardDraft, editDraft, insistDraft, reviseDraft, revertDraft, saveDraft } from "@/lib/plan-drafts";
 import { getActiveTrainingPlan, listTrainingPlans } from "@/lib/training-plans";
 
 /**
@@ -12,7 +12,9 @@ import { getActiveTrainingPlan, listTrainingPlans } from "@/lib/training-plans";
  * ({ feedback, insist? }) asks the coach to change the draft and returns the
  * new pending version (202); insist redoes a revision the coach pushed back
  * on, as the athlete asked it; back drops a revision and returns the version
- * before it.
+ * before it. Edit ({ sessionId, edit: "move" | "delete" | "retime", date?,
+ * durationMin? }) changes one session by hand, with no model call, and returns
+ * the draft as it now stands.
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -39,6 +41,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: err instanceof Error ? err.message : "Could not revise" }, { status: 409 });
     }
   }
+  if (body?.action === "edit") {
+    try {
+      return NextResponse.json(await editDraft(auth, id, parseDraftEdit(body)));
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not change the draft" }, { status: 409 });
+    }
+  }
   if (body?.action === "back") {
     try {
       return NextResponse.json(await revertDraft(auth.userId, id));
@@ -47,7 +56,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
   }
   if (body?.action !== "save") {
-    return NextResponse.json({ error: "action must be save, discard, revise, insist or back" }, { status: 400 });
+    return NextResponse.json({ error: "action must be save, discard, revise, insist, edit or back" }, { status: 400 });
   }
   try {
     await saveDraft(auth.userId, id);

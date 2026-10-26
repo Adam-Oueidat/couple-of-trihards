@@ -8,7 +8,9 @@ import {
   formatPace,
   formatSecondsAsClock,
   getDiscipline,
+  plannedKmForWeek,
   type Discipline,
+  type PlanOverrideMap,
   type RunThreshold,
   type StravaActivity,
   type TrainingLoadPoint,
@@ -35,6 +37,8 @@ interface Props {
   /** Athlete-local YYYY-MM-DD. */
   today: string;
   plan: TrainingPlan | null;
+  /** The athlete's moves and removals, so the week's targets match the calendar. */
+  overrides: PlanOverrideMap;
   runThreshold: RunThreshold | null;
   /** Saved coach analyses, keyed by activity id. */
   analyses: Record<number, string>;
@@ -100,6 +104,7 @@ export function FeedTab({
   trainingLoad,
   today,
   plan,
+  overrides,
   runThreshold,
   analyses,
   onUploadPlan,
@@ -130,7 +135,12 @@ export function FeedTab({
   return (
     <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_300px]">
       <div className="min-w-0 space-y-4">
-        <WeekStrip currentWeek={currentWeek} weeklyVolume={weeklyVolume} today={today} />
+        <WeekStrip
+          currentWeek={currentWeek}
+          weeklyVolume={weeklyVolume}
+          planned={plannedKmForWeek(plan, currentWeek.weekStart, overrides)}
+          today={today}
+        />
 
         <NextUpTab context={loadContext(trainingLoad)} />
 
@@ -210,33 +220,49 @@ function DayDivider({ children }: { children: React.ReactNode }) {
   );
 }
 
+type TriLeg = "swim" | "ride" | "run";
+
 const TRIAD: Array<{
-  discipline: "swim" | "ride" | "run";
-  distance: (w: WeeklyVolume) => string;
+  discipline: TriLeg;
+  km: (w: WeeklyVolume) => number;
+  /** Decimals worth showing: a ride's tenths are noise, a swim's are most of it. */
+  digits: number;
   time: (w: WeeklyVolume) => number;
 }> = [
-  { discipline: "swim", distance: (w) => `${(w.swim / 1000).toFixed(1)} km`, time: (w) => w.swimTime },
-  { discipline: "ride", distance: (w) => `${w.ride.toFixed(0)} km`, time: (w) => w.rideTime },
-  { discipline: "run", distance: (w) => `${w.run.toFixed(1)} km`, time: (w) => w.runTime },
+  { discipline: "swim", km: (w) => w.swim / 1000, digits: 1, time: (w) => w.swimTime },
+  { discipline: "ride", km: (w) => w.ride, digits: 0, time: (w) => w.rideTime },
+  { discipline: "run", km: (w) => w.run, digits: 1, time: (w) => w.runTime },
 ];
+
+/** "run", "swim and run", "swim, ride and run". */
+function listLegs(legs: TriLeg[]): string {
+  return legs.length > 1 ? `${legs.slice(0, -1).join(", ")} and ${legs[legs.length - 1]}` : legs[0];
+}
 
 /**
  * This week, one segment per discipline. Each segment is as wide as that
- * discipline's share of a typical week and fills toward it: the athlete's own
- * four-week average, since the plan only prescribes a single discipline.
+ * discipline's share of a typical week. A discipline the plan prescribes
+ * distance for this week fills toward that target ("done / planned"); the
+ * rest fill toward the athlete's own four-week average.
  */
 function WeekStrip({
   currentWeek,
   weeklyVolume,
+  planned,
   today,
 }: {
   currentWeek: WeeklyVolume;
   weeklyVolume: WeeklyVolume[];
+  /** Planned km per discipline this week, overrides applied. */
+  planned: Partial<Record<TriLeg, number>>;
   today: string;
 }) {
   const prior = weeklyVolume.filter((w) => w.weekStart < currentWeek.weekStart).slice(-4);
   const avg = (fn: (w: WeeklyVolume) => number) =>
     prior.length ? prior.reduce((s, w) => s + fn(w), 0) / prior.length : 0;
+  const target = (d: TriLeg) => (planned[d] ?? 0) > 0;
+  const onPlan = TRIAD.filter((d) => target(d.discipline)).map((d) => d.discipline);
+  const onAverage = prior.length > 0 && onPlan.length < TRIAD.length;
   // Strength has no volume to fill a segment with, but it is training time.
   const total = TRIAD.reduce((s, d) => s + d.time(currentWeek), 0) + currentWeek.strengthTime;
 
@@ -253,8 +279,12 @@ function WeekStrip({
       <div className="flex h-2.5 gap-[3px]" aria-hidden>
         {TRIAD.map((d) => {
           const typical = avg(d.time);
-          const done = d.time(currentWeek);
-          const fill = typical > 0 ? Math.min(1, done / typical) : done > 0 ? 1 : 0;
+          // Planned km, when the plan sets them; otherwise this week's time
+          // against a typical week's.
+          const [done, goal] = target(d.discipline)
+            ? [d.km(currentWeek), planned[d.discipline]!]
+            : [d.time(currentWeek), typical];
+          const fill = goal > 0 ? Math.min(1, done / goal) : done > 0 ? 1 : 0;
           return (
             <div
               key={d.discipline}
@@ -273,11 +303,21 @@ function WeekStrip({
         {TRIAD.map((d) => (
           <span key={d.discipline} className="inline-flex items-center gap-1.5" style={{ color: DISCIPLINE[d.discipline].color }}>
             <span className="h-2 w-2 rounded-full" style={{ background: DISCIPLINE[d.discipline].color }} />
-            {d.distance(currentWeek)}
+            {target(d.discipline)
+              ? `${d.km(currentWeek).toFixed(d.digits)} / ${planned[d.discipline]!.toFixed(d.digits)} km`
+              : `${d.km(currentWeek).toFixed(d.digits)} km`}
           </span>
         ))}
-        {prior.length > 0 && (
-          <span className="text-gray-600">bars fill toward your 4-week average</span>
+        {(onPlan.length > 0 || onAverage) && (
+          <span className="text-gray-600">
+            {onPlan.length === 0
+              ? "bars fill toward your 4-week average"
+              : onPlan.length === TRIAD.length
+                ? "bars fill toward your plan"
+                : !onAverage
+                  ? `${listLegs(onPlan)} toward your plan`
+                : `${listLegs(onPlan)} toward your plan, the rest your 4-week average`}
+          </span>
         )}
       </div>
     </section>
