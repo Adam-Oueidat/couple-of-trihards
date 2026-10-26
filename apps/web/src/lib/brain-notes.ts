@@ -21,7 +21,13 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // There is one way in. Whatever surface the athlete spoke to hands their words
 // to learnFromAthlete, which reads them against the notes as they stand and
 // decides what changes. No surface writes a note itself, so two of them cannot
-// record the same thing twice or disagree about it.
+// record the same thing twice or disagree about it. The athlete can see the
+// notes on the Profile tab and remove one (archiveNote), but not write one:
+// a note is something they said, so they say it to the coach.
+//
+// Plan uploads (plan-ingest.ts) deliberately do not feed it. A parsed document
+// is not something the athlete said, and its sessions already reach every
+// prompt as the training plan itself.
 
 export const NOTE_KINDS = [
   "health",
@@ -77,6 +83,24 @@ export async function getNotes(userId: string): Promise<AthleteNote[]> {
     rulesOut: r.rulesOut ?? [],
     until: r.rulesOutUntil,
   }));
+}
+
+// Take a note out of the memory at the athlete's request. Archived rather than
+// deleted, the same as a note the coach retires. False when no live note of
+// theirs has that id.
+export async function archiveNote(userId: string, id: string): Promise<boolean> {
+  const rows = await getDb()
+    .update(athleteNotes)
+    .set({ archivedAt: Math.floor(Date.now() / 1000) })
+    .where(
+      and(
+        eq(athleteNotes.userId, userId),
+        eq(athleteNotes.id, id),
+        isNull(athleteNotes.archivedAt),
+      ),
+    )
+    .returning({ id: athleteNotes.id });
+  return rows.length > 0;
 }
 
 // "swim until 2026-11-03", or null for a note that rules nothing out.

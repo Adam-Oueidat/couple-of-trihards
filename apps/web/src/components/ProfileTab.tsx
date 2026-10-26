@@ -6,6 +6,7 @@ import { FitnessProfile } from "./FitnessProfile";
 import { GoalsCard } from "./GoalsCard";
 import { ThresholdsCard } from "./FeedTab";
 import { LogoutButton } from "./LogoutButton";
+import { NotesCard } from "./NotesCard";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
@@ -16,9 +17,9 @@ interface Props {
 
 /**
  * Everything about the athlete rather than their training: the numbers the
- * sessions are pitched at, the physiology Strava holds, and what they are
- * aiming for. Account actions live here too, which keeps the sidebar to
- * navigation.
+ * sessions are pitched at, the physiology Strava holds, what they are aiming
+ * for, and what the coach remembers them saying. Account actions live here
+ * too, which keeps the sidebar to navigation.
  */
 export function ProfileTab({ athlete, runThreshold, isAdmin }: Props) {
   return (
@@ -67,8 +68,9 @@ export function ProfileTab({ athlete, runThreshold, isAdmin }: Props) {
           <ThresholdsCard runThreshold={runThreshold} showWeight />
           <FitnessProfile bodyStats={false} />
         </div>
-        <div className="lg:sticky lg:top-6 lg:self-start">
+        <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
           <GoalsCard />
+          <NotesCard />
         </div>
       </div>
     </div>
