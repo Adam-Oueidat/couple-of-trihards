@@ -57,7 +57,8 @@ export function PlanDraftPanel({
     refreshInterval: (d) => (d?.status === "pending" ? 5000 : 0),
   });
   const [busy, setBusy] = useState<Action | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Kept with the action that failed: a hand edit's error shows by the week being edited.
+  const [error, setError] = useState<ActError | null>(null);
 
   if (!draft) return null;
 
@@ -80,7 +81,7 @@ export function PlanDraftPanel({
       if (action === "discard") onStartOver();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setError({ action, message: err instanceof Error ? err.message : "Something went wrong." });
       return false;
     } finally {
       setBusy(null);
@@ -136,6 +137,7 @@ type ActExtra =
   | { sessionId: string; edit: "delete" }
   | { sessionId: string; edit: "retime"; durationMin: number };
 type Act = (action: Action, extra?: ActExtra) => Promise<boolean>;
+type ActError = { action: Action; message: string };
 
 function DraftPreview({
   draft,
@@ -148,7 +150,7 @@ function DraftPreview({
   /** The version on screen: the draft's own, or while a revision is written, the one it started from. */
   result: DraftResult;
   busy: Action | null;
-  error: string | null;
+  error: ActError | null;
   act: Act;
 }) {
   const { plan: raw, stats, phases, why, assumptions, weekFocus } = result;
@@ -180,7 +182,7 @@ function DraftPreview({
           </button>
         </div>
       </div>
-      {error && <p className="text-sm text-[var(--err)]" role="alert">{error}</p>}
+      {error && error.action !== "edit" && <p className="text-sm text-[var(--err)]" role="alert">{error.message}</p>}
 
       <RevisePanel draft={draft} revision={revision} busy={busy} act={act} revising={revising} />
 
@@ -247,7 +249,7 @@ function DraftPreview({
         onIndex={setWeekIdx}
         changed={changed}
         // Only the draft's own version, once ready: not one kept on screen while a revision is written.
-        edit={draft.status === "ready" && result === draft.result ? { act, busy, error } : null}
+        edit={draft.status === "ready" && result === draft.result ? { act, busy, error: error?.action === "edit" ? error.message : null } : null}
       />
     </section>
   );
