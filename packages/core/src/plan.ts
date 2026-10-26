@@ -310,90 +310,158 @@ export function matchSessions(
   );
 }
 
-export interface PlannedVsActualWeek {
-  weekStart: string;
-  plannedKm: number;
-  actualKm: number;
-  /**
-   * The same comparison in minutes. A multi-sport plan's km do not add up to
-   * anything (a ride's km dwarf a swim's), so its chart reads time. A session
-   * without a duration contributes nothing to planned minutes.
-   */
-  plannedMin: number;
-  actualMin: number;
-  isCurrentWeek: boolean;
-  isFuture: boolean;
+/**
+ * Minutes a session is planned to take. A session with no duration is
+ * estimated from its distance at an easy pace, and one with neither from its
+ * sport, so a km-only run still counts toward a week's planned time.
+ */
+export function estimateSessionMinutes(s: {
+  discipline: TrainingDiscipline;
+  km: number;
+  durationMin?: number;
+}): number {
+  if (s.durationMin) return s.durationMin;
+  if (s.km <= 0) return s.discipline === "strength" ? 30 : 45;
+  return s.discipline === "swim" ? s.km * 25 : s.discipline === "ride" ? s.km * 2.4 : s.km * 6;
 }
 
-export function plannedVsActualByWeek(
+/** One sport's week: planned, done as planned, and done on top of the plan. */
+export interface SportWeek {
+  plannedMin: number;
+  plannedKm: number;
+  /** Planned work whose day has come (today included): what "on track" is measured against. */
+  dueMin: number;
+  dueKm: number;
+  /** Activities on a day that has a session of this sport planned. */
+  doneMin: number;
+  doneKm: number;
+  /** Activities of this sport on a day with none of it planned. */
+  extraMin: number;
+  extraKm: number;
+}
+
+export interface PlanWeek extends SportWeek {
+  weekStart: string;
+  isCurrentWeek: boolean;
+  isFuture: boolean;
+  /** Each sport the week plans or the athlete trained. */
+  sports: Partial<Record<TrainingDiscipline, SportWeek>>;
+  /** The week's graded sessions, from matchSessions, so rows and totals agree. */
+  sessions: SessionWithStatus[];
+  counts: Record<"completed" | "partial" | "missed" | "skipped" | "remaining", number>;
+}
+
+/**
+ * How a plan, a week at a time, compares with what the athlete did.
+ *
+ * Built from matchSessions and its rule (an activity counts toward a session
+ * of its sport on the same day), so a week's totals can never disagree with
+ * the session rows under them. An activity on a day with nothing of its sport
+ * planned is "extra": real training, shown, but not credited to the plan.
+ * Removed (hidden) sessions drop out; skipped ones stay planned, since the plan
+ * did ask for them. Weeks run contiguously from the first planned week to the
+ * last, so a week the plan leaves empty still shows as one.
+ */
+export function planWeeks(
   trainingPlan: TrainingPlan | null,
   activities: StravaActivity[],
   overrides?: PlanOverrideMap,
   today: string = localToday(),
   customWorkouts: CustomWorkoutInput[] = [],
-): PlannedVsActualWeek[] {
-  const sessions = applyPlanOverrides(planSessions(trainingPlan), overrides);
+): PlanWeek[] {
+  const sessions = matchSessions(trainingPlan, activities, overrides, today, customWorkouts);
+  if (sessions.length === 0) return [];
 
-  // Which disciplines are planned each week: each session's own sport, plus
-  // any sport the athlete added a custom workout for that week. Actual volume
-  // is then counted only for a week's planned disciplines, so the comparison
-  // stays apples-to-apples.
-  const plannedByWeek = new Map<string, number>();
-  const plannedMinByWeek = new Map<string, number>();
-  const disciplinesByWeek = new Map<string, Set<string>>();
-  const addDiscipline = (week: string, discipline: string) => {
-    const set = disciplinesByWeek.get(week) ?? new Set<string>();
-    set.add(discipline);
-    disciplinesByWeek.set(week, set);
-  };
+  const weekOf = (date: string) => getWeekStart(new Date(date + "T12:00:00"));
+  const currentWeek = weekOf(today);
+  const weeks = new Map<string, PlanWeek>();
+  const first = weekOf(sessions[0].date);
+  const last = weekOf(sessions[sessions.length - 1].date);
+  for (let w = first; w <= last; w = shiftDays(w, 7)) {
+    weeks.set(w, {
+      ...emptySport(),
+      weekStart: w,
+      isCurrentWeek: w === currentWeek,
+      isFuture: w > currentWeek,
+      sports: {},
+      sessions: [],
+      counts: { completed: 0, partial: 0, missed: 0, skipped: 0, remaining: 0 },
+    });
+  }
+  const sportOf = (week: PlanWeek, d: TrainingDiscipline) => (week.sports[d] ??= emptySport());
 
+  // Days with a session of each sport: a skipped one included, as matchSessions
+  // does not grade it but the athlete may still have trained that sport that day.
+  const plannedDays = new Set<string>();
   for (const s of sessions) {
-    // "Removed" in the calendar → drop from planned km. Skipped sessions are
-    // NOT dropped: the plan did ask for that distance, and quietly deducting it
-    // would let a week of skips read as full adherence. The shortfall stays
-    // visible; the reason for it is what the coach gets alongside.
-    if (s.hidden) continue;
-    const week = getWeekStart(new Date(s.date + "T12:00:00"));
-    plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + s.km);
-    plannedMinByWeek.set(week, (plannedMinByWeek.get(week) ?? 0) + (s.durationMin ?? 0));
-    addDiscipline(week, s.discipline);
-  }
-  for (const w of customWorkouts) {
-    const week = getWeekStart(new Date(w.date + "T12:00:00"));
-    plannedByWeek.set(week, (plannedByWeek.get(week) ?? 0) + (w.distanceKm ?? 0));
-    plannedMinByWeek.set(week, (plannedMinByWeek.get(week) ?? 0) + (w.durationMin ?? 0));
-    addDiscipline(week, w.discipline);
+    const week = weeks.get(weekOf(s.date))!;
+    week.sessions.push(s);
+    if (s.status === "completed" || s.status === "partial" || s.status === "missed" || s.status === "skipped") {
+      week.counts[s.status]++;
+    } else {
+      week.counts.remaining++;
+    }
+    const min = estimateSessionMinutes(s);
+    const due = s.date <= today;
+    for (const t of [week, sportOf(week, s.discipline)]) {
+      t.plannedMin += min;
+      t.plannedKm += s.km;
+      if (due) {
+        t.dueMin += min;
+        t.dueKm += s.km;
+      }
+    }
+    if (!s.skipped) plannedDays.add(`${s.date}|${s.discipline}`);
   }
 
-  const actualByWeek = new Map<string, number>();
-  const actualMinByWeek = new Map<string, number>();
   for (const act of activities) {
-    const week = getWeekStart(activityDay(act.start_date_local));
-    if (!disciplinesByWeek.get(week)?.has(getDiscipline(act))) continue;
-    actualByWeek.set(week, (actualByWeek.get(week) ?? 0) + act.distance / 1000);
-    actualMinByWeek.set(week, (actualMinByWeek.get(week) ?? 0) + act.moving_time / 60);
+    // The same day key matchSessions grades by.
+    const day = act.start_date_local.split("T")[0];
+    const d = getDiscipline(act);
+    const week = weeks.get(weekOf(day));
+    if (d === "other" || !week || day > today) continue;
+    const min = act.moving_time / 60;
+    const km = act.distance / 1000;
+    const done = plannedDays.has(`${day}|${d}`);
+    for (const t of [week, sportOf(week, d)]) {
+      if (done) {
+        t.doneMin += min;
+        t.doneKm += km;
+      } else {
+        t.extraMin += min;
+        t.extraKm += km;
+      }
+    }
   }
 
-  const currentWeek = getWeekStart(new Date(today + "T12:00:00"));
+  const result = [...weeks.values()];
+  for (const w of result) {
+    roundSport(w);
+    for (const sport of Object.values(w.sports)) roundSport(sport!);
+  }
+  return result;
+}
 
-  return Array.from(plannedByWeek.keys())
-    .sort()
-    .map((weekStart) => ({
-      weekStart,
-      plannedKm: Math.round((plannedByWeek.get(weekStart) ?? 0) * 10) / 10,
-      actualKm: Math.round((actualByWeek.get(weekStart) ?? 0) * 10) / 10,
-      plannedMin: Math.round(plannedMinByWeek.get(weekStart) ?? 0),
-      actualMin: Math.round(actualMinByWeek.get(weekStart) ?? 0),
-      isCurrentWeek: weekStart === currentWeek,
-      isFuture: weekStart > currentWeek,
-    }));
+function emptySport(): SportWeek {
+  return { plannedMin: 0, plannedKm: 0, dueMin: 0, dueKm: 0, doneMin: 0, doneKm: 0, extraMin: 0, extraKm: 0 };
+}
+
+function roundSport(t: SportWeek) {
+  for (const k of ["plannedMin", "dueMin", "doneMin", "extraMin"] as const) t[k] = Math.round(t[k]);
+  for (const k of ["plannedKm", "dueKm", "doneKm", "extraKm"] as const) t[k] = Math.round(t[k] * 10) / 10;
+}
+
+function shiftDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 /**
  * Planned km per discipline for the week starting `weekStart` (a Monday), with
  * the athlete's overrides applied: a session moved out of the week no longer
  * counts, one moved in does, and a removed (hidden) one never does. Skipped
- * sessions still count, for the same reason plannedVsActualByWeek keeps them.
+ * sessions still count, for the same reason planWeeks keeps them.
  *
  * A discipline appears only when the plan prescribes distance for it that
  * week, so a duration-only or strength session leaves its sport out and the

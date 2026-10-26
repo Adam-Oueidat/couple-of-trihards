@@ -4,7 +4,7 @@ import {
   findMisdatedSessions,
   matchSessions,
   parseRawTrainingPlan,
-  plannedVsActualByWeek,
+  planWeeks,
   type StravaActivity,
 } from "../src";
 
@@ -88,15 +88,16 @@ describe("multi-sport plans", () => {
     expect(graded.find((s) => s.discipline === "ride")?.actualMin).toBe(70);
   });
 
-  it("compares planned and actual minutes per week, counting only planned sports", () => {
-    const [week] = plannedVsActualByWeek(
+  it("credits same-day activities of a planned sport, and ignores sports it does not track", () => {
+    const [week] = planWeeks(
       triPlan(),
       [act("2026-10-06", "Ride", 30, 70), act("2026-10-07", "Yoga", 0, 60)],
       undefined,
       "2026-10-09",
     );
-    expect(week.plannedMin).toBe(45 + 75 + 50);
-    expect(week.actualMin).toBe(70);
+    // The strength session gives no time, so it counts at the 30 min estimate.
+    expect(week.plannedMin).toBe(45 + 75 + 30 + 50);
+    expect(week.doneMin).toBe(70);
   });
 
   it("offers a missed session a same-sport activity from the next day only", () => {

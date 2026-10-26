@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyPlanOverrides,
   matchSessions,
-  plannedVsActualByWeek,
+  planWeeks,
   SEED_PLAN,
   getWeekStart,
   type PlanOverrideMap,
@@ -73,7 +73,7 @@ describe("skipped is not removed", () => {
     const s = SEED_PLAN.sessions[0];
     const week = getWeekStart(new Date(s.date + "T12:00:00"));
     const kmFor = (overrides?: PlanOverrideMap) =>
-      plannedVsActualByWeek(SEED_PLAN, [], overrides, s.date).find(
+      planWeeks(SEED_PLAN, [], overrides, s.date).find(
         (w) => w.weekStart === week,
       )?.plannedKm;
 
