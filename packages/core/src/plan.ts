@@ -389,6 +389,33 @@ export function plannedVsActualByWeek(
     }));
 }
 
+/**
+ * Planned km per discipline for the week starting `weekStart` (a Monday), with
+ * the athlete's overrides applied: a session moved out of the week no longer
+ * counts, one moved in does, and a removed (hidden) one never does. Skipped
+ * sessions still count, for the same reason plannedVsActualByWeek keeps them.
+ *
+ * A discipline appears only when the plan prescribes distance for it that
+ * week, so a duration-only or strength session leaves its sport out and the
+ * caller falls back to whatever it shows without a target.
+ */
+export function plannedKmForWeek(
+  trainingPlan: TrainingPlan | null,
+  weekStart: string,
+  overrides?: PlanOverrideMap,
+): Partial<Record<TrainingDiscipline, number>> {
+  const planned: Partial<Record<TrainingDiscipline, number>> = {};
+  for (const s of applyPlanOverrides(planSessions(trainingPlan), overrides)) {
+    if (s.hidden || s.km <= 0) continue;
+    if (getWeekStart(new Date(s.date + "T12:00:00")) !== weekStart) continue;
+    planned[s.discipline] = (planned[s.discipline] ?? 0) + s.km;
+  }
+  for (const d of Object.keys(planned) as TrainingDiscipline[]) {
+    planned[d] = Math.round(planned[d]! * 10) / 10;
+  }
+  return planned;
+}
+
 export function getCurrentWeekSessions(
   trainingPlan: TrainingPlan | null,
   activities: StravaActivity[],
