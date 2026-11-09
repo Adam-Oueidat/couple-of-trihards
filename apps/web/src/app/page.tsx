@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 import { devMockEnabled } from "@/lib/strava-mock";
@@ -71,7 +72,10 @@ export default async function Home({
           )}
 
           <p className="text-gray-600 text-xs text-center mt-4">
-            Read-only access · Tokens stored in encrypted session cookie
+            Read-only Strava access · No tracking ·{" "}
+            <Link href="/privacy" className="underline-offset-2 hover:text-gray-300 hover:underline">
+              Privacy
+            </Link>
           </p>
         </div>
       </div>

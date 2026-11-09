@@ -73,6 +73,12 @@ export function ProfileTab({ athlete, runThreshold, isAdmin }: Props) {
           <NotesCard />
         </div>
       </div>
+
+      <p className="text-center text-xs text-gray-600">
+        <Link href="/privacy" className="underline-offset-2 hover:text-gray-300 hover:underline">
+          Privacy, and what TriLog stores about you
+        </Link>
+      </p>
     </div>
   );
 }
